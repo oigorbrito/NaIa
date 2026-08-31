@@ -78,3 +78,13 @@ test('missing required runtime environment is BLOCKED_SETUP', async () => {
     assert.deepEqual(result.parameters.missingEnvNames, ['EXAMPLE_TOKEN']);
   });
 });
+
+test('formal setup fails closed when complete harness provenance bundle is unavailable', async () => {
+  await withFixture({}, async ({ root, candidate, harnessPath }) => {
+    const result = await inspectCandidateSetup({ candidate, repositoryRoot: root, harnessPath, env: {}, formalProvenance: true });
+    assert.equal(result.status, 'BLOCKED_SETUP');
+    assert.match(result.blocker, /HARNESS_PROVENANCE_INCOMPLETE/);
+    assert.equal(result.parameters.harnessProvenanceMode, 'FORMAL_BUNDLE');
+    assert.ok(result.diagnostics.harnessProvenance.error);
+  });
+});
