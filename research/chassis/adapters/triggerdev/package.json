@@ -1,0 +1,15 @@
+{
+  "name": "naia-chassis-adapter-triggerdev",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@trigger.dev/sdk": "4.5.15"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "4.5.15",
+    "trigger.dev": "4.5.15"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  }
+}
