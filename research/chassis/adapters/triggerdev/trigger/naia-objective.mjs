@@ -10,7 +10,7 @@ export const naiaChassisObjective = task({
     randomize: false
   },
   run: async (payload, { ctx }) => {
-    const { oracleUrl, objectiveId, operationId, injectResponseLoss } = payload;
+    const { oracleUrl, objectiveId, operationId, injectResponseLoss, nonIdempotentProvider } = payload;
     if (!objectiveId) throw new Error('objectiveId is required');
     if (!operationId) throw new Error('operationId is required');
     if (!oracleUrl) throw new Error('oracleUrl is required');
@@ -19,7 +19,8 @@ export const naiaChassisObjective = task({
       objectiveId,
       operationId,
       attempt: ctx.attempt.number,
-      injectResponseLoss: Boolean(injectResponseLoss)
+      injectResponseLoss: Boolean(injectResponseLoss),
+      nonIdempotentProvider: Boolean(nonIdempotentProvider)
     });
 
     try {
@@ -28,7 +29,8 @@ export const naiaChassisObjective = task({
         headers: {
           'content-type': 'application/json',
           'x-operation-id': operationId,
-          ...(injectResponseLoss ? { 'x-drop-response-after-apply-once': '1' } : {})
+          ...(injectResponseLoss ? { 'x-drop-response-after-apply-once': '1' } : {}),
+          ...(nonIdempotentProvider ? { 'x-non-idempotent-provider': '1' } : {})
         },
         body: JSON.stringify({
           objectiveId,
