@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { executeCandidateExperiment } from './candidate-experiment.mjs';
+import { executeCandidateExperiment, loadExperimentContext } from './candidate-experiment.mjs';
+import { candidateByName } from './candidate-setup.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
@@ -19,6 +20,12 @@ function requireValue(args, name) {
 
 export async function runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, env = process.env, timeoutMs = 15000 }) {
   if (!Number.isInteger(repetition) || repetition < 1) throw new Error('repetition must be a positive integer');
+
+  const context = await loadExperimentContext(repositoryRoot);
+  const candidate = candidateByName(context.capabilities, candidateName);
+  if (!formalExecutorSupportsCandidate(FORMAL_EXECUTOR_SUPPORT, mutantId, candidate)) {
+    throw new Error(`FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:${candidateName}/${mutantId}`);
+  }
 
   const runHook = createCommonRunnerRunHook({ repositoryRoot, env, timeoutMs });
   const result = await executeCandidateExperiment({
@@ -52,13 +59,9 @@ async function main() {
   const timeoutMs = Number(args.get('--timeout-ms') ?? '15000');
 
   const result = await runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, timeoutMs });
-  const supported = formalExecutorSupportsCandidate(FORMAL_EXECUTOR_SUPPORT, mutantId, {
-    candidate: candidateName,
-    mode: result.record?.setup?.parameters?.mode ?? null
-  });
   const ledgerDisposition = {
     appended: false,
-    executorDeclaredForCandidate: supported,
+    executorDeclaredForCandidate: true,
     eligibility: 'NOT_EVALUATED_WITHOUT_LEDGER_PREFIX',
     authority: 'experiment-ledger-validator.mjs',
     note: 'A schema-valid single-run record is qualification evidence until the ledger guard proves it is the next exact preregistered round-robin experiment.'
