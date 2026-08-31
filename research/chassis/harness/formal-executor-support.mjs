@@ -2,7 +2,7 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
   T5: Object.freeze({
     modes: Object.freeze(['local-process']),
     candidates: Object.freeze(['Temporal TypeScript']),
-    fault: 'two-worker-stale-authority-completion'
+    fault: 'two-worker-live-ownership-race'
   }),
   T7: Object.freeze({
     modes: Object.freeze(['local-process']),
