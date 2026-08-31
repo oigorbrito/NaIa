@@ -1,6 +1,6 @@
-import { COMMON_RUNNER_FORMAL_SUPPORT } from './common-runner-run-hook.mjs';
+import { FORMAL_EXECUTOR_SUPPORT } from './formal-executor-support.mjs';
 
-export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, support = COMMON_RUNNER_FORMAL_SUPPORT) {
+export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, support = FORMAL_EXECUTOR_SUPPORT) {
   const errors = [];
   const criticalMutants = protocol?.criticalMutants ?? [];
   const plannedCritical = criticalPlan?.criticalMutants ?? [];
@@ -38,7 +38,7 @@ export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, suppor
   };
 }
 
-export function assertBenchmarkExecutionReady(protocol, criticalPlan, support = COMMON_RUNNER_FORMAL_SUPPORT) {
+export function assertBenchmarkExecutionReady(protocol, criticalPlan, support = FORMAL_EXECUTOR_SUPPORT) {
   const assessment = assessBenchmarkExecutionReadiness(protocol, criticalPlan, support);
   if (!assessment.ready) {
     const reasons = [
