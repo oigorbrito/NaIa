@@ -44,7 +44,8 @@ async function runUntilTerminal({ command, args, cwd, env, timeoutMs }) {
     child.once('error', reject);
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
-  clearTimeout(timer); rl.close();
+  clearTimeout(timer);
+  rl.close();
   return { ...result, events, stderr: stderr.join(''), terminalEvent, timedOut, terminationIssued };
 }
 
@@ -97,6 +98,20 @@ function prerequisiteFailure(initial, resume, statusResult) {
   return pattern.test(text) ? text : null;
 }
 
+function skippedRun(reason) {
+  return {
+    code: null,
+    signal: null,
+    events: [],
+    stderr: '',
+    terminalEvent: null,
+    timedOut: false,
+    terminationIssued: false,
+    skipped: true,
+    reason
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const adapterArg = args.get('--adapter');
@@ -104,6 +119,7 @@ async function main() {
   const adapter = path.resolve(adapterArg);
   const candidate = args.get('--candidate') ?? path.basename(path.dirname(adapter));
   const mode = args.get('--mode') ?? 'local-process';
+  const mutant = args.get('--mutant') ?? 'COMPOSITE';
   const cwd = path.resolve(args.get('--cwd') ?? path.dirname(adapter));
   const timeoutMs = Number(args.get('--timeout-ms') ?? '15000');
   const objectiveId = args.get('--objective-id') ?? `naia-${randomUUID()}`;
@@ -112,6 +128,7 @@ async function main() {
   const externalOracleUrl = args.get('--oracle-url');
 
   if (!['local-process', 'managed-controller'].includes(mode)) throw new Error('--mode must be local-process or managed-controller');
+  if (!['COMPOSITE', 'T7', 'T8', 'T15'].includes(mutant)) throw new Error('--mutant must be COMPOSITE, T7, T8, or T15');
 
   let oracle = null;
   let oracleUrl = externalOracleUrl;
@@ -129,23 +146,47 @@ async function main() {
   let statusResult;
 
   try {
-    const killOnEvent = mode === 'local-process' ? 'external_request_applied_or_ambiguous' : 'objective_persisted';
-    initial = await runUntilKillpoint({
-      command: process.execPath,
-      args: [adapter, 'start', ...commonArgs],
-      cwd,
-      env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '1' },
-      killOnEvent,
-      timeoutMs
-    });
+    if (mutant === 'T8') {
+      initial = await runUntilTerminal({
+        command: process.execPath,
+        args: [adapter, 'start', ...commonArgs],
+        cwd,
+        env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '1', NAIA_CONTROL_AUTO_RETRY: '1' },
+        timeoutMs
+      });
+      resume = skippedRun('T8_ISOLATED_DOES_NOT_REQUIRE_PROCESS_RESTART');
+    } else {
+      const killOnEvent = mutant === 'T7'
+        ? 'external_effect_observed_before_checkpoint'
+        : mode === 'local-process'
+          ? 'external_request_applied_or_ambiguous'
+          : 'objective_persisted';
+      const injectResponseLoss = mutant === 'T7' ? '0' : '1';
+      initial = await runUntilKillpoint({
+        command: process.execPath,
+        args: [adapter, 'start', ...commonArgs],
+        cwd,
+        env: {
+          ...baseEnv,
+          NAIA_DROP_RESPONSE_AFTER_APPLY: injectResponseLoss,
+          NAIA_HOLD_AFTER_EXTERNAL_EFFECT: mutant === 'T7' ? '1' : '0'
+        },
+        killOnEvent,
+        timeoutMs
+      });
 
-    resume = await runUntilTerminal({
-      command: process.execPath,
-      args: [adapter, 'resume', ...commonArgs],
-      cwd,
-      env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: mode === 'managed-controller' ? '1' : '0' },
-      timeoutMs
-    });
+      resume = await runUntilTerminal({
+        command: process.execPath,
+        args: [adapter, 'resume', ...commonArgs],
+        cwd,
+        env: {
+          ...baseEnv,
+          NAIA_DROP_RESPONSE_AFTER_APPLY: mutant === 'COMPOSITE' && mode === 'managed-controller' ? '1' : '0',
+          NAIA_HOLD_AFTER_EXTERNAL_EFFECT: '0'
+        },
+        timeoutMs
+      });
+    }
 
     statusResult = await runToExit({
       command: process.execPath,
@@ -162,40 +203,97 @@ async function main() {
     const totalResponseLossCount = related.reduce((sum, entry) => sum + (entry.responseLossCount ?? 0), 0);
     const status = parseStatus(statusResult.stdout);
 
+    const completionObserved = mutant === 'T8'
+      ? initial.terminalEvent?.event === 'objective_completed'
+      : resume.terminalEvent?.event === 'objective_completed';
+
     const checks = {
-      crashInjected: initial.killIssued && !initial.timedOut,
-      resumedToCompletion: resume.terminalEvent?.event === 'objective_completed',
+      crashInjected: Boolean(initial.killIssued && !initial.timedOut),
+      responseLossInjected: totalResponseLossCount === 1,
+      resumedToCompletion: completionObserved,
       expectedOperationApplied: expected?.applyCount === 1,
       noIdentityDrift: related.length === 1,
       noDuplicateExternalEffect: totalApplyCount === 1,
       oneResponseLossObserved: totalResponseLossCount === 1,
+      noUnexpectedResponseLoss: totalResponseLossCount === 0,
       finalStatusCompleted: status?.state === 'COMPLETED'
     };
 
-    const measuredPass = Object.values(checks).every(Boolean);
     const prerequisiteError = related.length === 0 && !initial.killIssued
       ? prerequisiteFailure(initial, resume, statusResult)
       : null;
-    const faultInjected = initial.killIssued && !initial.timedOut;
-    const killpointError = !prerequisiteError && !faultInjected
-      ? 'KILLPOINT_NOT_REACHED_BEFORE_PROCESS_EXIT_OR_TIMEOUT'
+    const requiredFaultInjected = mutant === 'T8' ? checks.responseLossInjected : checks.crashInjected;
+    const faultNotInjected = !prerequisiteError && !requiredFaultInjected
+      ? mutant === 'T8' ? 'RESPONSE_LOSS_NOT_OBSERVED' : 'KILLPOINT_NOT_REACHED_BEFORE_PROCESS_EXIT_OR_TIMEOUT'
       : null;
+    const workerT7Unavailable = mutant === 'T7' && mode === 'managed-controller';
+    const managedComposite = mutant === 'COMPOSITE' && mode === 'managed-controller';
+    const inconclusiveReason = workerT7Unavailable || managedComposite
+      ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7'
+      : faultNotInjected;
+
+    const measuredPass = mutant === 'T7'
+      ? [
+          checks.crashInjected,
+          checks.resumedToCompletion,
+          checks.expectedOperationApplied,
+          checks.noIdentityDrift,
+          checks.noDuplicateExternalEffect,
+          checks.noUnexpectedResponseLoss,
+          checks.finalStatusCompleted
+        ].every(Boolean)
+      : mutant === 'T8'
+        ? [
+            checks.responseLossInjected,
+            checks.resumedToCompletion,
+            checks.expectedOperationApplied,
+            checks.noIdentityDrift,
+            checks.noDuplicateExternalEffect,
+            checks.finalStatusCompleted
+          ].every(Boolean)
+        : [
+            checks.crashInjected,
+            checks.resumedToCompletion,
+            checks.expectedOperationApplied,
+            checks.noIdentityDrift,
+            checks.noDuplicateExternalEffect,
+            checks.oneResponseLossObserved,
+            checks.finalStatusCompleted
+          ].every(Boolean);
+
     const verdict = prerequisiteError
       ? 'BLOCKED'
-      : killpointError
+      : inconclusiveReason
         ? 'INCONCLUSIVE'
-        : mode === 'managed-controller'
-          ? 'INCONCLUSIVE'
-          : measuredPass ? 'PASS' : 'FAIL';
-    const mutantVerdict = prerequisiteError
+        : measuredPass ? 'PASS' : 'FAIL';
+
+    const compositeIdentityVerdict = prerequisiteError
       ? 'BLOCKED'
-      : killpointError
+      : faultNotInjected
         ? 'INCONCLUSIVE'
-        : (measuredPass ? 'PASS' : 'FAIL');
+        : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL';
+
+    const mutants = mode === 'local-process'
+      ? {
+          T7_process_sigkill: mutant === 'T7' || mutant === 'COMPOSITE' ? verdict : 'NOT_EXECUTED',
+          T8_response_loss: mutant === 'T8' ? verdict : mutant === 'COMPOSITE' ? verdict : 'NOT_EXECUTED',
+          T15_operation_identity: mutant === 'T15' ? verdict : mutant === 'COMPOSITE' ? compositeIdentityVerdict : 'NOT_EXECUTED'
+        }
+      : {
+          T7_worker_sigkill: 'NOT_EXECUTED',
+          T8_response_loss: mutant === 'T8'
+            ? verdict
+            : mutant === 'COMPOSITE'
+              ? (prerequisiteError ? 'BLOCKED' : faultNotInjected ? 'INCONCLUSIVE' : measuredPass ? 'PASS' : 'FAIL')
+              : 'NOT_EXECUTED',
+          T15_operation_identity: mutant === 'T15' ? verdict : mutant === 'COMPOSITE' ? compositeIdentityVerdict : 'NOT_EXECUTED'
+        };
+
     const evidence = {
       schemaVersion: 1,
       candidate,
       mode,
+      mutant,
       objectiveId,
       operationId,
       startedAt,
@@ -206,31 +304,11 @@ async function main() {
       resume,
       status: { process: statusResult, parsed: status },
       checks,
-      mutants: mode === 'local-process'
-        ? {
-            T7_process_sigkill: mutantVerdict,
-            T8_response_loss: mutantVerdict,
-            T15_operation_identity: prerequisiteError
-              ? 'BLOCKED'
-              : killpointError
-                ? 'INCONCLUSIVE'
-                : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
-          }
-        : {
-            T7_worker_sigkill: prerequisiteError ? 'BLOCKED' : 'NOT_EXECUTED',
-            T8_response_loss: mutantVerdict,
-            T15_operation_identity: prerequisiteError
-              ? 'BLOCKED'
-              : killpointError
-                ? 'INCONCLUSIVE'
-                : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
-          },
+      mutants,
       verdict,
       blocker: prerequisiteError
         ? 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT'
-        : killpointError
-          ? killpointError
-          : mode === 'managed-controller' ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7' : null,
+        : inconclusiveReason,
       prerequisiteError: prerequisiteError ? prerequisiteError.slice(0, 4000) : null
     };
 
