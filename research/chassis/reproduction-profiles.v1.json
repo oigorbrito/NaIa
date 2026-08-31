@@ -44,13 +44,17 @@
       "id": "dbos-ts-v4.27",
       "candidate": "DBOS TypeScript",
       "status": "READY_FOR_INSTALLATION",
-      "sdkTag": "v4.27",
+      "sourceTag": "v4.27",
+      "publishedPackageObservedAtBaseline": "4.27.6",
       "sdkPackages": {
-        "@dbos-inc/dbos-sdk": "4.27"
+        "@dbos-inc/dbos-sdk": "4.27.6"
       },
+      "provenanceNote": "Static source review is against GitHub release tag v4.27. First executable run must record npm lockfile integrity and verify the used APIs against the installed 4.27.6 artifact before candidate evidence is accepted.",
       "runtimePolicy": {
         "allowedNodeMajors": [22, 24],
-        "database": "PostgreSQL; exact image/version must be recorded at execution time"
+        "database": "PostgreSQL; exact image/version must be recorded at execution time",
+        "executorID": "naia-chassis-local-executor",
+        "applicationVersion": "naia-chassis-gate-v1"
       },
       "haConstraint": "Automatic multi-process recovery must explicitly state whether DBOS Conductor or an equivalent executor-recovery mechanism is present",
       "externalEffectSemantics": "DURABLE_STEP_CHECKPOINTING_REQUIRES_IDEMPOTENCY_OR_RECONCILIATION_FOR_EXTERNAL_IO"
