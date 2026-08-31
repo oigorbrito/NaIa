@@ -64,16 +64,19 @@ export function executeDeterministicT5Control({ unsafe = false, objectiveId = 't
   const oldOwner = authority.acquire(objectiveId, 'owner-A');
   const newOwner = authority.acquire(objectiveId, 'owner-B');
 
-  const currentCompletion = authority.complete(objectiveId, newOwner.ownerId, newOwner.token, 'new-owner-result');
+  // T5 is the ownership race: A tries to commit after B owns the objective but before B completes.
   const staleCompletion = authority.complete(objectiveId, oldOwner.ownerId, oldOwner.token, 'stale-owner-result');
+  const stateAfterStaleAttempt = authority.snapshot(objectiveId);
+  const currentCompletion = authority.complete(objectiveId, newOwner.ownerId, newOwner.token, 'new-owner-result');
   const finalState = authority.snapshot(objectiveId);
 
   const checks = {
     ownershipAdvanced: newOwner.token > oldOwner.token,
-    currentOwnerCompletionAccepted: currentCompletion.accepted === true,
-    staleCompletionAttempted: staleCompletion.stale === true,
+    staleCompletionAttemptedAfterTakeover: staleCompletion.stale === true,
     staleCompletionRejected: staleCompletion.accepted === false,
-    staleAttemptCannotOverwriteCurrentAuthority:
+    staleAttemptDidNotPublishOutcome: stateAfterStaleAttempt.authoritativeCompletion === null,
+    currentOwnerCompletionAccepted: currentCompletion.accepted === true,
+    finalAuthorityIsCurrentOwner:
       finalState.authoritativeCompletion?.ownerId === newOwner.ownerId &&
       finalState.authoritativeCompletion?.token === newOwner.token &&
       finalState.authoritativeCompletion?.value === 'new-owner-result'
@@ -84,13 +87,16 @@ export function executeDeterministicT5Control({ unsafe = false, objectiveId = 't
     schedule: [
       'owner-A acquires authority',
       'owner-B acquires newer authority',
+      'owner-A submits stale completion while B is current owner',
+      'state inspected before B completion',
       'owner-B completes',
-      'owner-A submits late stale completion'
+      'final state inspected'
     ],
     oldOwner,
     newOwner,
-    currentCompletion,
     staleCompletion,
+    stateAfterStaleAttempt,
+    currentCompletion,
     finalState,
     checks,
     verdict: Object.values(checks).every(Boolean) ? 'PASS' : 'FAIL'
