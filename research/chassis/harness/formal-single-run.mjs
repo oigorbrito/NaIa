@@ -52,7 +52,13 @@ async function main() {
   const timeoutMs = Number(args.get('--timeout-ms') ?? '15000');
 
   const result = await runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, timeoutMs });
-  process.stdout.write(`${JSON.stringify({ valid: result.valid, validationErrors: result.validationErrors, record: result.record }, null, 2)}\n`);
+  const ledgerDisposition = {
+    appended: false,
+    eligibility: 'NOT_EVALUATED_WITHOUT_LEDGER_PREFIX',
+    authority: 'experiment-ledger-validator.mjs',
+    note: 'A schema-valid single-run record is qualification evidence until the ledger guard proves it is the next exact preregistered round-robin experiment.'
+  };
+  process.stdout.write(`${JSON.stringify({ valid: result.valid, validationErrors: result.validationErrors, ledgerDisposition, record: result.record }, null, 2)}\n`);
 
   if (!result.valid) process.exitCode = 3;
   else if (result.record.verdict === 'PASS') process.exitCode = 0;
