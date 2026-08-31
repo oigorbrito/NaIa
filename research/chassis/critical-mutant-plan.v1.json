@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "status": "SPECIFIED_NOT_EXECUTED",
+  "decisionState": {
+    "benchmarkToBeat": "NOT_SELECTED",
+    "chassisWinner": "NOT_SELECTED"
+  },
+  "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+  "rules": [
+    "A controller-process death MUST NOT be reported as a worker-process death.",
+    "A static/source audit MUST NOT be promoted to executed mutant evidence.",
+    "BLOCKED and INCONCLUSIVE remain benchmark-ineligible for every critical mutant.",
+    "Semantic operation identity must remain stable across retry/restart unless T16 intentionally mutates configuration or identity inputs.",
+    "Stale authority must be measured by attempting a late completion after a newer owner/attempt exists, not inferred from documentation alone.",
+    "Every execution must record the actual process/container killed and the durable authority that remained alive."
+  ],
+  "candidates": [
+    {
+      "candidate": "Temporal TypeScript",
+      "profile": "temporal-ts-restricted-v1",
+      "mode": "local-process",
+      "workerKillTarget": "adapter process hosting Temporal Worker",
+      "durableAuthority": "Temporal server/history",
+      "mutants": {
+        "T5": {"status":"NOT_EXECUTED","primitive":"two competing Worker processes on the same task queue plus one semantic objective","acceptance":"only current task authority may commit; stale completion must not become authoritative","blockedBy":["B001"]},
+        "T7": {"status":"NOT_EXECUTED","primitive":"SIGKILL Worker after oracle apply and before Activity result is durably acknowledged","acceptance":"recovery is observable; duplicate external apply is prevented by stable operation identity/provider policy or reported as ambiguous, never silently successful","blockedBy":["B001"]},
+        "T8": {"status":"NOT_EXECUTED","primitive":"oracle applies once then loses response","acceptance":"same operation identity is reused and total external applyCount remains 1","blockedBy":["B001"]},
+        "T11": {"status":"NOT_EXECUTED","primitive":"race workflow cancellation against Worker crash/restart","acceptance":"post-cancel unauthorized progress cannot become terminal success","blockedBy":["B001"]},
+        "T12": {"status":"NOT_EXECUTED","primitive":"hold old Activity completion until a newer attempt/owner exists, then submit stale completion","acceptance":"stale completion is rejected or cannot overwrite current authority","blockedBy":["B001"]},
+        "T16": {"status":"NOT_EXECUTED","primitive":"restart same workflow with intentionally changed runtime/tool/config identity under controlled variants","acceptance":"semantic incompatibility is rejected, surfaced as nondeterminism/configuration incompatibility, or explicitly migrated; never silently changes recovery meaning","blockedBy":["B001"]}
+      }
+    },
+    {
+      "candidate": "DBOS TypeScript",
+      "profile": "dbos-ts-v4.27",
+      "mode": "local-process",
+      "workerKillTarget": "adapter process hosting DBOS executor",
+      "durableAuthority": "DBOS system database/PostgreSQL",
+      "mutants": {
+        "T5": {"status":"NOT_EXECUTED","primitive":"two executors contend for the same workflow identity with explicit executor identities","acceptance":"only valid owner may advance/commit terminal state; stale executor cannot overwrite terminal result","blockedBy":["B001"]},
+        "T7": {"status":"NOT_EXECUTED","primitive":"SIGKILL executor after oracle apply and before step/workflow result persistence","acceptance":"recovery preserves operation identity; duplicate external apply is prevented by provider policy or ambiguity is surfaced","blockedBy":["B001"]},
+        "T8": {"status":"NOT_EXECUTED","primitive":"oracle applies once then loses response","acceptance":"retry/recovery uses same operation identity and applyCount remains 1","blockedBy":["B001"]},
+        "T11": {"status":"NOT_EXECUTED","primitive":"race cancellation/stop authority against executor crash and pending-workflow recovery","acceptance":"cancelled authority cannot later be overwritten by recovered stale work","blockedBy":["B001"]},
+        "T12": {"status":"NOT_EXECUTED","primitive":"delay completion from old executor until a newer executor/owner exists","acceptance":"old executor cannot overwrite newer or terminal state","blockedBy":["B001"]},
+        "T16": {"status":"NOT_EXECUTED","primitive":"recover workflow under changed applicationVersion/executor/tool configuration variants","acceptance":"incompatible recovery must fail closed or be explicitly versioned/migrated; wrong-workflow semantics are forbidden","blockedBy":["B001"]}
+      }
+    },
+    {
+      "candidate": "Restate",
+      "profile": "restate-ts-v1",
+      "mode": "local-process",
+      "workerKillTarget": "service endpoint process hosting Restate handler",
+      "durableAuthority": "Restate server/journal",
+      "mutants": {
+        "T5": {"status":"NOT_EXECUTED","primitive":"concurrent endpoint attempts/ownership transition for same workflow invocation","acceptance":"fencing prevents stale attempt effects from becoming authoritative","blockedBy":["B001"]},
+        "T7": {"status":"NOT_EXECUTED","primitive":"SIGKILL endpoint after oracle apply and before ctx.run result persistence","acceptance":"documented duplicate window is measured; stable operation identity/provider policy prevents second apply or ambiguity remains explicit","blockedBy":["B001"]},
+        "T8": {"status":"NOT_EXECUTED","primitive":"oracle applies once then loses response inside ctx.run","acceptance":"re-execution preserves operation identity and applyCount remains 1 under provider idempotency policy","blockedBy":["B001"]},
+        "T11": {"status":"NOT_EXECUTED","primitive":"race invocation cancellation against endpoint SIGKILL/restart","acceptance":"cancelled invocation cannot later become successful through stale progress","blockedBy":["B001"]},
+        "T12": {"status":"NOT_EXECUTED","primitive":"delay old-attempt completion until invocation fencing token changes","acceptance":"old token/attempt cannot overwrite current invocation authority","blockedBy":["B001"]},
+        "T16": {"status":"NOT_EXECUTED","primitive":"restart endpoint with changed handler/tool/config/version variants while retaining invocation identity","acceptance":"semantic incompatibility is explicit; journal replay must not silently execute a different meaning","blockedBy":["B001"]}
+      }
+    },
+    {
+      "candidate": "Trigger.dev",
+      "profile": "triggerdev-v4.5.15",
+      "mode": "managed-controller",
+      "workerKillTarget": "self-hosted worker/task process or container; controller adapter is explicitly not a valid T7 kill target",
+      "durableAuthority": "Trigger.dev control plane/run engine",
+      "mutants": {
+        "T5": {"status":"NOT_EXECUTED","primitive":"force competing worker/run-attempt authority for one run and retain stale snapshot completion","acceptance":"stale snapshot/worker cannot complete or overwrite current run authority","blockedBy":["B001","B003"]},
+        "T7": {"status":"NOT_EXECUTED","primitive":"SIGKILL actual worker/task process after oracle apply before run completion checkpoint","acceptance":"actual CRASHED semantics and external-effect duplication behavior are measured; controller death is not accepted as substitute","blockedBy":["B001","B003"]},
+        "T8": {"status":"NOT_EXECUTED","primitive":"oracle applies once then loses response from task attempt","acceptance":"same operation identity is reused across any task retry and applyCount remains 1","blockedBy":["B001"]},
+        "T11": {"status":"NOT_EXECUTED","primitive":"race runs.cancel against actual worker crash/retry/restart","acceptance":"cancelled run cannot later complete successfully through stale worker progress","blockedBy":["B001","B003"]},
+        "T12": {"status":"NOT_EXECUTED","primitive":"retain stale snapshot/attempt completion until newer snapshot authority exists","acceptance":"stale completion is rejected and cannot overwrite current snapshot/run state","blockedBy":["B001","B003"]},
+        "T16": {"status":"NOT_EXECUTED","primitive":"resume/replay same objective under changed deployment/task/config identity variants","acceptance":"version/config mismatch is explicit and cannot silently reinterpret prior durable work","blockedBy":["B001","B003"]}
+      }
+    }
+  ]
+}
