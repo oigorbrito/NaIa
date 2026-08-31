@@ -120,6 +120,10 @@ async function waitForClosedStatus(handle, expected, timeoutMs) {
   throw new Error(`workflow did not reach ${expected}; last=${last?.status?.name ?? String(last?.status ?? 'UNKNOWN')}`);
 }
 
+function eventIdNumber(event) {
+  return Number(event?.eventId ?? 0);
+}
+
 export async function runTemporalT11({
   objectiveId = `naia-temporal-t11-${randomUUID()}`,
   operationId = `naia-temporal-t11-operation-${randomUUID()}`,
@@ -190,6 +194,13 @@ export async function runTemporalT11({
     );
     schedule.push('post-recovery-state-inspected');
 
+    const cancelEventId = eventIdNumber(cancelRequested.event);
+    const recoveryWorkflowTask = (cancelledHistory.history.events ?? []).find((event) =>
+      eventIdNumber(event) > cancelEventId &&
+      event.workflowTaskCompletedEventAttributes?.identity === recoveryWorkerIdentity
+    );
+    const recoveryHandledByB = Boolean(recoveryWorkflowTask);
+
     const oracleEntry = oracle.snapshot(operationId);
     const acceptedCountAfterCancel = oracleEntry?.applyCount ?? 0;
     const expectedSchedule = [
@@ -218,18 +229,22 @@ export async function runTemporalT11({
         targetIdentity: oldWorkerIdentity,
         signal: 'SIGKILL'
       },
-      recovery: { attempted: true, workerIdentity: recoveryWorkerIdentity },
+      recovery: {
+        attempted: recoveryHandledByB,
+        workerIdentity: recoveryWorkerIdentity,
+        workflowTaskCompletedEventId: recoveryWorkflowTask ? String(recoveryWorkflowTask.eventId ?? '') : null
+      },
       postCancelProtectedOperation: {
         attempted: acceptedCountAfterCancel > 0,
         blockedBeforeProtectedOperation: acceptedCountAfterCancel === 0,
-        blockedByNativeCancellation: Boolean(cancelledHistory.event),
+        blockedByNativeCancellation: Boolean(cancelledHistory.event) && recoveryHandledByB,
         accepted: acceptedCountAfterCancel > 0,
         acceptedCountAfterCancel,
         oracleEntry
       },
       finalCancellationAuthoritative: (cancelledDescription.status?.name ?? String(cancelledDescription.status ?? '')) === 'CANCELLED',
       durableAuthorityAlive: Boolean(cancelledDescription),
-      deterministicScheduleObserved: JSON.stringify(schedule) === JSON.stringify(expectedSchedule),
+      deterministicScheduleObserved: JSON.stringify(schedule) === JSON.stringify(expectedSchedule) && recoveryHandledByB,
       rawNativeEvidence: {
         objectiveId,
         operationId,
@@ -237,6 +252,7 @@ export async function runTemporalT11({
         schedule,
         preCancel,
         cancelRequestedEventId: String(cancelRequested.event.eventId ?? ''),
+        recoveryWorkflowTaskCompletedEventId: recoveryWorkflowTask ? String(recoveryWorkflowTask.eventId ?? '') : null,
         cancelledEventId: String(cancelledHistory.event.eventId ?? ''),
         cancelledDescription,
         crashExit,
