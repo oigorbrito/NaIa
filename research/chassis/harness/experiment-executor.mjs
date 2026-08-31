@@ -71,6 +71,22 @@ export async function executeExperiment(spec, hooks) {
       if (!runResult?.fault || typeof runResult.fault.injected !== 'boolean') {
         throw new Error('run hook must report fault injection state');
       }
+    } else {
+      runResult = {
+        blocked: false,
+        blocker: null,
+        fault: {
+          intended: spec.mutantId,
+          injected: false,
+          targetKind: null,
+          targetIdentity: null,
+          signal: null,
+          durableAuthorityAlive: null
+        },
+        workload: {},
+        rawObservations: { setupBlocked: true },
+        acceptanceChecks: {}
+      };
     }
   } finally {
     cleanupResult = await hooks.cleanup(spec, setupResult, runResult);
