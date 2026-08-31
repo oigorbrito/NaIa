@@ -19,7 +19,8 @@
       "Do not infer exactly-once for arbitrary external I/O",
       "Preserve semantic operation identity across retries/restarts",
       "Reject identity drift by checking total related external effects across all operation IDs",
-      "Record runtime/package/container identities for every run"
+      "Record runtime/package/container identities for every run",
+      "Classify missing packages, unreachable bootstrap services, or missing required configuration before fault injection as BLOCKED rather than candidate FAIL"
     ]
   },
   "profiles": [
@@ -37,7 +38,9 @@
         "@temporalio/workflow": "1.23.0",
         "@temporalio/activity": "1.23.0"
       },
+      "cliTag": "v1.7.3",
       "serverTag": "v1.31.2",
+      "serverProvenance": "Temporal CLI v1.7.3 go.mod pins go.temporal.io/server v1.31.2; use this CLI release for the local development server so the executable server identity matches the frozen profile.",
       "runtimePolicy": {
         "allowedNodeMajors": [22, 24],
         "forbidden": [
@@ -77,6 +80,7 @@
       "adapter": "research/chassis/adapters/restate-ts/adapter.mjs",
       "executionMode": "local-process",
       "serverTag": "v1.7.8",
+      "serverRelease": "restatedev/restate v1.7.8",
       "sdkTag": "v1.16.9",
       "sdkPackages": {
         "@restatedev/restate-sdk": "1.16.9",
