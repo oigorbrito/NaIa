@@ -52,7 +52,7 @@ export async function executeCandidateExperiment({ repositoryRoot, candidateName
 
   return executeExperiment(spec, {
     environment,
-    setup: async () => inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env }),
+    setup: async () => inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true }),
     run: async (selectedSpec, setup) => {
       if (typeof runHook !== 'function') {
         return {
