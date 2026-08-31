@@ -11,6 +11,7 @@ function evidence(mutant, overrides = {}) {
     operationId: 'objective-1:external-effect',
     blocker: null,
     initial: { pid: 1234, signal: mutant === 'T7' ? 'SIGKILL' : null },
+    status: { process: { code: 0 }, parsed: { state: 'COMPLETED' } },
     checks: {
       crashInjected: mutant === 'T7',
       responseLossInjected: mutant === 'T8',
@@ -36,6 +37,8 @@ test('bridge maps isolated T7 to worker-process fault without T8 acceptance leak
   assert.equal(result.fault.injected, true);
   assert.equal(result.fault.targetKind, 'worker-process');
   assert.equal(result.fault.signal, 'SIGKILL');
+  assert.equal(result.fault.durableAuthorityAlive, true);
+  assert.equal(result.acceptanceChecks.durableAuthorityReachable, true);
   assert.equal(result.acceptanceChecks.noUnexpectedResponseLoss, true);
   assert.equal('oneResponseLossObserved' in result.acceptanceChecks, false);
 });
@@ -45,16 +48,19 @@ test('bridge maps isolated T8 to response-loss fault without process crash requi
   assert.equal(result.fault.injected, true);
   assert.equal(result.fault.targetKind, 'external-response');
   assert.equal(result.fault.signal, null);
+  assert.equal(result.fault.durableAuthorityAlive, true);
   assert.equal(result.acceptanceChecks.oneResponseLossObserved, true);
 });
 
 test('bridge preserves runtime prerequisite BLOCKED classification', () => {
   const value = evidence('T8', { verdict: 'BLOCKED', blocker: 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT' });
   value.checks.responseLossInjected = false;
+  value.status = { process: { code: 1 }, parsed: null };
   const result = commonRunnerEvidenceToRunResult(value, 'T8');
   assert.equal(result.blocked, true);
   assert.equal(result.blocker, 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT');
   assert.equal(result.fault.injected, false);
+  assert.equal(result.fault.durableAuthorityAlive, false);
 });
 
 test('managed-controller T7 cannot be converted into injected worker fault', () => {
