@@ -1,0 +1,31 @@
+{
+  "workUnit": "T11_CANCEL_CRASH_RETRY_CONTROL_AUDIT_V1",
+  "date": "2026-08-31",
+  "scope": "neutral harness control only",
+  "runtimeVerdict": "CONTROL_EXECUTED_RECONSTRUCTED",
+  "candidateVerdict": "NOT_APPLICABLE",
+  "contract": "research/chassis/T11-CANCEL-CRASH-RETRY-CONTRACT-V1.md",
+  "results": {
+    "safeCancellationPreserved": "PASS",
+    "unsafeCancellationForgotten": "EXPECTED_FAIL",
+    "deterministicPairs": {
+      "repetitions": 100,
+      "safePass": 100,
+      "unsafeFail": 100
+    },
+    "nativeCausalBlockBeforeProtectedOperation": "PASS",
+    "nonCausalNoProgress": "EXPECTED_FAIL"
+  },
+  "executionEnvironment": {
+    "mode": "reconstructed-minimal-node-control",
+    "exactRepositoryCheckout": false,
+    "reason": "branch raw checkout unavailable because container DNS/network remains blocked"
+  },
+  "methodologicalGuards": [
+    "Cancellation must be durably authoritative before crash injection.",
+    "A sent request alone is not durable cancellation evidence.",
+    "Timeout or process disappearance cannot be treated as cancellation enforcement.",
+    "The neutral protected-operation recorder observes progress and does not enforce cancellation.",
+    "No candidate PASS/FAIL is derived from this control execution."
+  ]
+}
