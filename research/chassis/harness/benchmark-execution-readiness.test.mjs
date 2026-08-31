@@ -12,7 +12,7 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current gate records DBOS and Temporal six-mutant structural coverage while keeping Restate and Trigger gaps explicit', async () => {
+test('current gate records DBOS and Temporal full structural coverage plus Restate T16 while keeping remaining Restate and Trigger gaps explicit', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
@@ -34,10 +34,6 @@ test('current gate records DBOS and Temporal six-mutant structural coverage whil
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
     },
     {
-      candidate: 'Restate', mutantId: 'T16', mode: 'local-process',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
-    },
-    {
       candidate: 'Trigger.dev', mutantId: 'T5', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
     },
@@ -55,7 +51,7 @@ test('current gate records DBOS and Temporal six-mutant structural coverage whil
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T16', mode: 'managed-controller',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
+      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     }
   ]);
 });
