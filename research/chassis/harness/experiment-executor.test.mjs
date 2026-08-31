@@ -104,6 +104,33 @@ test('blocked setup never executes candidate run and remains BLOCKED', async () 
   assert.equal(result.record.blocker, 'DEPENDENCY_UNAVAILABLE');
 });
 
+test('runtime bootstrap prerequisite discovered after READY setup remains BLOCKED, not INCONCLUSIVE', async () => {
+  const result = await executeExperiment({
+    experimentId: 'temporal-typescript-t7-005',
+    candidate: 'Temporal TypeScript', mutantId: 'T7', repetition: 5, randomSeed: 1070005
+  }, {
+    setup: async () => setup(),
+    run: async () => ({
+      blocked: true,
+      blocker: 'SERVER_UNREACHABLE_BEFORE_FAULT',
+      workload: {},
+      fault: {
+        intended: 'T7', injected: false, targetKind: null, targetIdentity: null,
+        signal: null, durableAuthorityAlive: false
+      },
+      rawObservations: { error: 'ECONNREFUSED 127.0.0.1:7233' },
+      acceptanceChecks: {}
+    }),
+    cleanup: async () => cleanup('NOT_APPLICABLE')
+  });
+
+  assert.equal(result.valid, true, result.validationErrors.join('\n'));
+  assert.equal(result.record.setup.status, 'READY');
+  assert.equal(result.record.run.blocked, true);
+  assert.equal(result.record.verdict, 'BLOCKED');
+  assert.equal(result.record.blocker, 'SERVER_UNREACHABLE_BEFORE_FAULT');
+});
+
 test('executor refuses to fabricate missing provenance', async () => {
   const incomplete = setup();
   delete incomplete.adapterSha256;
