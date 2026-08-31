@@ -29,14 +29,30 @@ function runtimePrerequisiteFailure(result) {
   );
 }
 
-export async function runCandidateT16({ repositoryRoot, spec, setup, candidate, env, timeoutMs }) {
-  if (candidate.candidate !== 'DBOS TypeScript') {
-    throw new Error(`T16 run hook has no driver for ${candidate.candidate}`);
+const T16_DRIVERS = Object.freeze({
+  'DBOS TypeScript': {
+    relativePath: ['research', 'chassis', 'adapters', 'dbos-ts', 't16-driver.mjs'],
+    prefix: 'naia-dbos-t16-',
+    blocker: 'DBOS_T16_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'DBOS_T16_DRIVER_TIMEOUT',
+    invalidReason: 'DBOS_T16_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  },
+  Restate: {
+    relativePath: ['research', 'chassis', 'adapters', 'restate-ts', 't16-driver.mjs'],
+    prefix: 'naia-restate-t16-',
+    blocker: 'RESTATE_T16_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'RESTATE_T16_DRIVER_TIMEOUT',
+    invalidReason: 'RESTATE_T16_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
   }
+});
 
-  const dir = await mkdtemp(path.join(tmpdir(), 'naia-dbos-t16-'));
+export async function runCandidateT16({ repositoryRoot, spec, setup, candidate, env, timeoutMs }) {
+  const config = T16_DRIVERS[candidate.candidate];
+  if (!config) throw new Error(`T16 run hook has no driver for ${candidate.candidate}`);
+
+  const dir = await mkdtemp(path.join(tmpdir(), config.prefix));
   const output = path.join(dir, 'evidence.json');
-  const driver = path.join(repositoryRoot, 'research', 'chassis', 'adapters', 'dbos-ts', 't16-driver.mjs');
+  const driver = path.join(repositoryRoot, ...config.relativePath);
   try {
     const processResult = await spawnAndWait(process.execPath, [driver, '--output', output], {
       cwd: path.dirname(driver),
@@ -51,7 +67,7 @@ export async function runCandidateT16({ repositoryRoot, spec, setup, candidate, 
       const blocked = runtimePrerequisiteFailure(processResult);
       return {
         blocked,
-        blocker: blocked ? 'DBOS_T16_RUNTIME_PREREQUISITE_UNAVAILABLE' : null,
+        blocker: blocked ? config.blocker : null,
         fault: {
           intended: 'T16',
           injected: false,
@@ -62,7 +78,7 @@ export async function runCandidateT16({ repositoryRoot, spec, setup, candidate, 
         },
         workload: { experimentId: spec.experimentId },
         rawObservations: {
-          reason: processResult.timedOut ? 'DBOS_T16_DRIVER_TIMEOUT' : 'DBOS_T16_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
+          reason: processResult.timedOut ? config.timeoutReason : config.invalidReason,
           process: processResult,
           readError: String(error),
           setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
