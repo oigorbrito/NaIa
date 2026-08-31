@@ -4,8 +4,9 @@ export function t5EvidenceToRunResult(evidence, spec, setup) {
   const evaluation = evaluateT5Evidence(evidence);
   const injected =
     evidence?.authorityAdvanced === true &&
-    evidence?.newAuthorityCompletion?.attempted === true &&
     evidence?.staleCompletion?.attempted === true &&
+    evidence?.staleCompletion?.attemptedBeforeNewCompletion === true &&
+    evidence?.newAuthorityCompletion?.attempted === true &&
     evaluation.checks.workersDistinct === true &&
     evaluation.checks.authoritiesDistinct === true;
 
@@ -15,7 +16,7 @@ export function t5EvidenceToRunResult(evidence, spec, setup) {
     fault: {
       intended: 'T5',
       injected,
-      targetKind: 'stale-worker-authority',
+      targetKind: 'concurrent-worker-ownership-race',
       targetIdentity: evidence?.oldWorkerIdentity ?? null,
       signal: null,
       durableAuthorityAlive: evidence?.durableAuthorityAlive === true
