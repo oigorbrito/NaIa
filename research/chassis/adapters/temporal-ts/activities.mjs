@@ -13,8 +13,9 @@ function emit(event, fields = {}) {
 export async function performExternalEffect(input) {
   const attempt = Context.current().info.attempt;
   const { oracleUrl, objectiveId, operationId } = input;
+  const injectResponseLoss = process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1';
 
-  emit('external_request_starting', { objectiveId, operationId });
+  emit('external_request_starting', { objectiveId, operationId, injectResponseLoss });
 
   try {
     const response = await fetch(`${oracleUrl}/apply`, {
@@ -22,7 +23,7 @@ export async function performExternalEffect(input) {
       headers: {
         'content-type': 'application/json',
         'x-operation-id': operationId,
-        ...(attempt === 1 ? { 'x-drop-response-after-apply': '1' } : {})
+        ...(injectResponseLoss ? { 'x-drop-response-after-apply': '1' } : {})
       },
       body: JSON.stringify({ objectiveId, operationId, attempt })
     });
