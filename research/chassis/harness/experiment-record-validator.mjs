@@ -39,6 +39,8 @@ export function validateExperimentRecord(record) {
   if (typeof run.fault?.injected !== 'boolean') errors.push('run.fault.injected must be boolean');
   if (!run.rawObservations || typeof run.rawObservations !== 'object') errors.push('run.rawObservations are required');
   if (!run.acceptanceChecks || typeof run.acceptanceChecks !== 'object') errors.push('run.acceptanceChecks are required');
+  if (run.blocked !== undefined && typeof run.blocked !== 'boolean') errors.push('run.blocked must be boolean when provided');
+  if (run.blocked === true && !nonEmpty(run.blocker)) errors.push('runtime BLOCKED requires run.blocker');
 
   const cleanup = record.cleanup ?? {};
   if (!['PASS', 'FAIL', 'NOT_APPLICABLE'].includes(cleanup.status)) errors.push('cleanup.status is invalid');
@@ -53,11 +55,15 @@ export function validateExperimentRecord(record) {
   if (setup.status === 'BLOCKED_SETUP' && record.verdict !== 'BLOCKED') {
     errors.push('BLOCKED_SETUP must yield BLOCKED, never candidate PASS/FAIL');
   }
-  if (setup.status === 'READY' && run.fault?.injected === false && record.verdict !== 'INCONCLUSIVE') {
-    errors.push('fault not injected must yield INCONCLUSIVE');
+  if (setup.status === 'READY' && run.fault?.injected === false && !['INCONCLUSIVE', 'BLOCKED'].includes(record.verdict)) {
+    errors.push('fault not injected must yield INCONCLUSIVE unless a runtime prerequisite produced BLOCKED');
+  }
+  if (record.verdict === 'BLOCKED') {
+    if (setup.status !== 'BLOCKED_SETUP' && run.blocked !== true) errors.push('runtime BLOCKED requires run.blocked=true');
   }
   if (record.verdict === 'PASS') {
     if (setup.status !== 'READY') errors.push('PASS requires READY setup');
+    if (run.blocked === true) errors.push('PASS cannot coexist with runtime BLOCKED');
     if (run.fault?.injected !== true) errors.push('PASS requires intended fault injection');
     if (cleanup.status === 'FAIL') errors.push('PASS cannot coexist with failed cleanup');
     const checks = Object.values(run.acceptanceChecks ?? {});
@@ -65,6 +71,7 @@ export function validateExperimentRecord(record) {
   }
   if (record.verdict === 'FAIL') {
     if (setup.status !== 'READY') errors.push('FAIL requires READY setup');
+    if (run.blocked === true) errors.push('FAIL cannot coexist with runtime BLOCKED');
     if (run.fault?.injected !== true) errors.push('FAIL requires intended fault injection');
     const checks = Object.values(run.acceptanceChecks ?? {});
     if (checks.length === 0 || checks.every((value) => value === true)) errors.push('FAIL requires at least one acceptance check=false');
