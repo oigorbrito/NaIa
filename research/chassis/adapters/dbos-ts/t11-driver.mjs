@@ -22,7 +22,7 @@ function spawnWorker(workerId, executorId, env) {
     env: { ...env, NAIA_T11_WORKER_ID: workerId, NAIA_T11_EXECUTOR_ID: executorId },
     stdio: ['pipe', 'pipe', 'pipe']
   });
-  const state = { workerId, executorId, child, pid: child.pid ?? null, events: [], waiters: [], stderr: '', exit: null };
+  const state = { workerId, executorId, child, pid: child.pid ?? null, events: [], waiters: [], exitWaiters: [], stderr: '', exit: null };
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk) => { state.stderr += chunk; });
   const rl = readline.createInterface({ input: child.stdout });
@@ -40,6 +40,11 @@ function spawnWorker(workerId, executorId, env) {
   });
   child.once('exit', (code, signal) => {
     state.exit = { code, signal };
+    for (const waiter of [...state.exitWaiters]) {
+      state.exitWaiters.splice(state.exitWaiters.indexOf(waiter), 1);
+      clearTimeout(waiter.timer);
+      waiter.resolve(state.exit);
+    }
     for (const waiter of [...state.waiters]) {
       state.waiters.splice(state.waiters.indexOf(waiter), 1);
       clearTimeout(waiter.timer);
@@ -68,14 +73,27 @@ function waitForEvent(state, predicate, timeoutMs, description) {
   });
 }
 
+function waitForExit(state, timeoutMs) {
+  if (state.exit) return Promise.resolve(state.exit);
+  return new Promise((resolve, reject) => {
+    const waiter = { resolve, reject, timer: null };
+    waiter.timer = setTimeout(() => {
+      state.exitWaiters.splice(state.exitWaiters.indexOf(waiter), 1);
+      reject(new Error(`${state.workerId} did not exit before timeout`));
+    }, timeoutMs);
+    state.exitWaiters.push(waiter);
+  });
+}
+
 async function closeWorker(state) {
   if (!state || state.exit) return;
   try { send(state, { command: 'exit' }); } catch {}
-  await new Promise((resolve) => {
-    if (state.exit) return resolve();
-    const timer = setTimeout(() => { if (!state.exit) state.child.kill('SIGKILL'); resolve(); }, 5000);
-    state.child.once('exit', () => { clearTimeout(timer); resolve(); });
-  });
+  try {
+    await waitForExit(state, 5000);
+  } catch {
+    if (!state.exit) state.child.kill('SIGKILL');
+    await waitForExit(state, 5000).catch(() => {});
+  }
 }
 
 async function launchController(systemDatabaseUrl) {
@@ -128,8 +146,9 @@ export async function runDbosT11({
     controllerLaunched = false;
 
     const oldWorkerIdentity = `dbos-worker:${readyA.pid}:executor:${stableExecutorId}`;
+    const exitPromise = waitForExit(workerA, timeoutMs);
     const crashInjected = workerA.child.kill('SIGKILL');
-    await new Promise((resolve) => workerA.child.once('exit', resolve));
+    const crashExit = await exitPromise;
     schedule.push('worker-crash');
 
     workerB = spawnWorker('worker-B', stableExecutorId, env);
@@ -171,7 +190,7 @@ export async function runDbosT11({
       recoveryWorkerIdentity,
       cancelSubmission: { attempted: true, acknowledged: true },
       cancelAuthority: { durable: cancelledStatus?.status === 'CANCELLED', nativeState: cancelledStatus?.status ?? null, native: cancelledStatus },
-      crash: { injected: crashInjected === true, targetIdentity: oldWorkerIdentity, signal: 'SIGKILL' },
+      crash: { injected: crashInjected === true && crashExit?.signal === 'SIGKILL', targetIdentity: oldWorkerIdentity, signal: 'SIGKILL' },
       recovery: { attempted: true, disposition: recoveryDisposition },
       postCancelProtectedOperation: {
         attempted: acceptedCountAfterCancel > 0,
@@ -192,6 +211,7 @@ export async function runDbosT11({
         cancelledStatus,
         finalStatus: finalStatusEvent.status,
         recoveryDisposition,
+        crashExit,
         workerA: { pid: readyA.pid, events: workerA.events, stderr: workerA.stderr, exit: workerA.exit },
         workerB: { pid: readyB.pid, events: workerB.events, stderr: workerB.stderr, exit: workerB.exit },
         oracleEntry
