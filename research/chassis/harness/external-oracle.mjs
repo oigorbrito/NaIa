@@ -40,8 +40,10 @@ export function createExternalEffectOracle() {
             applyCount: 0,
             responseLossCount: 0,
             firstAppliedAt: null,
+            lastAppliedAt: null,
             lastRequestAt: null,
-            payload: null
+            payload: null,
+            providerMode: null
           };
           operations.set(operationId, entry);
         }
@@ -49,9 +51,20 @@ export function createExternalEffectOracle() {
         entry.requestCount += 1;
         entry.lastRequestAt = new Date().toISOString();
 
-        if (entry.applyCount === 0) {
-          entry.applyCount = 1;
-          entry.firstAppliedAt = new Date().toISOString();
+        const nonIdempotentProvider = req.headers['x-non-idempotent-provider'] === '1';
+        const providerMode = nonIdempotentProvider ? 'NON_IDEMPOTENT' : 'IDEMPOTENT_BY_OPERATION_ID';
+        if (entry.providerMode && entry.providerMode !== providerMode) {
+          res.writeHead(409, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'provider_mode_drift', expected: entry.providerMode, received: providerMode }));
+          return;
+        }
+        entry.providerMode = providerMode;
+
+        if (nonIdempotentProvider || entry.applyCount === 0) {
+          entry.applyCount += 1;
+          const now = new Date().toISOString();
+          entry.firstAppliedAt ??= now;
+          entry.lastAppliedAt = now;
           entry.payload = body;
         }
 
