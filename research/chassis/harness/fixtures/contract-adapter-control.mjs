@@ -45,6 +45,7 @@ try {
   });
   if (!response.ok) throw new Error(`oracle responded ${response.status}`);
   const result = await response.json();
+  emit('external_effect_observed_before_checkpoint', { operationId, result });
   emit('external_request_confirmed', { operationId, result });
   emit('objective_completed', { operationId, result });
 } catch (error) {
