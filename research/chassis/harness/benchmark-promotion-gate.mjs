@@ -21,22 +21,28 @@ export function assessCandidatePromotion(records, faultSuite, { acceptedFailures
 
   if (!candidate) return { qualified: false, comparable: false, candidate: null, errors: [...errors, 'candidate unavailable'], exceptions };
 
+  const verdictsByMutant = new Map();
   for (const record of records ?? []) {
-    if (record.verdict === 'FAIL') {
-      const policy = policyFor(acceptedFailures, candidate, record.mutantId);
+    if (!verdictsByMutant.has(record.mutantId)) verdictsByMutant.set(record.mutantId, new Set());
+    verdictsByMutant.get(record.mutantId).add(record.verdict);
+  }
+
+  const partialAllowed = new Set(faultSuite?.benchmarkEligibility?.partialAllowedWithEnforcedPolicy ?? []);
+  for (const [mutantId, verdicts] of verdictsByMutant) {
+    if (verdicts.has('FAIL')) {
+      const policy = policyFor(acceptedFailures, candidate, mutantId);
       if (!validExceptionPolicy(policy)) {
-        errors.push(`${record.mutantId}: critical FAIL requires explicit enforced acceptance/exclusion policy before promotion`);
+        errors.push(`${mutantId}: critical FAIL requires explicit enforced acceptance/exclusion policy before promotion`);
       } else {
-        exceptions.push({ mutantId: record.mutantId, verdict: 'FAIL', policy });
+        exceptions.push({ mutantId, verdict: 'FAIL', policy });
       }
     }
-    if (record.verdict === 'PARTIAL') {
-      const partialAllowed = new Set(faultSuite?.benchmarkEligibility?.partialAllowedWithEnforcedPolicy ?? []);
-      const policy = policyFor(enforcedPolicies, candidate, record.mutantId);
-      if (!partialAllowed.has(record.mutantId) || !validExceptionPolicy(policy)) {
-        errors.push(`${record.mutantId}: PARTIAL requires a predeclared allowed mutant plus enforced policy`);
+    if (verdicts.has('PARTIAL')) {
+      const policy = policyFor(enforcedPolicies, candidate, mutantId);
+      if (!partialAllowed.has(mutantId) || !validExceptionPolicy(policy)) {
+        errors.push(`${mutantId}: PARTIAL requires a predeclared allowed mutant plus enforced policy`);
       } else {
-        exceptions.push({ mutantId: record.mutantId, verdict: 'PARTIAL', policy });
+        exceptions.push({ mutantId, verdict: 'PARTIAL', policy });
       }
     }
   }
