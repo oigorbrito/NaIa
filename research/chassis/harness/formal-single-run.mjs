@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { executeCandidateExperiment } from './candidate-experiment.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
+import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -17,7 +18,6 @@ function requireValue(args, name) {
 }
 
 export async function runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, env = process.env, timeoutMs = 15000 }) {
-  if (!['T7', 'T8'].includes(mutantId)) throw new Error('formal single-run current executable slice supports only T7 or T8');
   if (!Number.isInteger(repetition) || repetition < 1) throw new Error('repetition must be a positive integer');
 
   const runHook = createCommonRunnerRunHook({ repositoryRoot, env, timeoutMs });
@@ -52,8 +52,13 @@ async function main() {
   const timeoutMs = Number(args.get('--timeout-ms') ?? '15000');
 
   const result = await runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, timeoutMs });
+  const supported = formalExecutorSupportsCandidate(FORMAL_EXECUTOR_SUPPORT, mutantId, {
+    candidate: candidateName,
+    mode: result.record?.setup?.parameters?.mode ?? null
+  });
   const ledgerDisposition = {
     appended: false,
+    executorDeclaredForCandidate: supported,
     eligibility: 'NOT_EVALUATED_WITHOUT_LEDGER_PREFIX',
     authority: 'experiment-ledger-validator.mjs',
     note: 'A schema-valid single-run record is qualification evidence until the ledger guard proves it is the next exact preregistered round-robin experiment.'
