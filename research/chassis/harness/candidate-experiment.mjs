@@ -46,12 +46,22 @@ export async function executeCandidateExperiment({ repositoryRoot, candidateName
     },
     cleanup: async (selectedSpec, setup, run) => {
       if (typeof cleanupHook === 'function') return cleanupHook(selectedSpec, setup, run, candidate, context);
+      if (setup?.status === 'BLOCKED_SETUP') {
+        return {
+          status: 'NOT_APPLICABLE',
+          workerCleanup: true,
+          durableStateCleanup: true,
+          oracleCleanup: true,
+          temporaryResourcesCleanup: true
+        };
+      }
       return {
-        status: 'NOT_APPLICABLE',
-        workerCleanup: true,
-        durableStateCleanup: true,
-        oracleCleanup: true,
-        temporaryResourcesCleanup: true
+        status: 'FAIL',
+        workerCleanup: false,
+        durableStateCleanup: false,
+        oracleCleanup: false,
+        temporaryResourcesCleanup: false,
+        reason: 'CLEANUP_HOOK_NOT_CONFIGURED'
       };
     },
     artifacts: typeof artifactHook === 'function'
