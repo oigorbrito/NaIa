@@ -1,6 +1,6 @@
 # T5 Ownership / Fencing Contract V1
 
-Status: CONTROL_VALIDATED / TEMPORAL_EXECUTOR_IMPLEMENTED_NOT_RUNTIME_VERIFIED
+Status: CONTROL_VALIDATED / TEMPORAL_AND_DBOS_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T5 tests `concurrent_worker_ownership_race`: after authority has moved from worker A to worker B, A must be unable to publish a result while B is the current owner, even before B has completed.
 
@@ -82,6 +82,12 @@ T5 PASS requires all of the following:
 - cleanup passes the normal formal cleanup gate.
 
 If two worker boundaries cannot be established, takeover cannot be induced, stale completion cannot be released, current authority after the stale attempt cannot be inspected, native authority identity is unavailable, or final authority cannot be independently inspected, the run is `BLOCKED` or `INCONCLUSIVE` according to the existing rules. It must not become PASS.
+
+## Candidate-specific admitted observations
+
+Temporal may use distinct Worker process identities plus candidate-native activity task tokens and native stale-token rejection.
+
+DBOS may use distinct executor process identities plus candidate-native workflow `executorId`/recovery state. The public custom `DLogger` warning emitted after `recordWorkflowOutput()` refuses an outcome is admissible as the native stale-write disposition, provided independent status still proves worker B remains current before B completes. Internal DBOS debug hooks are not admissible benchmark instrumentation.
 
 ## Prohibited adaptations
 
