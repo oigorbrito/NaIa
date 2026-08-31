@@ -1,4 +1,5 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
+import { holdAfterExternalEffectIfRequested } from '../../harness/fault-barrier.mjs';
 
 function emit(event, fields = {}) {
   const attempt = DBOS.stepStatus?.currentAttempt ?? 0;
@@ -32,6 +33,7 @@ async function performExternalEffectInternal(input) {
     if (!response.ok) throw new Error(`oracle responded ${response.status}`);
     const externalState = await response.json();
     emit('external_effect_observed_before_checkpoint', { objectiveId, operationId, externalState });
+    await holdAfterExternalEffectIfRequested();
     emit('external_request_confirmed', { objectiveId, operationId, externalState });
     return externalState;
   } catch (error) {
