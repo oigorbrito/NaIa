@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "BENCHMARK_EXECUTION_READINESS",
+  "candidateVerdictAuthority": false,
+  "executedAt": "2026-08-31",
+  "execution": {
+    "mode": "reconstructed-exact-modules",
+    "networkFreshClone": false,
+    "networkBlocker": "container DNS could not resolve raw.githubusercontent.com",
+    "node": "v22.16.0",
+    "sourceVerification": {
+      "formal-executor-support.mjs": {
+        "gitBlobShaExpected": "1a830d9eb9fb476100da14a60d59f46f4cf64aa6",
+        "gitBlobShaObserved": "1a830d9eb9fb476100da14a60d59f46f4cf64aa6"
+      },
+      "benchmark-execution-readiness.mjs": {
+        "gitBlobShaExpected": "5e1e0dfb990359d6546f9bd93dc336eed844a19b",
+        "gitBlobShaObserved": "5e1e0dfb990359d6546f9bd93dc336eed844a19b"
+      }
+    }
+  },
+  "inputs": {
+    "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+    "candidateModes": {
+      "Temporal TypeScript": "local-process",
+      "DBOS TypeScript": "local-process",
+      "Restate": "local-process",
+      "Trigger.dev": "managed-controller"
+    }
+  },
+  "result": {
+    "ready": false,
+    "status": "BENCHMARK_EXECUTION_NOT_READY",
+    "unsupportedMutants": ["T5", "T11", "T12", "T16"],
+    "incompatibleCandidateModes": [
+      {
+        "candidate": "Trigger.dev",
+        "mutantId": "T7",
+        "mode": "managed-controller",
+        "supportedModes": ["local-process"]
+      }
+    ],
+    "errors": []
+  },
+  "interpretation": "The 2400-record benchmark ledger must not begin. Isolated T7/T8 runs remain qualification evidence until all critical mutant executors and candidate-mode boundaries are implemented. This evidence is about harness readiness only and establishes no candidate PASS or FAIL.",
+  "decisionState": {
+    "chassisWinner": "NOT_SELECTED",
+    "benchmarkToBeat": "NOT_SELECTED"
+  }
+}
