@@ -97,7 +97,7 @@
       "license": "project source license must be evaluated separately from hosted/self-host deployment terms",
       "runtime_status": "BLOCKED_B001_B003",
       "blocker": "B001+B003",
-      "required_env": ["TRIGGER_SECRET_KEY","NAIA_TRIGGER_PROJECT_REF"],
+      "required_env": ["TRIGGER_SECRET_KEY","NAIA_TRIGGER_PROJECT_REF","NAIA_EXTERNAL_ORACLE_URL"],
       "expected_commands": ["start","resume","status","cancel"],
       "fault_injection_compatibility": "T8/T15 controller-path may be measured; T7 requires direct worker/container/process kill hook",
       "operation_identity_strategy": "objective-derived idempotency key plus invariant operationId passed to external oracle",
