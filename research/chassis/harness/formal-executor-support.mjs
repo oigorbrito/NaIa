@@ -18,6 +18,11 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
     modes: Object.freeze(['local-process']),
     candidates: Object.freeze(['DBOS TypeScript']),
     fault: 'durable-cancel-worker-sigkill-recovery-challenge'
+  }),
+  T12: Object.freeze({
+    modes: Object.freeze(['local-process']),
+    candidates: Object.freeze(['DBOS TypeScript']),
+    fault: 'late-stale-completion-after-new-authority-commit'
   })
 });
 
