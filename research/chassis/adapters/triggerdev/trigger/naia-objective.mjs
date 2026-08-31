@@ -40,6 +40,12 @@ export const naiaChassisObjective = task({
 
       if (!response.ok) throw new Error(`oracle responded ${response.status}`);
       const externalState = await response.json();
+      logger.info('external_effect_observed_before_checkpoint', {
+        objectiveId,
+        operationId,
+        attempt: ctx.attempt.number,
+        externalState
+      });
       logger.info('external_request_confirmed', {
         objectiveId,
         operationId,
