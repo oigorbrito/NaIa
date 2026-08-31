@@ -30,7 +30,7 @@
       "blocker": "B001",
       "required_env": [],
       "expected_commands": ["start","resume","status","cancel"],
-      "fault_injection_compatibility": "T5 two-worker stale-authority executor implemented but runtime-blocked by B001; T7/T8/T15 local-process slice; T11 executor not yet implemented",
+      "fault_injection_compatibility": "T5 two-worker stale-authority executor implemented but runtime-blocked by B001; T7/T8/T15 local-process slice; T11/T12/T16 executors not yet implemented",
       "operation_identity_strategy": "operationId derived from objective semantic effect and preserved across retry/restart",
       "worker_authority_boundary": "T5 explicitly uses two addressable Worker process identities; T7 local adapter process is the Worker execution authority; Temporal server is durable authority"
     },
@@ -42,20 +42,20 @@
       "package_manifest": "research/chassis/adapters/dbos-ts/package.json",
       "adapter": "research/chassis/adapters/dbos-ts/adapter.mjs",
       "mode": "local-process",
-      "worker_process_under_test": "T7 uses the local adapter/executor process; T5 uses two distinct DBOS executor processes; T11 uses two distinct Node worker processes across restart while preserving the same DBOS executorID so recovery semantics are not weakened by the harness; PostgreSQL remains external durable authority",
+      "worker_process_under_test": "T7 uses the local adapter/executor process; T5 uses two distinct DBOS executor processes; T11 uses two distinct Node worker processes across restart while preserving the same DBOS executorID; T12 uses distinct old/new executor authorities; T16 uses versioned worker processes with a stable executorID; PostgreSQL remains external durable authority",
       "external_effect_boundary": "DBOS workflow/step in research/chassis/adapters/dbos-ts/workflows.mjs; T11 uses a neutral external oracle only as a post-cancel protected-operation recorder",
       "retry_semantics": "durable workflow/step recovery; external I/O is not generically exactly-once",
-      "recovery_semantics": "normal recovery uses durable PostgreSQL state; T5 induces candidate-native takeover with public resumeWorkflow; T11 restarts a process with the same stable executorID after durable cancellation and attaches to the same workflow",
-      "fencing_semantics": "T5 observes workflow executorId/recovery ownership and native DLogger outcome refusal; T11 observes public cancelWorkflow persistence to CANCELLED plus DBOSAwaitedWorkflowCancelledError on post-crash attach",
+      "recovery_semantics": "normal recovery uses durable PostgreSQL state; T5 induces candidate-native takeover with public resumeWorkflow; T11 restarts a process with the same stable executorID after durable cancellation; T12 challenges stale completion after newer authority commits; T16 challenges applicationVersion-compatible recovery routing with the same workflow/executor identity",
+      "fencing_semantics": "T5 observes workflow executorId/recovery ownership and native DLogger outcome refusal; T11 observes public cancelWorkflow persistence to CANCELLED plus DBOSAwaitedWorkflowCancelledError; T12 requires stale completion to remain non-authoritative after a new executor commits; T16 requires a version-A workflow not to recover under version B and then to recover under compatible version A",
       "idempotency_requirement": "external side effects require stable operation identity plus provider idempotency or reconciliation",
       "license": "MIT SDK",
       "runtime_status": "BLOCKED_B001",
       "blocker": "B001",
       "required_env": ["DBOS_SYSTEM_DATABASE_URL"],
       "expected_commands": ["start","resume","status"],
-      "fault_injection_compatibility": "T5 two-executor live ownership-race executor and T11 durable-cancel/SIGKILL/recovery executor are implemented structurally; T7/T8/T15 local-process slice remains; all runtime execution is blocked by B001 until exact SDK and PostgreSQL prerequisites are available",
-      "operation_identity_strategy": "workflowID=objectiveId and operationId is invariant across recovery",
-      "worker_authority_boundary": "T5 uses distinct executor authorities; T11 uses distinct process identities with one stable executorID across restart, matching DBOS local recovery ownership; PostgreSQL is durable authority; no private DB mutation or internal debug hook is used"
+      "fault_injection_compatibility": "Structural formal executors are declared for all six critical mutants T5/T7/T8/T11/T12/T16; T15 remains a noncritical qualification slice. T5/T11/T12/T16 dedicated drivers are runtime-unverified; all candidate runtime execution remains blocked by B001 until exact SDK and PostgreSQL prerequisites are available",
+      "operation_identity_strategy": "workflowID=objectiveId and operationId is invariant across recovery; T16 preserves workflow/executor identity while mutating only applicationVersion",
+      "worker_authority_boundary": "T5/T12 use distinct executor authorities; T11 uses distinct process identities with one stable executorID across restart; T16 uses versioned processes with one stable executorID; PostgreSQL is durable authority; no private DB mutation or benchmark-only compatibility layer is used"
     },
     {
       "candidate": "Restate",
@@ -76,7 +76,7 @@
       "blocker": "B001",
       "required_env": [],
       "expected_commands": ["start","resume","status"],
-      "fault_injection_compatibility": "T7/T8/T15 local-process slice; T5 static mechanism confirmed but executor gap remains; T11 executor not yet implemented; kill target is service endpoint process, not Restate server",
+      "fault_injection_compatibility": "T7/T8/T15 local-process slice; T5 static mechanism confirmed but executor gap remains; T11/T12/T16 executors not yet implemented; kill target is service endpoint process, not Restate server",
       "operation_identity_strategy": "workflow ID=objectiveId and operationId is invariant across retry/restart",
       "worker_authority_boundary": "local endpoint executes user code; Restate server owns durable invocation authority"
     },
@@ -99,7 +99,7 @@
       "blocker": "B001+B003",
       "required_env": ["TRIGGER_SECRET_KEY","NAIA_TRIGGER_PROJECT_REF","NAIA_EXTERNAL_ORACLE_URL"],
       "expected_commands": ["start","resume","status","cancel"],
-      "fault_injection_compatibility": "T8/T15 controller-path may be measured; T7 requires direct worker/container/process kill hook; T5/T11 executors not yet implemented",
+      "fault_injection_compatibility": "T8/T15 controller-path may be measured; T7 requires direct worker/container/process kill hook; T5/T11/T12/T16 executors not yet implemented",
       "operation_identity_strategy": "objective-derived idempotency key plus invariant operationId passed to external oracle",
       "worker_authority_boundary": "Trigger control plane schedules/owns run; worker/task process is separate from adapter controller"
     }
