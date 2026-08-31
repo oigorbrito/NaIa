@@ -139,13 +139,13 @@ export async function runTemporalT5TwoWorker({
     );
     schedule.push('worker-A-old-authority');
 
+    command(workerA, { command: 'stop_polling' });
+    await waitForEvent(workerA, (event) => event.event === 'worker_polling_stopped', timeoutMs, 'worker_polling_stopped');
+    schedule.push('worker-A-held-process-alive-polling-stopped');
+
     workerB = spawnWorker('worker-B', env);
     const readyB = await waitForEvent(workerB, (event) => event.event === 'worker_ready', timeoutMs, 'worker_ready');
     schedule.push('worker-B-ready');
-
-    command(workerA, { command: 'stop_polling' });
-    await waitForEvent(workerA, (event) => event.event === 'worker_polling_stopped', timeoutMs, 'worker_polling_stopped');
-    schedule.push('worker-A-polling-stopped-old-process-alive');
 
     const attemptB = await waitForEvent(
       workerB,
@@ -207,7 +207,7 @@ export async function runTemporalT5TwoWorker({
       finalAuthorityIdentity: workflowResult?.origin === 'new-authority' ? newAuthorityIdentity : null,
       finalResultOrigin: workflowResult?.origin ?? null,
       durableAuthorityAlive: Boolean(description),
-      deterministicScheduleObserved: schedule.length === 8,
+      deterministicScheduleObserved: schedule.length === 9,
       rawNativeEvidence: {
         objectiveId,
         workflowId: handle.workflowId,
