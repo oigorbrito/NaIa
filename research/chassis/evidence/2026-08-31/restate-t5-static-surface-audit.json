@@ -1,0 +1,56 @@
+{
+  "workUnit": "RESTATE_T5_STATIC_SURFACE_AUDIT_V1",
+  "date": "2026-08-31",
+  "candidate": "Restate",
+  "frozenVersions": {
+    "server": "1.7.8",
+    "sdk": "1.16.9"
+  },
+  "status": "STATIC_MECHANISM_CONFIRMED_EXECUTOR_NOT_IMPLEMENTED",
+  "runtimeVerdict": "NOT_EXECUTED",
+  "candidateVerdict": "NOT_ASSIGNED",
+  "findings": {
+    "serverFencing": {
+      "confirmed": true,
+      "mechanism": "leader-local fencing token minted on every (re)invoke; invoker effects echo token; stale-token effects are dropped at write time",
+      "source": "restatedev/restate v1.7.8 crates/worker/src/partition/leadership/fencing.rs"
+    },
+    "publicPauseResume": {
+      "confirmed": true,
+      "pause": "PATCH /invocations/{invocation_id}/pause",
+      "resume": "PATCH /invocations/{invocation_id}/resume",
+      "source": "restatedev/restate v1.7.8 crates/admin/src/rest_api/invocations.rs"
+    },
+    "sdkInvocationIdentity": {
+      "confirmed": true,
+      "invocationId": "ctx.request().id is stable across retries and suspensions",
+      "attemptHeaders": "attempt-specific, but no stable documented fencing-token header was identified",
+      "attemptCompletedSignal": "aborted when the current attempt ends",
+      "source": "restatedev/sdk-typescript v1.16.9 context.ts"
+    },
+    "sdkAttemptTermination": {
+      "confirmed": true,
+      "mechanism": "handler/interceptor execution is raced against attempt termination; connection abort poisons the VM and attempt-end rejects the execution path",
+      "source": "restatedev/sdk-typescript v1.16.9 endpoint/handlers/generic.ts"
+    }
+  },
+  "t5Assessment": {
+    "twoEndpointTakeoverCouldBeInduced": true,
+    "oldAttemptCanBeHeldBeforePause": true,
+    "newAttemptCanBeInducedByPublicPauseResume": true,
+    "oldAttemptCanSubmitControlledStaleCompletionAfterNewAttempt": false,
+    "reason": "The supported SDK terminates/races out the old handler when the attempt ends. Forcing a post-fencing stale protocol effect would require raw service-protocol construction or internal instrumentation, neither admitted by the current benchmark contract.",
+    "classification": "EXECUTOR_GAP_NOT_CANDIDATE_FAIL"
+  },
+  "decision": {
+    "declareFormalExecutorSupport": false,
+    "declarePass": false,
+    "declareFail": false,
+    "benchmarkEligibilityChanged": false
+  },
+  "notes": [
+    "Static server source is support for the fencing claim, not runtime evidence.",
+    "The server BSL 1.1 licensing gate remains separate from technical qualification.",
+    "A future protocol-level T5 profile would require an explicit methodological amendment before use."
+  ]
+}
