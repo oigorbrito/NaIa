@@ -4,10 +4,15 @@ function requireEvidence(evidence, mutantId) {
   if (evidence.mutant !== mutantId) throw new Error(`common runner evidence mutant mismatch: expected ${mutantId}, got ${evidence.mutant ?? 'missing'}`);
 }
 
+function durableAuthorityReachable(evidence) {
+  return evidence.status?.process?.code === 0 && Boolean(evidence.status?.parsed);
+}
+
 export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
   requireEvidence(evidence, mutantId);
   const checks = evidence.checks ?? {};
   const blocked = evidence.verdict === 'BLOCKED';
+  const authorityAlive = durableAuthorityReachable(evidence);
 
   if (mutantId === 'T7') {
     const workerFaultAddressable = evidence.mode !== 'managed-controller' && evidence.mutants?.T7_process_sigkill !== 'NOT_EXECUTED';
@@ -20,7 +25,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
         targetKind: workerFaultAddressable ? 'worker-process' : 'worker-process-unaddressed',
         targetIdentity: evidence.initial?.pid ?? null,
         signal: evidence.initial?.signal ?? null,
-        durableAuthorityAlive: null
+        durableAuthorityAlive: authorityAlive
       },
       workload: {
         objectiveId: evidence.objectiveId,
@@ -33,6 +38,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
         noIdentityDrift: checks.noIdentityDrift === true,
         noDuplicateExternalEffect: checks.noDuplicateExternalEffect === true,
         noUnexpectedResponseLoss: checks.noUnexpectedResponseLoss === true,
+        durableAuthorityReachable: authorityAlive,
         finalStatusCompleted: checks.finalStatusCompleted === true
       }
     };
@@ -47,7 +53,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
       targetKind: 'external-response',
       targetIdentity: evidence.operationId ?? null,
       signal: null,
-      durableAuthorityAlive: null
+      durableAuthorityAlive: authorityAlive
     },
     workload: {
       objectiveId: evidence.objectiveId,
@@ -60,6 +66,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
       noIdentityDrift: checks.noIdentityDrift === true,
       noDuplicateExternalEffect: checks.noDuplicateExternalEffect === true,
       oneResponseLossObserved: checks.oneResponseLossObserved === true,
+      durableAuthorityReachable: authorityAlive,
       finalStatusCompleted: checks.finalStatusCompleted === true
     }
   };
