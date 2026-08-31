@@ -1,0 +1,31 @@
+name: Research Chassis Harness
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+  pull_request:
+    paths:
+      - 'research/chassis/**'
+      - 'docs/research/**'
+      - 'package.json'
+      - '.github/workflows/research-chassis-harness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  neutral-oracle:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify runtime
+        run: node --version
+      - name: Run neutral chassis harness tests
+        run: npm test
