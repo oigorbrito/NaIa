@@ -149,6 +149,31 @@ test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SD
   assert.equal(result.record.run.fault.injected, false);
 });
 
+test('declared Temporal T16 single-run records missing SDK as valid BLOCKED evidence before the driver executes', async (t) => {
+  const repositoryRoot = await syntheticBlockedRepository();
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+
+  const result = await runFormalSingle({
+    repositoryRoot,
+    candidateName: 'Temporal TypeScript',
+    mutantId: 'T16',
+    repetition: 1,
+    env: {},
+    timeoutMs: 1000
+  });
+
+  assert.equal(result.valid, true, result.validationErrors.join('\n'));
+  assert.equal(result.record.experimentId, 'temporal-typescript-t16-001');
+  assert.equal(result.record.randomSeed, 1160001);
+  assert.equal(result.record.verdict, 'BLOCKED');
+  assert.equal(result.record.setup.status, 'BLOCKED_SETUP');
+  assert.match(result.record.blocker, /DEPENDENCY_NOT_INSTALLED/);
+  assert.equal(result.record.run.fault.intended, 'T16');
+  assert.equal(result.record.run.fault.injected, false);
+  assert.deepEqual(result.record.run.rawObservations, { setupBlocked: true });
+  assert.equal(result.record.cleanup.status, 'NOT_APPLICABLE');
+});
+
 test('declared DBOS T16 single-run records missing SDK/env as valid BLOCKED evidence before the driver executes', async (t) => {
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
