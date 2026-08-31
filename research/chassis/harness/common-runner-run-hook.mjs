@@ -7,6 +7,7 @@ import { t5EvidenceToRunResult } from './t5-record-bridge.mjs';
 import { runCandidateT11 } from './t11-run-hook.mjs';
 import { runCandidateT12 } from './t12-run-hook.mjs';
 import { runCandidateT16 } from './t16-run-hook.mjs';
+import { runTemporalCandidateT16 } from './t16-temporal-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options, timeoutMs = null) {
@@ -140,6 +141,9 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
       return runCandidateT12({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
     }
     if (spec.mutantId === 'T16') {
+      if (candidate.candidate === 'Temporal TypeScript') {
+        return runTemporalCandidateT16({ repositoryRoot, spec, setup, env, timeoutMs });
+      }
       return runCandidateT16({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
     }
 
