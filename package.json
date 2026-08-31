@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:chassis",
-    "test:chassis": "node --test research/chassis/harness/*.test.mjs"
+    "test:chassis": "node --test research/chassis/harness/*.test.mjs",
+    "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs"
   },
   "engines": {
     "node": ">=22 <25"
