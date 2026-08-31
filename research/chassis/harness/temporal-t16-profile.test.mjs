@@ -24,7 +24,7 @@ test('Temporal T16 profiles preserve workflow/signal identity while mutating the
     assert.match(source, /semanticProfile: 'temporal-t16-profile-[AB]'/);
   }
 
-  assert.match(profileA, /await sleep\('1 millisecond'\)/);
+  assert.match(profileA, /await sleep\('1ms'\)/);
   assert.doesNotMatch(profileB, /\bsleep\s*\(/);
   assert.match(profileB, /Deliberately omits profile A's durable timer command/);
   assert.notEqual(sha256(profileA), sha256(profileB));
