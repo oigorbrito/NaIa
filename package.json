@@ -7,7 +7,8 @@
     "test:chassis": "node --test research/chassis/harness/*.test.mjs",
     "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
     "single:chassis": "node research/chassis/harness/formal-single-run.mjs",
-    "readiness:chassis": "node research/chassis/harness/benchmark-readiness-cli.mjs"
+    "readiness:chassis": "node research/chassis/harness/benchmark-readiness-cli.mjs",
+    "ledger:chassis": "node research/chassis/harness/experiment-ledger-status.mjs"
   },
   "engines": {
     "node": ">=22 <25"
