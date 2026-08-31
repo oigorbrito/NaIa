@@ -18,6 +18,9 @@ export function validateExperimentRecord(record) {
   if (!nonEmpty(record.candidate)) errors.push('candidate is required');
   if (!/^T([1-9]|1[0-6])$/.test(record.mutantId ?? '')) errors.push('mutantId must be T1..T16');
   if (!Number.isInteger(record.repetition) || record.repetition < 1) errors.push('repetition must be a positive integer');
+  if (record.randomSeed !== undefined && (!Number.isSafeInteger(record.randomSeed) || record.randomSeed < 0)) {
+    errors.push('randomSeed must be a non-negative safe integer when provided');
+  }
   if (!ALLOWED_VERDICTS.has(record.verdict)) errors.push('invalid verdict');
 
   const setup = record.setup ?? {};
@@ -47,7 +50,6 @@ export function validateExperimentRecord(record) {
     errors.push('at least one hashed artifact is required');
   }
 
-  // Empirical classification rules.
   if (setup.status === 'BLOCKED_SETUP' && record.verdict !== 'BLOCKED') {
     errors.push('BLOCKED_SETUP must yield BLOCKED, never candidate PASS/FAIL');
   }
@@ -99,17 +101,33 @@ export function benchmarkEligible(records, faultSuite) {
   const candidate = records[0]?.candidate;
   if (!candidate || records.some((record) => record.candidate !== candidate)) errors.push('records must belong to one candidate');
 
+  const mutants = new Map((faultSuite?.mutants ?? []).map((mutant) => [mutant.id, mutant]));
   const required = new Set(faultSuite?.benchmarkEligibility?.forbidBlockedOrInconclusive ?? []);
+
   for (const mutantId of required) {
     const mutantRecords = records.filter((record) => record.mutantId === mutantId);
+    const minRepetitions = mutants.get(mutantId)?.minRepetitions ?? 1;
+
     if (mutantRecords.length === 0) {
       errors.push(`${mutantId}: no executed records`);
       continue;
     }
+
+    const repetitionIds = new Set();
     for (const record of mutantRecords) {
       const validation = validateExperimentRecord(record);
       if (!validation.valid) errors.push(`${mutantId}: invalid record: ${validation.errors.join('; ')}`);
       if (['BLOCKED', 'INCONCLUSIVE'].includes(record.verdict)) errors.push(`${mutantId}: benchmark-ineligible verdict ${record.verdict}`);
+      if (repetitionIds.has(record.repetition)) errors.push(`${mutantId}: duplicate repetition ${record.repetition}`);
+      repetitionIds.add(record.repetition);
+    }
+
+    if (repetitionIds.size < minRepetitions) {
+      errors.push(`${mutantId}: requires at least ${minRepetitions} unique repetitions, found ${repetitionIds.size}`);
+    }
+
+    for (let repetition = 1; repetition <= minRepetitions; repetition += 1) {
+      if (!repetitionIds.has(repetition)) errors.push(`${mutantId}: missing required repetition ${repetition}`);
     }
   }
 
