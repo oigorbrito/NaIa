@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.mjs';
-import { FORMAL_EXECUTOR_SUPPORT } from './formal-executor-support.mjs';
+import { evaluateT5Evidence } from './t5-evaluator.mjs';
+import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options) {
   const child = spawn(command, args, options);
@@ -20,6 +21,72 @@ async function spawnAndWait(command, args, options) {
   return { exitCode, stdout, stderr };
 }
 
+function runtimePrerequisiteFailure(processResult) {
+  return /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i.test(
+    `${processResult?.stdout ?? ''}\n${processResult?.stderr ?? ''}`
+  );
+}
+
+async function runTemporalT5({ repositoryRoot, spec, setup, candidate, env, timeoutMs }) {
+  const driver = path.join(repositoryRoot, 'research', 'chassis', 'adapters', 'temporal-ts', 't5-driver.mjs');
+  const processResult = await spawnAndWait(process.execPath, [driver], {
+    cwd: path.dirname(driver),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  let evidence;
+  try {
+    evidence = JSON.parse(processResult.stdout);
+  } catch (error) {
+    const blocked = runtimePrerequisiteFailure(processResult);
+    return {
+      blocked,
+      blocker: blocked ? 'TEMPORAL_T5_RUNTIME_PREREQUISITE_UNAVAILABLE' : null,
+      fault: {
+        intended: 'T5', injected: false, targetKind: 'activity-task-token', targetIdentity: null,
+        signal: null, durableAuthorityAlive: false
+      },
+      workload: { experimentId: spec.experimentId },
+      rawObservations: {
+        reason: 'TEMPORAL_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
+        process: processResult,
+        parseError: String(error),
+        setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
+      },
+      acceptanceChecks: {}
+    };
+  }
+
+  const evaluation = evaluateT5Evidence(evidence);
+  return {
+    blocked: false,
+    blocker: null,
+    fault: {
+      intended: 'T5',
+      injected:
+        evidence.authorityAdvanced === true &&
+        evidence.newAuthorityCompletion?.attempted === true &&
+        evidence.staleCompletion?.attempted === true,
+      targetKind: 'activity-task-token',
+      targetIdentity: evidence.oldAuthorityIdentity ?? null,
+      signal: null,
+      durableAuthorityAlive: evidence.durableAuthorityAlive === true
+    },
+    workload: {
+      experimentId: spec.experimentId,
+      objectiveId: evidence.rawNativeEvidence?.objectiveId ?? null
+    },
+    rawObservations: {
+      t5Evidence: evidence,
+      t5Evaluation: evaluation,
+      runnerProcess: processResult,
+      setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
+    },
+    acceptanceChecks: evaluation.checks
+  };
+}
+
 export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, timeoutMs = 15000 } = {}) {
   if (!repositoryRoot) throw new Error('repositoryRoot is required');
   const runner = path.join(repositoryRoot, 'research', 'chassis', 'harness', 'common-runner.mjs');
@@ -32,19 +99,29 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
         blocker: null,
         fault: { intended: spec.mutantId, injected: false, targetKind: null, targetIdentity: null, signal: null, durableAuthorityAlive: null },
         workload: {},
-        rawObservations: { reason: 'COMMON_RUNNER_CURRENT_SLICE_DOES_NOT_IMPLEMENT_THIS_CRITICAL_MUTANT' },
+        rawObservations: { reason: 'FORMAL_EXECUTOR_NOT_IMPLEMENTED_FOR_MUTANT' },
         acceptanceChecks: {}
       };
     }
-    if (!support.modes.includes(candidate.mode)) {
+    if (!formalExecutorSupportsCandidate(FORMAL_EXECUTOR_SUPPORT, spec.mutantId, candidate)) {
       return {
         blocked: false,
         blocker: null,
-        fault: { intended: spec.mutantId, injected: false, targetKind: 'worker-process-unaddressed', targetIdentity: null, signal: null, durableAuthorityAlive: null },
+        fault: { intended: spec.mutantId, injected: false, targetKind: null, targetIdentity: null, signal: null, durableAuthorityAlive: null },
         workload: {},
-        rawObservations: { reason: 'COMMON_RUNNER_MUTANT_NOT_IMPLEMENTED_FOR_CANDIDATE_MODE', supportedModes: support.modes, candidateMode: candidate.mode },
+        rawObservations: {
+          reason: 'FORMAL_EXECUTOR_NOT_IMPLEMENTED_FOR_CANDIDATE',
+          supportedModes: support.modes,
+          supportedCandidates: support.candidates,
+          candidateMode: candidate.mode,
+          candidate: candidate.candidate
+        },
         acceptanceChecks: {}
       };
+    }
+
+    if (spec.mutantId === 'T5' && candidate.candidate === 'Temporal TypeScript') {
+      return runTemporalT5({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
     }
 
     const managedOracleUrl = candidate.mode === 'managed-controller' ? env.NAIA_EXTERNAL_ORACLE_URL : null;
