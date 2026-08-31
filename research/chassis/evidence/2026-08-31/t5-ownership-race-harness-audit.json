@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-08-31",
+  "scope": "T5 concurrent_worker_ownership_race harness qualification",
+  "decisionState": {
+    "chassisWinner": "NOT_SELECTED",
+    "benchmarkToBeat": "NOT_SELECTED"
+  },
+  "faultSuiteIdentity": {
+    "mutant": "T5",
+    "name": "concurrent_worker_ownership_race",
+    "distinctFrom": "T12 stale_completion_after_new_owner"
+  },
+  "neutralControlExecution": {
+    "executionKind": "reconstructed semantic execution of the current control/evaluator logic; not a fresh repository checkout",
+    "results": {
+      "fencedLiveOwnershipRace": "PASS",
+      "unfencedTransientStaleAuthority": "FAIL_AS_EXPECTED_NEGATIVE_CONTROL",
+      "staleOnlyAfterNewCompletion": "FAIL_AS_WRONG_FAULT_SCHEDULE",
+      "singleWorkerWithTwoAuthorityTokens": "FAIL_AS_WRONG_WORKER_BOUNDARY",
+      "deterministicRepetitions": 100,
+      "allSafeControlsPassed": true,
+      "allUnsafeControlsFailed": true
+    }
+  },
+  "methodologicalCorrections": [
+    "T5 now submits A's stale completion after B acquires authority but before B completes.",
+    "T5 requires two concrete worker/process/container identities; one Worker with two attempts is not admissible.",
+    "A stale submission that becomes authoritative even transiently is FAIL even if B later wins final state.",
+    "A stale attempt made only after B is already terminal is not T5 fault injection and belongs to T12/terminal protection analysis.",
+    "Temporal driver stops A polling before starting B so the retry cannot race between A and B.",
+    "Temporal stale-token acceptance requires explicit ActivityNotFoundError-compatible rejection plus workflow remaining ACTIVITY_PENDING before B completes."
+  ],
+  "temporalStaticSupport": {
+    "sdkSourceTag": "v1.23.0",
+    "serverVersion": "v1.31.2",
+    "observedMechanisms": [
+      "WorkerOptions.identity supports concrete worker process identity.",
+      "activityInfo().taskToken exposes candidate-native activity authority identity.",
+      "client.activity.complete(taskToken, result) performs external async completion.",
+      "server completion path rejects task tokens that no longer match the running activity attempt with activity-task-not-found semantics."
+    ],
+    "executorStatus": "IMPLEMENTED_NOT_RUNTIME_VERIFIED",
+    "runtimeBlocker": "B001"
+  },
+  "dbosStaticFinding": {
+    "sourceTag": "v4.27",
+    "finding": "DBOS workflow terminal outcome logic explicitly notes that a PENDING row does not by itself prevent another concurrent execution from writing; concurrent executions are expected to be deterministic/idempotent. This is not a candidate FAIL until reproduced under the formal two-executor T5 schedule.",
+    "executorStatus": "NOT_IMPLEMENTED"
+  },
+  "formalLedger": {
+    "started": false,
+    "nextExpectedExperiment": "temporal-typescript-t5-001",
+    "note": "No control or static-source result is a formal candidate record."
+  }
+}
