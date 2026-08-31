@@ -46,7 +46,8 @@ async function applyOnce() {
     headers: {
       'content-type': 'application/json',
       'x-operation-id': operationId,
-      ...(process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1' ? { 'x-drop-response-after-apply-once': '1' } : {})
+      ...(process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1' ? { 'x-drop-response-after-apply-once': '1' } : {}),
+      ...(process.env.NAIA_NON_IDEMPOTENT_PROVIDER === '1' ? { 'x-non-idempotent-provider': '1' } : {})
     },
     body: JSON.stringify({ objectiveId, operationId, command })
   });
@@ -58,11 +59,21 @@ async function applyOnce() {
   emit('objective_completed', { operationId, result });
 }
 
+async function reconcileAfterAmbiguous() {
+  const response = await fetch(`${oracleUrl}/operations/${encodeURIComponent(operationId)}`);
+  if (!response.ok) throw new Error(`oracle reconciliation responded ${response.status}`);
+  const result = await response.json();
+  emit('external_effect_reconciled_after_ambiguous_response', { operationId, result });
+  emit('objective_completed', { operationId, result, reconciled: true });
+}
+
 try {
   await applyOnce();
 } catch (error) {
   emit('external_request_applied_or_ambiguous', { operationId, error: String(error) });
-  if (process.env.NAIA_CONTROL_AUTO_RETRY === '1') {
+  if (process.env.NAIA_CONTROL_RECONCILE_AFTER_AMBIGUOUS === '1') {
+    await reconcileAfterAmbiguous();
+  } else if (process.env.NAIA_CONTROL_AUTO_RETRY === '1') {
     await applyOnce();
   } else {
     setInterval(() => {}, 1000);
