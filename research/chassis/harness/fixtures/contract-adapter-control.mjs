@@ -33,6 +33,11 @@ const operationId = mutant && command === 'resume' ? `${requestedOperationId}:dr
 emit('adapter_ready', { operationId });
 emit('objective_persisted', { operationId, recovered: command === 'resume' });
 
+if (process.env.NAIA_CONTROL_NO_KILLPOINT === '1' && command === 'start') {
+  emit('control_exit_before_killpoint', { operationId });
+  process.exit(0);
+}
+
 try {
   const response = await fetch(`${oracleUrl}/apply`, {
     method: 'POST',
