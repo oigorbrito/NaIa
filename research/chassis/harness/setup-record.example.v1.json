@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "classification": "HARNESS_VALIDATION_ONLY",
+  "status": "BLOCKED_SETUP_EXAMPLE",
+  "candidate": "Temporal TypeScript",
+  "candidateVersion": "1.23.0",
+  "sourceRef": "temporalio/sdk-typescript v1.23.0",
+  "preconditions": {
+    "adapterSourceHashRequired": true,
+    "harnessSourceHashRequired": true,
+    "exactManifestPinsRequired": true,
+    "installedArtifactVerificationRequired": true,
+    "requiredEnvironmentNamesOnly": true,
+    "secretValuesRecorded": false
+  },
+  "exampleBlocker": "DEPENDENCY_NOT_INSTALLED",
+  "runtimeInvoked": false,
+  "candidateVerdict": null,
+  "notes": "Example structure only. This file is not executed candidate evidence."
+}
