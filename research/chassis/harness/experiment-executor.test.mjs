@@ -87,7 +87,7 @@ test('executor emits a valid PASS only from executed fault plus declared checks 
   assert.equal(result.record.artifacts[0].sha256.length, 64);
 });
 
-test('blocked setup never executes candidate run and remains BLOCKED', async () => {
+test('blocked setup never executes candidate run, records the skipped run boundary, and remains BLOCKED', async () => {
   let runCalled = false;
   const result = await executeExperiment({
     experimentId: 'temporal-typescript-t7-002',
@@ -102,6 +102,9 @@ test('blocked setup never executes candidate run and remains BLOCKED', async () 
   assert.equal(result.valid, true, result.validationErrors.join('\n'));
   assert.equal(result.record.verdict, 'BLOCKED');
   assert.equal(result.record.blocker, 'DEPENDENCY_UNAVAILABLE');
+  assert.equal(result.record.run.fault.intended, 'T7');
+  assert.equal(result.record.run.fault.injected, false);
+  assert.deepEqual(result.record.run.rawObservations, { setupBlocked: true });
 });
 
 test('runtime bootstrap prerequisite discovered after READY setup remains BLOCKED, not INCONCLUSIVE', async () => {
