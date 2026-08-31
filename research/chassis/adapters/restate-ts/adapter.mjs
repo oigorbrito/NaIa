@@ -1,3 +1,4 @@
+import http from 'node:http';
 import * as restate from '@restatedev/restate-sdk';
 import * as clients from '@restatedev/restate-sdk-clients';
 import { naiaObjective } from './workflow.mjs';
@@ -33,10 +34,19 @@ function requireIdentity({ external = false } = {}) {
   if (external && !oracleUrl) throw new Error('--oracle-url is required');
 }
 
-async function serveEndpoint() {
-  const port = await restate.serve({ services: [naiaObjective], port: endpointPort });
-  emit('adapter_ready', { endpointPort: port, publicEndpoint });
-  return port;
+async function startEndpoint() {
+  const handler = restate.createEndpointHandler({ services: [naiaObjective] });
+  const server = http.createServer(handler);
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(endpointPort, '0.0.0.0', resolve);
+  });
+  emit('adapter_ready', { endpointPort, publicEndpoint });
+  return server;
+}
+
+async function closeEndpoint(server) {
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
 async function registerDeployment() {
@@ -61,22 +71,30 @@ function workflowClient() {
 
 async function start() {
   requireIdentity({ external: true });
-  await serveEndpoint();
-  const deployment = await registerDeployment();
-  const { ingress, client } = workflowClient();
-  const submission = await client.workflowSubmit({ objectiveId, operationId, oracleUrl });
-  emit('objective_persisted', { invocationId: submission.invocationId, deployment });
-  const result = await ingress.result(submission);
-  emit('objective_completed', { result });
+  const server = await startEndpoint();
+  try {
+    const deployment = await registerDeployment();
+    const { ingress, client } = workflowClient();
+    const submission = await client.workflowSubmit({ objectiveId, operationId, oracleUrl });
+    emit('objective_persisted', { invocationId: submission.invocationId, deployment });
+    const result = await ingress.result(submission);
+    emit('objective_completed', { result });
+  } finally {
+    await closeEndpoint(server);
+  }
 }
 
 async function resume() {
   requireIdentity({ external: true });
-  await serveEndpoint();
-  const { client } = workflowClient();
-  emit('objective_persisted', { workflowId: objectiveId, recovered: true });
-  const result = await client.workflowAttach();
-  emit('objective_completed', { result });
+  const server = await startEndpoint();
+  try {
+    const { client } = workflowClient();
+    emit('objective_persisted', { workflowId: objectiveId, recovered: true });
+    const result = await client.workflowAttach();
+    emit('objective_completed', { result });
+  } finally {
+    await closeEndpoint(server);
+  }
 }
 
 async function status() {
