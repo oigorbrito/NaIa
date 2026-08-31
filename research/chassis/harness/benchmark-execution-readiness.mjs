@@ -1,4 +1,4 @@
-import { FORMAL_EXECUTOR_SUPPORT } from './formal-executor-support.mjs';
+import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, support = FORMAL_EXECUTOR_SUPPORT) {
   const errors = [];
@@ -10,30 +10,31 @@ export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, suppor
   }
 
   const unsupportedMutants = criticalMutants.filter((mutantId) => !support?.[mutantId]);
-  const incompatibleCandidateModes = [];
+  const unsupportedCandidateMutants = [];
 
   for (const candidate of criticalPlan?.candidates ?? []) {
     for (const mutantId of criticalMutants) {
       const implementation = support?.[mutantId];
       if (!implementation) continue;
-      if (!implementation.modes?.includes(candidate.mode)) {
-        incompatibleCandidateModes.push({
+      if (!formalExecutorSupportsCandidate(support, mutantId, candidate)) {
+        unsupportedCandidateMutants.push({
           candidate: candidate.candidate,
           mutantId,
           mode: candidate.mode,
-          supportedModes: [...(implementation.modes ?? [])]
+          supportedModes: [...(implementation.modes ?? [])],
+          supportedCandidates: Array.isArray(implementation.candidates) ? [...implementation.candidates] : null
         });
       }
     }
   }
 
-  const ready = errors.length === 0 && unsupportedMutants.length === 0 && incompatibleCandidateModes.length === 0;
+  const ready = errors.length === 0 && unsupportedMutants.length === 0 && unsupportedCandidateMutants.length === 0;
   return {
     ready,
     status: ready ? 'BENCHMARK_EXECUTION_READY' : 'BENCHMARK_EXECUTION_NOT_READY',
     criticalMutants: [...criticalMutants],
     unsupportedMutants,
-    incompatibleCandidateModes,
+    unsupportedCandidateMutants,
     errors
   };
 }
@@ -44,7 +45,7 @@ export function assertBenchmarkExecutionReady(protocol, criticalPlan, support = 
     const reasons = [
       ...assessment.errors,
       ...assessment.unsupportedMutants.map((mutantId) => `${mutantId}: formal executor not implemented`),
-      ...assessment.incompatibleCandidateModes.map((entry) => `${entry.candidate}/${entry.mutantId}: mode ${entry.mode} unsupported by formal executor`)
+      ...assessment.unsupportedCandidateMutants.map((entry) => `${entry.candidate}/${entry.mutantId}: formal executor not implemented for candidate/mode`)
     ];
     throw new Error(`benchmark execution gate closed: ${reasons.join('; ')}`);
   }
