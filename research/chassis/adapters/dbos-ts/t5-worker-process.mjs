@@ -18,16 +18,16 @@ function emit(event, fields = {}) {
 }
 
 const logger = {
-  info(message, metadata) { emit('dbos_log', { level: 'info', message: String(message), metadata: metadata ?? null }); },
-  debug(message, metadata) { emit('dbos_log', { level: 'debug', message: String(message), metadata: metadata ?? null }); },
-  warn(message, metadata) {
+  info(message) { emit('dbos_log', { level: 'info', message: String(message) }); },
+  debug(message) { emit('dbos_log', { level: 'debug', message: String(message) }); },
+  warn(message) {
     const text = String(message);
-    emit('dbos_log', { level: 'warn', message: text, metadata: metadata ?? null });
+    emit('dbos_log', { level: 'warn', message: text });
     if (text.includes('outcome was not recorded: the workflow is no longer owned by this execution')) {
       emit('stale_outcome_rejected', { message: text });
     }
   },
-  error(message, metadata) { emit('dbos_log', { level: 'error', message: String(message), metadata: metadata ?? null }); }
+  error(message) { emit('dbos_log', { level: 'error', message: String(message) }); }
 };
 
 configureT5WorkerRuntime({ workerId, executorId, emit });
