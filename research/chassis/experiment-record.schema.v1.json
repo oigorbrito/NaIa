@@ -21,6 +21,7 @@
     "candidate": {"type": "string", "minLength": 1},
     "mutantId": {"type": "string", "pattern": "^T([1-9]|1[0-6])$"},
     "repetition": {"type": "integer", "minimum": 1},
+    "randomSeed": {"type": ["integer", "null"], "minimum": 0},
     "setup": {
       "type": "object",
       "required": ["status", "candidateVersion", "adapterSha256", "harnessSha256", "environment", "parameters", "cleanupVerifiedBeforeRun"],
