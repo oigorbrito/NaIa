@@ -1,4 +1,5 @@
 import { Context } from '@temporalio/activity';
+import { holdAfterExternalEffectIfRequested } from '../../harness/fault-barrier.mjs';
 
 function emit(event, fields = {}) {
   process.stdout.write(JSON.stringify({
@@ -31,6 +32,7 @@ export async function performExternalEffect(input) {
     if (!response.ok) throw new Error(`oracle responded ${response.status}`);
     const externalState = await response.json();
     emit('external_effect_observed_before_checkpoint', { objectiveId, operationId, externalState });
+    await holdAfterExternalEffectIfRequested();
     emit('external_request_confirmed', { objectiveId, operationId, externalState });
     return externalState;
   } catch (error) {
