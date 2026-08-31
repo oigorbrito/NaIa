@@ -4,6 +4,23 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { t12EvidenceToRunResult } from './t12-record-bridge.mjs';
 
+const T12_DRIVERS = Object.freeze({
+  'DBOS TypeScript': {
+    relativePath: ['research', 'chassis', 'adapters', 'dbos-ts', 't12-driver.mjs'],
+    tempPrefix: 'naia-dbos-t12-',
+    blocker: 'DBOS_T12_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'DBOS_T12_DRIVER_TIMEOUT',
+    invalidReason: 'DBOS_T12_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  },
+  'Temporal TypeScript': {
+    relativePath: ['research', 'chassis', 'adapters', 'temporal-ts', 't12-driver.mjs'],
+    tempPrefix: 'naia-temporal-t12-',
+    blocker: 'TEMPORAL_T12_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'TEMPORAL_T12_DRIVER_TIMEOUT',
+    invalidReason: 'TEMPORAL_T12_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  }
+});
+
 async function spawnAndWait(command, args, options, timeoutMs) {
   const child = spawn(command, args, options);
   let stdout = '';
@@ -30,13 +47,12 @@ function runtimePrerequisiteFailure(result) {
 }
 
 export async function runCandidateT12({ repositoryRoot, spec, setup, candidate, env, timeoutMs }) {
-  if (candidate.candidate !== 'DBOS TypeScript') {
-    throw new Error(`T12 run hook has no driver for ${candidate.candidate}`);
-  }
+  const config = T12_DRIVERS[candidate.candidate];
+  if (!config) throw new Error(`T12 run hook has no driver for ${candidate.candidate}`);
 
-  const dir = await mkdtemp(path.join(tmpdir(), 'naia-dbos-t12-'));
+  const dir = await mkdtemp(path.join(tmpdir(), config.tempPrefix));
   const output = path.join(dir, 'evidence.json');
-  const driver = path.join(repositoryRoot, 'research', 'chassis', 'adapters', 'dbos-ts', 't12-driver.mjs');
+  const driver = path.join(repositoryRoot, ...config.relativePath);
   try {
     const processResult = await spawnAndWait(process.execPath, [driver, '--output', output], {
       cwd: path.dirname(driver),
@@ -51,7 +67,7 @@ export async function runCandidateT12({ repositoryRoot, spec, setup, candidate, 
       const blocked = runtimePrerequisiteFailure(processResult);
       return {
         blocked,
-        blocker: blocked ? 'DBOS_T12_RUNTIME_PREREQUISITE_UNAVAILABLE' : null,
+        blocker: blocked ? config.blocker : null,
         fault: {
           intended: 'T12',
           injected: false,
@@ -62,7 +78,7 @@ export async function runCandidateT12({ repositoryRoot, spec, setup, candidate, 
         },
         workload: { experimentId: spec.experimentId },
         rawObservations: {
-          reason: processResult.timedOut ? 'DBOS_T12_DRIVER_TIMEOUT' : 'DBOS_T12_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
+          reason: processResult.timedOut ? config.timeoutReason : config.invalidReason,
           process: processResult,
           readError: String(error),
           setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
