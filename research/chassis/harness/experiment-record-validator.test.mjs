@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateExperimentRecord, benchmarkEligible } from './experiment-record-validator.mjs';
 
-function record() {
+function record(overrides = {}) {
   return {
     schemaVersion: 1,
-    experimentId: 'exp-1',
-    candidate: 'Temporal TypeScript',
-    mutantId: 'T7',
-    repetition: 1,
+    experimentId: overrides.experimentId ?? 'exp-1',
+    candidate: overrides.candidate ?? 'Temporal TypeScript',
+    mutantId: overrides.mutantId ?? 'T7',
+    repetition: overrides.repetition ?? 1,
+    randomSeed: overrides.randomSeed ?? 1001,
     setup: {
       status: 'READY', candidateVersion: '1.23.0', adapterSha256: 'aaaaaaaaaaaaaaaa', harnessSha256: 'bbbbbbbbbbbbbbbb',
       environment: { os: 'linux', arch: 'x64', runtime: 'node 22' }, parameters: {}, cleanupVerifiedBeforeRun: true
@@ -16,11 +17,29 @@ function record() {
     run: {
       startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
       fault: { intended: 'process termination after effect', injected: true, targetKind: 'worker-process', targetIdentity: 1234, signal: 'SIGKILL', durableAuthorityAlive: true },
-      rawObservations: {}, acceptanceChecks: { noDuplicate: true, recoveryObserved: true }
+      rawObservations: overrides.mutantId === 'T16' ? { semanticMutation: { dimension: 'runtimeVersion', before: 'v1', after: 'v2' } } : {},
+      acceptanceChecks: { noDuplicate: true, recoveryObserved: true }
     },
     cleanup: { status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true },
     artifacts: [{ name: 'raw.json', sha256: 'dddddddddddddddd' }], verdict: 'PASS'
   };
+}
+
+function suite(minRepetitions = 100, required = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16']) {
+  return {
+    mutants: required.map((id) => ({ id, critical: true, minRepetitions })),
+    benchmarkEligibility: { forbidBlockedOrInconclusive: required }
+  };
+}
+
+function completeRecords(minRepetitions = 100) {
+  const required = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16'];
+  return required.flatMap((mutantId) => Array.from({ length: minRepetitions }, (_, index) => record({
+    experimentId: `${mutantId}-${index + 1}`,
+    mutantId,
+    repetition: index + 1,
+    randomSeed: 100000 + index + 1
+  })));
 }
 
 test('accepts an executed critical PASS with provenance', () => {
@@ -48,8 +67,36 @@ test('FAIL requires an observed failed acceptance check', () => {
   assert.equal(result.valid, true, result.errors.join('\n'));
 });
 
+test('random seed must be a reproducible non-negative integer when supplied', () => {
+  const value = record(); value.randomSeed = -1;
+  const result = validateExperimentRecord(value);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /randomSeed/);
+});
+
 test('benchmark eligibility rejects missing required mutant records', () => {
-  const result = benchmarkEligible([record()], { benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5', 'T7'] } });
+  const result = benchmarkEligible([record()], suite(1, ['T5', 'T7']));
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /T5: no executed records/);
+});
+
+test('benchmark eligibility enforces declared minimum unique repetitions', () => {
+  const records = completeRecords(99);
+  const result = benchmarkEligible(records, suite(100));
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /requires at least 100 unique repetitions, found 99/);
+  assert.match(result.errors.join('\n'), /missing required repetition 100/);
+});
+
+test('benchmark eligibility rejects duplicate repetitions presented as replication', () => {
+  const records = completeRecords(100);
+  records.push(record({ experimentId: 'duplicate-T7-1', mutantId: 'T7', repetition: 1, randomSeed: 999999 }));
+  const result = benchmarkEligible(records, suite(100));
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
+});
+
+test('benchmark eligibility accepts complete critical repetition coverage', () => {
+  const result = benchmarkEligible(completeRecords(100), suite(100));
+  assert.equal(result.eligible, true, result.errors.join('\n'));
 });
