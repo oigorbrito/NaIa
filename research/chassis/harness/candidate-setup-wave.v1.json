@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "workUnit": "EMPIRICAL_REPRODUCIBLE_CANDIDATE_SETUP_INTEGRATION_V1",
+  "status": "IMPLEMENTED_NOT_EXECUTED",
+  "headBeforeRecord": "d8afb11288f207018bc2e9c9c6b2e5a26d613869",
+  "controls": {
+    "manifestPinAloneCountsAsInstalledEvidence": false,
+    "installedPackageVersionMustMatchExactly": true,
+    "missingRequiredEnvironmentIsSetupBlocker": true,
+    "blockedSetupMayInvokeCandidateRuntime": false,
+    "unregisteredExperimentMayExecute": false,
+    "missingRunHookMayProducePass": false,
+    "secretValuesRecorded": false
+  },
+  "files": [
+    "research/chassis/harness/candidate-setup.mjs",
+    "research/chassis/harness/candidate-setup.test.mjs",
+    "research/chassis/harness/candidate-experiment.mjs",
+    "research/chassis/harness/candidate-experiment.test.mjs",
+    "research/chassis/harness/setup-contract.md",
+    "research/chassis/harness/setup-record.example.v1.json"
+  ],
+  "runtimeEvidence": "NOT_EXECUTED",
+  "decisionState": {
+    "benchmarkToBeat": "NOT_SELECTED",
+    "chassisWinner": "NOT_SELECTED"
+  }
+}
