@@ -56,5 +56,5 @@ test('managed-controller candidate cannot claim T7 without worker hook', async (
   assert.equal(trigger.mutants.T7.status, 'NOT_EXECUTED');
   assert.ok(trigger.mutants.T7.blockedBy.includes('B003'));
   assert.match(trigger.workerKillTarget, /worker|task process|container/i);
-  assert.doesNotMatch(trigger.workerKillTarget, /controller adapter is.*valid/i);
+  assert.match(trigger.workerKillTarget, /controller adapter is explicitly not a valid T7 kill target/i);
 });
