@@ -18,11 +18,14 @@ export function evaluateT5Evidence(evidence) {
       evidence.oldAuthorityIdentity !== evidence.newAuthorityIdentity,
     authorityAdvanced: evidence?.authorityAdvanced === true,
     oldAuthorityHeldUntilTakeover: evidence?.oldAuthorityHeldUntilTakeover === true,
+    staleCompletionActuallyAttempted: evidence?.staleCompletion?.attempted === true,
+    staleAttemptBeforeNewCompletion: evidence?.staleCompletion?.attemptedBeforeNewCompletion === true,
+    staleCompletionRejectedOrNonAuthoritative: evidence?.staleCompletion?.rejectedOrNonAuthoritative === true,
+    staleNeverBecameAuthoritative: evidence?.staleCompletion?.becameAuthoritative === false,
+    newAuthorityStillCurrentAfterStaleAttempt: evidence?.newAuthorityStillCurrentAfterStaleAttempt === true,
     newAuthorityCompletionAccepted:
       evidence?.newAuthorityCompletion?.attempted === true &&
       evidence?.newAuthorityCompletion?.acceptedOrAuthoritative === true,
-    staleCompletionActuallyAttempted: evidence?.staleCompletion?.attempted === true,
-    staleCompletionRejectedOrNonAuthoritative: evidence?.staleCompletion?.rejectedOrNonAuthoritative === true,
     finalAuthorityIsNew: evidence?.finalAuthorityIdentity === evidence?.newAuthorityIdentity,
     finalResultOriginIsNew: evidence?.finalResultOrigin === 'new-authority',
     durableAuthorityAlive: evidence?.durableAuthorityAlive === true,
@@ -37,6 +40,8 @@ export function evaluateT5Evidence(evidence) {
 }
 
 export function controlResultToT5Evidence(controlResult) {
+  const staleBecameAuthoritative =
+    controlResult.stateAfterStaleAttempt?.authoritativeCompletion?.ownerId === controlResult.oldOwner.ownerId;
   return {
     oldWorkerIdentity: 'control-worker-A',
     newWorkerIdentity: 'control-worker-B',
@@ -44,15 +49,19 @@ export function controlResultToT5Evidence(controlResult) {
     newAuthorityIdentity: `${controlResult.newOwner.ownerId}:${controlResult.newOwner.token}`,
     authorityAdvanced: controlResult.newOwner.token > controlResult.oldOwner.token,
     oldAuthorityHeldUntilTakeover: true,
+    staleCompletion: {
+      attempted: true,
+      attemptedBeforeNewCompletion: true,
+      rejectedOrNonAuthoritative: controlResult.staleCompletion.accepted === false,
+      becameAuthoritative: staleBecameAuthoritative
+    },
+    newAuthorityStillCurrentAfterStaleAttempt:
+      controlResult.stateAfterStaleAttempt?.currentOwner === controlResult.newOwner.ownerId &&
+      controlResult.stateAfterStaleAttempt?.currentToken === controlResult.newOwner.token &&
+      !staleBecameAuthoritative,
     newAuthorityCompletion: {
       attempted: true,
       acceptedOrAuthoritative: controlResult.currentCompletion.accepted === true
-    },
-    staleCompletion: {
-      attempted: true,
-      rejectedOrNonAuthoritative:
-        controlResult.staleCompletion.accepted === false ||
-        controlResult.finalState.authoritativeCompletion?.ownerId === controlResult.newOwner.ownerId
     },
     finalAuthorityIdentity:
       controlResult.finalState.authoritativeCompletion
@@ -63,7 +72,7 @@ export function controlResultToT5Evidence(controlResult) {
         ? 'new-authority'
         : 'old-authority',
     durableAuthorityAlive: true,
-    deterministicScheduleObserved: Array.isArray(controlResult.schedule) && controlResult.schedule.length === 4,
+    deterministicScheduleObserved: Array.isArray(controlResult.schedule) && controlResult.schedule.length === 6,
     rawNativeEvidence: { controlResult, syntheticControlWorkerIdentities: true }
   };
 }
