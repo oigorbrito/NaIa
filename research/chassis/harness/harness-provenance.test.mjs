@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { computeHarnessProvenance } from './harness-provenance.mjs';
+import { computeHarnessProvenance, FORMAL_HARNESS_FILES } from './harness-provenance.mjs';
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'naia-provenance-'));
@@ -31,4 +31,17 @@ test('aggregate harness hash changes if one bound component changes', async (t) 
   const after = await computeHarnessProvenance(root, ['a/one.txt', 'a/two.txt']);
   assert.notEqual(before.aggregateSha256, after.aggregateSha256);
   assert.notEqual(before.files[1].sha256, after.files[1].sha256);
+});
+
+test('formal provenance bundle includes the hasher and benchmark governance SSOTs', () => {
+  for (const required of [
+    'research/chassis/harness/harness-provenance.mjs',
+    'research/chassis/harness/benchmark-execution-readiness.mjs',
+    'research/chassis/harness/experiment-ledger-validator.mjs',
+    'research/chassis/harness/formal-executor-support.mjs',
+    'research/chassis/critical-mutant-plan.v1.json'
+  ]) {
+    assert.ok(FORMAL_HARNESS_FILES.includes(required), required);
+  }
+  assert.equal(new Set(FORMAL_HARNESS_FILES).size, FORMAL_HARNESS_FILES.length);
 });
