@@ -1,6 +1,12 @@
 export function createT11CancelControl({ preserveCancellationOnRecovery = true } = {}) {
   const objectives = new Map();
 
+  function requireState(objectiveId) {
+    const state = objectives.get(objectiveId);
+    if (!state) throw new Error(`unknown objective: ${objectiveId}`);
+    return state;
+  }
+
   function create(objectiveId, workerId) {
     if (!objectiveId || !workerId) throw new Error('objectiveId and workerId are required');
     if (objectives.has(objectiveId)) throw new Error(`objective already exists: ${objectiveId}`);
@@ -18,9 +24,15 @@ export function createT11CancelControl({ preserveCancellationOnRecovery = true }
     return snapshot(objectiveId);
   }
 
+  function preCancelCheckpoint(objectiveId) {
+    const state = requireState(objectiveId);
+    state.events.push('pre-cancel-checkpoint');
+  }
+
   function establishCancel(objectiveId) {
     const state = requireState(objectiveId);
     if (state.status !== 'RUNNING') throw new Error(`cannot cancel from ${state.status}`);
+    state.events.push('cancel-submitted');
     state.cancelEpoch = (state.cancelEpoch ?? 0) + 1;
     state.status = 'CANCELLED';
     state.events.push('cancel-authority-durable');
@@ -32,7 +44,7 @@ export function createT11CancelControl({ preserveCancellationOnRecovery = true }
     if (workerId !== state.currentWorker) throw new Error('crash target is not current worker');
     state.crashedWorkers.push(workerId);
     state.currentWorker = null;
-    state.events.push('worker-crashed-after-cancel');
+    state.events.push('worker-crash');
     return { objectiveId, workerId, crashed: true };
   }
 
@@ -62,14 +74,14 @@ export function createT11CancelControl({ preserveCancellationOnRecovery = true }
       statusAtAttempt: state.status
     };
     state.protectedAttempts.push(attempt);
-    state.events.push(accepted ? 'post-cancel-protected-operation-accepted' : 'post-cancel-protected-operation-rejected');
+    state.events.push('post-cancel-progress-challenged');
     return structuredClone(attempt);
   }
 
-  function requireState(objectiveId) {
-    const state = objectives.get(objectiveId);
-    if (!state) throw new Error(`unknown objective: ${objectiveId}`);
-    return state;
+  function inspect(objectiveId) {
+    const state = requireState(objectiveId);
+    state.events.push('post-recovery-state-inspected');
+    return snapshot(objectiveId);
   }
 
   function snapshot(objectiveId) {
@@ -77,7 +89,7 @@ export function createT11CancelControl({ preserveCancellationOnRecovery = true }
     return structuredClone(state);
   }
 
-  return { create, establishCancel, crash, recover, attemptProtectedOperation, snapshot };
+  return { create, preCancelCheckpoint, establishCancel, crash, recover, attemptProtectedOperation, inspect, snapshot };
 }
 
 export function executeDeterministicT11Control({ unsafe = false, objectiveId = 't11-control-objective' } = {}) {
@@ -86,13 +98,24 @@ export function executeDeterministicT11Control({ unsafe = false, objectiveId = '
   const recoveryWorkerIdentity = 'control-worker-B';
 
   control.create(objectiveId, oldWorkerIdentity);
+  control.preCancelCheckpoint(objectiveId);
   const cancel = control.establishCancel(objectiveId);
   const crash = control.crash(objectiveId, oldWorkerIdentity);
   const recovery = control.recover(objectiveId, recoveryWorkerIdentity);
   const protectedAttempt = control.attemptProtectedOperation(objectiveId, recoveryWorkerIdentity, 'post-cancel-progress');
-  const finalState = control.snapshot(objectiveId);
+  const finalState = control.inspect(objectiveId);
 
   const acceptedCountAfterCancel = finalState.protectedAttempts.filter((entry) => entry.accepted).length;
+  const expectedSchedule = [
+    'objective-running',
+    'pre-cancel-checkpoint',
+    'cancel-submitted',
+    'cancel-authority-durable',
+    'worker-crash',
+    'recovery-attempted',
+    'post-cancel-progress-challenged',
+    'post-recovery-state-inspected'
+  ];
   const evidence = {
     objectiveIdentity: objectiveId,
     oldWorkerIdentity,
@@ -103,13 +126,14 @@ export function executeDeterministicT11Control({ unsafe = false, objectiveId = '
     recovery: { attempted: true, nativeState: recovery.status },
     postCancelProtectedOperation: {
       attempted: true,
+      blockedBeforeProtectedOperation: false,
       accepted: protectedAttempt.accepted,
       acceptedCountAfterCancel
     },
     finalCancellationAuthoritative: finalState.status === 'CANCELLED' && finalState.cancelEpoch !== null,
     durableAuthorityAlive: true,
-    deterministicScheduleObserved: finalState.events.length === 7,
-    rawNativeEvidence: { finalState }
+    deterministicScheduleObserved: JSON.stringify(finalState.events) === JSON.stringify(expectedSchedule),
+    rawNativeEvidence: { finalState, expectedSchedule }
   };
 
   return { evidence, finalState };
