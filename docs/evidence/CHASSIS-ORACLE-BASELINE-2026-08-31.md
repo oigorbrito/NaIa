@@ -1,6 +1,6 @@
 # Chassis External Oracle Baseline — 2026-08-31
 
-Status: LOCAL PASS / REMOTE CI NOT YET OBSERVED
+Status: LOCAL PASS / REMOTE CI BLOCKED BEFORE RUNNER
 
 ## Purpose
 
@@ -77,13 +77,22 @@ It does not prove candidate-engine behavior and does not establish distributed e
 
 ## Remote CI
 
-At the time of this record, the GitHub Actions query for branch `research/qualified-chassis-gate-v1` returned zero workflow runs.
+GitHub Actions created matrix jobs for Node 22 and Node 24, but both completed with failure before executing any workflow step.
+
+Observed evidence:
+
+- `steps = []` for both jobs;
+- `runner_id = 0`;
+- no runner name/group was assigned;
+- decoded job logs were unavailable.
 
 Therefore:
 
-`REMOTE_CI = NOT_STARTED_OR_NOT_TRIGGERED`
+`REMOTE_CI = BLOCKED_BEFORE_RUNNER`
 
-No remote PASS is inferred.
+`REMOTE_HARNESS_RESULT = NOT_EXECUTED`
+
+No remote PASS or FAIL of the harness is inferred.
 
 ## Next step
 
