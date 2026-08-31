@@ -43,6 +43,7 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/adapters/temporal-ts/t11-driver.mjs',
   'research/chassis/adapters/temporal-ts/t11-worker-process.mjs',
   'research/chassis/adapters/temporal-ts/t11-workflow.mjs',
+  'research/chassis/adapters/temporal-ts/t12-driver.mjs',
   'research/chassis/adapters/temporal-ts/t16-driver.mjs',
   'research/chassis/adapters/temporal-ts/t16-worker-process.mjs',
   'research/chassis/adapters/temporal-ts/t16-workflow-a.mjs',
