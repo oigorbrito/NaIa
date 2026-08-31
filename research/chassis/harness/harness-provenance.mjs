@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export const FORMAL_HARNESS_FILES = Object.freeze([
+  'research/chassis/harness/benchmark-execution-readiness.mjs',
   'research/chassis/harness/candidate-experiment.mjs',
   'research/chassis/harness/candidate-setup.mjs',
   'research/chassis/harness/common-runner.mjs',
@@ -10,15 +11,19 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/common-runner-run-hook.mjs',
   'research/chassis/harness/crash-controller.mjs',
   'research/chassis/harness/experiment-executor.mjs',
+  'research/chassis/harness/experiment-ledger-validator.mjs',
   'research/chassis/harness/experiment-protocol-validator.mjs',
   'research/chassis/harness/experiment-record-validator.mjs',
   'research/chassis/harness/external-oracle.mjs',
   'research/chassis/harness/fault-barrier.mjs',
+  'research/chassis/harness/formal-executor-support.mjs',
   'research/chassis/harness/formal-single-run.mjs',
+  'research/chassis/harness/harness-provenance.mjs',
   'research/chassis/experiment-protocol.v1.json',
   'research/chassis/experiment-record.schema.v1.json',
   'research/chassis/fault-suite.v1.json',
-  'research/chassis/adapter-capabilities.v1.json'
+  'research/chassis/adapter-capabilities.v1.json',
+  'research/chassis/critical-mutant-plan.v1.json'
 ]);
 
 function sha256(buffer) {
