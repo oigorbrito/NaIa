@@ -1,0 +1,97 @@
+# T16 Semantic Compatibility Contract V1
+
+Status: CONTROL_SPECIFIED / CANDIDATE_EXECUTORS_NOT_IMPLEMENTED
+
+T16 tests `identity_or_config_changes_before_recovery`: durable work created under semantic profile A is recovered under intentionally changed profile B while the semantic objective identity is preserved.
+
+The property under test is not whether configuration can change. The property is whether a change that can alter recovery meaning is handled explicitly. A candidate may PASS by rejecting the incompatible recovery, by routing to compatible code/config, or by applying an explicit migration whose identity and transformation are recorded. Silently continuing with changed meaning is FAIL.
+
+## Controlled mutation
+
+Each T16 repetition changes exactly one declared semantic dimension. Examples include workflow/application version, deployment/build identity, handler/task identity, tool contract version, serialization/schema version, or a configuration value that changes externally observable behavior.
+
+Incidental environment differences that do not change semantics are not T16 mutations.
+
+The record must contain:
+
+```json
+{
+  "semanticMutation": {
+    "dimension": "applicationVersion",
+    "before": "v1",
+    "after": "v2"
+  }
+}
+```
+
+`before` and `after` must be concrete and different.
+
+## Deterministic schedule
+
+1. Start one objective under semantic profile A.
+2. Reach a durable checkpoint proving the objective exists under A.
+3. Stop/crash the execution boundary without deleting durable authority.
+4. Change exactly one declared semantic dimension from A to B.
+5. Attempt recovery of the same objective identity under B.
+6. Observe the candidate-native compatibility disposition before accepting new externally visible progress.
+7. Inspect final durable state and any external-effect evidence.
+
+Sleep-only scheduling is insufficient. The checkpoint, mutation, recovery attempt, compatibility disposition, and final inspection must be explicit observations.
+
+## Admissible safe dispositions
+
+A recovery is safe when one of these is proven:
+
+- `REJECTED_INCOMPATIBLE`: native recovery refuses B and preserves prior durable meaning;
+- `ROUTED_TO_COMPATIBLE`: native version/deployment routing sends recovery to code/config compatible with A;
+- `EXPLICIT_MIGRATION`: a declared migration transforms A to B, with migration identity and before/after evidence recorded.
+
+The following is unsafe:
+
+- `SILENT_REINTERPRETATION`: recovery continues under B with different semantic behavior and no explicit compatibility gate or migration.
+
+Unknown/ambiguous disposition is not PASS.
+
+## Required evidence
+
+```json
+{
+  "objectiveIdentity": "...",
+  "semanticMutation": {"dimension":"...","before":"...","after":"..."},
+  "durableCheckpointBeforeMutation": true,
+  "recoveryAttemptedUnderMutatedProfile": true,
+  "compatibilityDisposition": {
+    "kind": "REJECTED_INCOMPATIBLE|ROUTED_TO_COMPATIBLE|EXPLICIT_MIGRATION|SILENT_REINTERPRETATION|UNKNOWN",
+    "explicit": true,
+    "migrationIdentity": null
+  },
+  "silentSemanticChangeObserved": false,
+  "priorMeaningPreservedOrExplicitlyMigrated": true,
+  "durableAuthorityAlive": true,
+  "deterministicScheduleObserved": true,
+  "rawNativeEvidence": {}
+}
+```
+
+For `EXPLICIT_MIGRATION`, `migrationIdentity` is required. For rejection/routing it may be null.
+
+## PASS requirements
+
+T16 PASS requires all of the following:
+
+- same concrete objective identity before and after the mutation attempt;
+- exactly one concrete semantic dimension changed and `before != after`;
+- durable checkpoint exists before mutation;
+- recovery under the mutated profile is actually attempted;
+- compatibility disposition is explicit and one of the three safe dispositions;
+- no silent semantic change is observed;
+- prior meaning is preserved or an explicit migration is proven;
+- durable authority remains alive and independently inspectable;
+- deterministic schedule is proven;
+- normal formal cleanup succeeds.
+
+If compatibility disposition cannot be observed, the mutation is not semantic, recovery is not attempted, or the durable authority cannot be inspected, the result is BLOCKED or INCONCLUSIVE according to existing runtime rules, never PASS.
+
+## Prohibited adaptations
+
+The harness must not add a compatibility database, version router, migration layer, or semantic checksum solely for the benchmark when the candidate/deployment would not normally provide it. Candidate PASS must come from candidate-native versioning/compatibility mechanisms or an application migration policy declared as part of the qualified profile before the run.
