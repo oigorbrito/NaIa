@@ -49,6 +49,8 @@ export async function executeExperiment(spec, hooks) {
 
   let setupResult;
   let runResult = {
+    blocked: false,
+    blocker: null,
     fault: { intended: spec.mutantId, injected: false },
     workload: {}, rawObservations: {}, acceptanceChecks: {}
   };
@@ -112,6 +114,8 @@ export async function executeExperiment(spec, hooks) {
     run: {
       startedAt,
       finishedAt,
+      blocked: runResult.blocked === true,
+      blocker: runResult.blocker ?? null,
       workload: runResult.workload ?? {},
       fault: runResult.fault,
       rawObservations: runResult.rawObservations ?? {},
