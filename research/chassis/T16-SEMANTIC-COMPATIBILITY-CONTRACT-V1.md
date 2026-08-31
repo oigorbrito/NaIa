@@ -1,6 +1,6 @@
 # T16 Semantic Compatibility Contract V1
 
-Status: CONTROL_SPECIFIED / CANDIDATE_EXECUTORS_NOT_IMPLEMENTED
+Status: CONTROL_VALIDATED / DBOS_EXECUTOR_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T16 tests `identity_or_config_changes_before_recovery`: durable work created under semantic profile A is recovered under intentionally changed profile B while the semantic objective identity is preserved.
 
@@ -74,6 +74,12 @@ Unknown/ambiguous disposition is not PASS.
 ```
 
 For `EXPLICIT_MIGRATION`, `migrationIdentity` is required. For rejection/routing it may be null.
+
+## DBOS v4.27 structural slice
+
+The DBOS T16 driver mutates exactly `applicationVersion` while preserving the workflow identity and executor identity. Worker A creates a durable step checkpoint under version A and is SIGKILLed. Worker B starts under version B and the harness inspects the native workflow record after `DBOS.launch()` recovery processing. The experiment then starts worker C under version A and requires the original workflow to recover and complete under A before classifying the result as `ROUTED_TO_COMPATIBLE`.
+
+This design is aligned with the DBOS v4.27 upstream application-version recovery test, which demonstrates that pending work is recovered under the matching application version and is not recovered after the application version/source changes. Structural implementation is not candidate PASS. It remains runtime-unverified while B001 prevents installation/startup of the pinned DBOS/PostgreSQL profile.
 
 ## PASS requirements
 
