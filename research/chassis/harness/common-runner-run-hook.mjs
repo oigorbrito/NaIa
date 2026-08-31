@@ -6,6 +6,7 @@ import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.m
 import { t5EvidenceToRunResult } from './t5-record-bridge.mjs';
 import { runCandidateT11 } from './t11-run-hook.mjs';
 import { runCandidateT12 } from './t12-run-hook.mjs';
+import { runCandidateT16 } from './t16-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options, timeoutMs = null) {
@@ -137,6 +138,9 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
     }
     if (spec.mutantId === 'T12') {
       return runCandidateT12({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
+    }
+    if (spec.mutantId === 'T16') {
+      return runCandidateT16({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
     }
 
     const managedOracleUrl = candidate.mode === 'managed-controller' ? env.NAIA_EXTERNAL_ORACLE_URL : null;
