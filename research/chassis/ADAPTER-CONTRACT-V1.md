@@ -49,6 +49,7 @@ timer_resumed
 approval_wait_started
 approval_received
 external_request_starting
+external_effect_observed_before_checkpoint
 external_request_applied_or_ambiguous
 external_result_persisted
 verification_started
@@ -58,6 +59,8 @@ reconciliation_required
 stale_completion_rejected
 fatal_error
 ```
+
+`external_effect_observed_before_checkpoint` is the isolated T7 killpoint. It may be emitted only after the external provider/oracle has confirmed the effect result to the candidate execution code and before the candidate durable engine has checkpointed that result. It must not require response-loss injection. This separates T7 (process crash after a known applied effect) from T8 (provider effect applied but response lost).
 
 The harness may kill the adapter immediately after any emitted event when the adapter process is itself the worker/executor under test.
 
@@ -123,7 +126,8 @@ Adapters may not:
 - turn a process kill mutant into a caught exception;
 - replace the common external oracle with a candidate-native mock;
 - mark ambiguous external effects successful without consulting the oracle/provider state;
-- substitute controller/process-manager death for the actual worker/task-process crash required by a mutant.
+- substitute controller/process-manager death for the actual worker/task-process crash required by a mutant;
+- combine T7 and T8 in the same experimental repetition and report the outcome as evidence for either mutant independently.
 
 ## Evidence identity
 
