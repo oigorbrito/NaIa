@@ -3,13 +3,14 @@ import test from 'node:test';
 
 import { createExternalEffectOracle } from './external-oracle.mjs';
 
-async function post(baseUrl, operationId, body, dropResponse = false) {
+async function post(baseUrl, operationId, body, responseLoss = 'none') {
   return fetch(`${baseUrl}/apply`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-operation-id': operationId,
-      ...(dropResponse ? { 'x-drop-response-after-apply': '1' } : {})
+      ...(responseLoss === 'always' ? { 'x-drop-response-after-apply': '1' } : {}),
+      ...(responseLoss === 'once' ? { 'x-drop-response-after-apply-once': '1' } : {})
     },
     body: JSON.stringify(body)
   });
@@ -35,6 +36,7 @@ test('same operation id is applied exactly once while requests are counted', asy
   const state = await readOperation(baseUrl, 'mission-1:step-B');
   assert.equal(state.requestCount, 2);
   assert.equal(state.applyCount, 1);
+  assert.equal(state.responseLossCount, 0);
   assert.equal(state.payload, JSON.stringify({ amount: 10 }));
 });
 
@@ -55,13 +57,12 @@ test('response can be lost after apply and reconciliation still proves effect ha
   const baseUrl = await oracle.start();
   t.after(() => oracle.stop());
 
-  await assert.rejects(
-    post(baseUrl, 'mission-3:step-B', { reservation: 'A' }, true)
-  );
+  await assert.rejects(post(baseUrl, 'mission-3:step-B', { reservation: 'A' }, 'always'));
 
   const afterLoss = await readOperation(baseUrl, 'mission-3:step-B');
   assert.equal(afterLoss.requestCount, 1);
   assert.equal(afterLoss.applyCount, 1);
+  assert.equal(afterLoss.responseLossCount, 1);
 
   const retry = await post(baseUrl, 'mission-3:step-B', { reservation: 'A' });
   assert.equal(retry.status, 200);
@@ -69,6 +70,22 @@ test('response can be lost after apply and reconciliation still proves effect ha
   const reconciled = await readOperation(baseUrl, 'mission-3:step-B');
   assert.equal(reconciled.requestCount, 2);
   assert.equal(reconciled.applyCount, 1);
+});
+
+test('drop-once fault is consumed by first request and retry succeeds with identical headers', async (t) => {
+  const oracle = createExternalEffectOracle();
+  const baseUrl = await oracle.start();
+  t.after(() => oracle.stop());
+
+  const operationId = 'mission-4:step-B';
+  await assert.rejects(post(baseUrl, operationId, { reservation: 'B' }, 'once'));
+  const retry = await post(baseUrl, operationId, { reservation: 'B' }, 'once');
+  assert.equal(retry.status, 200);
+
+  const state = await readOperation(baseUrl, operationId);
+  assert.equal(state.requestCount, 2);
+  assert.equal(state.applyCount, 1);
+  assert.equal(state.responseLossCount, 1);
 });
 
 test('missing operation id fails closed', async (t) => {
@@ -92,12 +109,13 @@ test('100 ambiguous response-loss cycles reconcile without duplicate apply', asy
 
   for (let i = 0; i < 100; i += 1) {
     const operationId = `stress-loss-${i}`;
-    await assert.rejects(post(baseUrl, operationId, { i }, true));
-    const retry = await post(baseUrl, operationId, { i });
+    await assert.rejects(post(baseUrl, operationId, { i }, 'once'));
+    const retry = await post(baseUrl, operationId, { i }, 'once');
     assert.equal(retry.status, 200);
     const state = await readOperation(baseUrl, operationId);
     assert.equal(state.requestCount, 2);
     assert.equal(state.applyCount, 1);
+    assert.equal(state.responseLossCount, 1);
   }
 });
 
