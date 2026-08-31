@@ -34,6 +34,7 @@ export function createExternalEffectOracle() {
             operationId,
             requestCount: 0,
             applyCount: 0,
+            responseLossCount: 0,
             firstAppliedAt: null,
             lastRequestAt: null,
             payload: null
@@ -50,7 +51,10 @@ export function createExternalEffectOracle() {
           entry.payload = body;
         }
 
-        if (req.headers['x-drop-response-after-apply'] === '1') {
+        const dropAlways = req.headers['x-drop-response-after-apply'] === '1';
+        const dropOnce = req.headers['x-drop-response-after-apply-once'] === '1' && entry.responseLossCount === 0;
+        if (dropAlways || dropOnce) {
+          entry.responseLossCount += 1;
           req.socket.destroy();
           return;
         }
