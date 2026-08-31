@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "status": "SPECIFIED_NOT_EXECUTED",
+  "methodology": {
+    "sources": [
+      "NIST SP 1500-18r2 Research Data Framework",
+      "ACM artifact evaluation/reproducibility guidance"
+    ],
+    "principles": [
+      "record software, environment, parameters, methods, inputs, outputs and provenance",
+      "automate experiments where practical and preserve raw observations",
+      "record random seeds and run-time parameters when randomized scheduling or timing is used",
+      "distinguish artifact functionality from independently reproduced results",
+      "do not promote blocked setup or absent fault injection to candidate PASS/FAIL"
+    ]
+  },
+  "decisionState": {
+    "benchmarkToBeat": "NOT_SELECTED",
+    "chassisWinner": "NOT_SELECTED"
+  },
+  "candidates": [
+    "Temporal TypeScript",
+    "DBOS TypeScript",
+    "Restate",
+    "Trigger.dev"
+  ],
+  "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+  "repetitionPolicy": {
+    "minimumPerCriticalMutant": 100,
+    "requiredSequence": "1..100 with no duplicates or gaps",
+    "seedPolicy": {
+      "requiredWhenRandomized": true,
+      "derivation": "seed = candidateOrdinal*1000000 + mutantOrdinal*10000 + repetition",
+      "candidateOrdinals": {
+        "Temporal TypeScript": 1,
+        "DBOS TypeScript": 2,
+        "Restate": 3,
+        "Trigger.dev": 4
+      },
+      "mutantOrdinals": {
+        "T5": 5,
+        "T7": 7,
+        "T8": 8,
+        "T11": 11,
+        "T12": 12,
+        "T16": 16
+      }
+    }
+  },
+  "executionOrder": {
+    "policy": "round-robin-by-repetition",
+    "reason": "avoid completing all repetitions of one candidate before exposing later candidates to the same experimental window",
+    "sequence": "for repetition 1..100, execute each critical mutant for each candidate using the declared environment profile; record any unavailable run as BLOCKED rather than substituting another configuration"
+  },
+  "requiredRecordFields": [
+    "experimentId",
+    "candidate",
+    "mutantId",
+    "repetition",
+    "setup.candidateVersion",
+    "setup.adapterSha256",
+    "setup.harnessSha256",
+    "setup.environment",
+    "setup.parameters",
+    "run.startedAt",
+    "run.finishedAt",
+    "run.fault",
+    "run.workload",
+    "run.rawObservations",
+    "run.acceptanceChecks",
+    "cleanup",
+    "artifacts",
+    "verdict"
+  ],
+  "promotionRules": {
+    "blockedSetup": "BLOCKED",
+    "faultNotInjected": "INCONCLUSIVE",
+    "pass": "all predeclared acceptance checks true under executed intended fault",
+    "fail": "at least one predeclared acceptance check false under executed intended fault",
+    "benchmarkEligibility": "all six critical mutants must have at least 100 unique valid records and none may be BLOCKED or INCONCLUSIVE"
+  }
+}
