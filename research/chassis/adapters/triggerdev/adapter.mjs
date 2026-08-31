@@ -49,9 +49,6 @@ function requireIdentity({ external = false } = {}) {
 }
 
 function configureSdk() {
-  // Trigger.dev v4.5.15 keeps `secretKey` for compatibility but marks it deprecated.
-  // `accessToken` is the non-deprecated ApiClientConfiguration field; the project
-  // secret key remains the credential supplied by TRIGGER_SECRET_KEY.
   configure({
     accessToken,
     ...(baseURL ? { baseURL } : {}),
@@ -87,7 +84,8 @@ async function triggerOrAttach() {
       objectiveId,
       operationId,
       oracleUrl,
-      injectResponseLoss: process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1'
+      injectResponseLoss: process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1',
+      nonIdempotentProvider: process.env.NAIA_NON_IDEMPOTENT_PROVIDER === '1'
     },
     {
       idempotencyKey: idempotencyKey(),
@@ -95,9 +93,6 @@ async function triggerOrAttach() {
       tags: [objectiveTag(), operationTag()]
     }
   );
-  // Single-trigger RunHandle has id/publicAccessToken/taskIdentifier in v4.5.15.
-  // `isCached` belongs to BatchedRunHandle, so recovery is derived only from
-  // the explicit existing-run lookup above.
   return { id: handle.id, recovered: false };
 }
 
