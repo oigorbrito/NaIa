@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const runner = path.join(here, 'common-runner.mjs');
 const adapter = path.join(here, 'fixtures', 'contract-adapter-control.mjs');
 
-async function run(mutant, blocked = false, noKillpoint = false) {
+async function run(mutant, blocked = false, noKillpoint = false, faultMode = 'COMPOSITE') {
   const dir = await mkdtemp(path.join(tmpdir(), 'naia-runner-'));
   const output = path.join(dir, 'evidence.json');
   const child = spawn(process.execPath, [
@@ -18,6 +18,7 @@ async function run(mutant, blocked = false, noKillpoint = false) {
     '--adapter', adapter,
     '--candidate', mutant ? 'control-mutant' : 'control-stable',
     '--mode', 'local-process',
+    '--mutant', faultMode,
     '--timeout-ms', '5000',
     '--output', output
   ], {
@@ -84,4 +85,31 @@ test('common runner classifies a run that never reaches the killpoint as INCONCL
   assert.equal(result.evidence.mutants.T7_process_sigkill, 'INCONCLUSIVE');
   assert.equal(result.evidence.mutants.T8_response_loss, 'INCONCLUSIVE');
   assert.equal(result.evidence.mutants.T15_operation_identity, 'INCONCLUSIVE');
+});
+
+test('isolated T7 kills after external apply without response-loss contamination', async () => {
+  const result = await run(false, false, false, 'T7');
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal(result.evidence.verdict, 'PASS');
+  assert.equal(result.evidence.mutant, 'T7');
+  assert.equal(result.evidence.checks.crashInjected, true);
+  assert.equal(result.evidence.checks.responseLossInjected, false);
+  assert.equal(result.evidence.oracle.totalApplyCount, 1);
+  assert.equal(result.evidence.oracle.totalResponseLossCount, 0);
+  assert.equal(result.evidence.mutants.T7_process_sigkill, 'PASS');
+  assert.equal(result.evidence.mutants.T8_response_loss, 'NOT_EXECUTED');
+});
+
+test('isolated T8 loses one response and recovers without process SIGKILL', async () => {
+  const result = await run(false, false, false, 'T8');
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal(result.evidence.verdict, 'PASS');
+  assert.equal(result.evidence.mutant, 'T8');
+  assert.equal(result.evidence.checks.crashInjected, false);
+  assert.equal(result.evidence.checks.responseLossInjected, true);
+  assert.equal(result.evidence.oracle.totalApplyCount, 1);
+  assert.equal(result.evidence.oracle.totalResponseLossCount, 1);
+  assert.equal(result.evidence.resume.skipped, true);
+  assert.equal(result.evidence.mutants.T7_process_sigkill, 'NOT_EXECUTED');
+  assert.equal(result.evidence.mutants.T8_response_loss, 'PASS');
 });
