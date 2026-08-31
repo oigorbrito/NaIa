@@ -5,7 +5,8 @@
   "scripts": {
     "test": "npm run test:chassis",
     "test:chassis": "node --test research/chassis/harness/*.test.mjs",
-    "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs"
+    "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
+    "single:chassis": "node research/chassis/harness/formal-single-run.mjs"
   },
   "engines": {
     "node": ">=22 <25"
