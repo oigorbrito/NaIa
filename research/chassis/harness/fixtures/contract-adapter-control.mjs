@@ -71,8 +71,10 @@ try {
   await applyOnce();
 } catch (error) {
   emit('external_request_applied_or_ambiguous', { operationId, error: String(error) });
-  if (process.env.NAIA_CONTROL_RECONCILE_AFTER_AMBIGUOUS === '1') {
+  if (process.env.NAIA_CONTROL_RECONCILE_AFTER_AMBIGUOUS === '1' && !mutant) {
     await reconcileAfterAmbiguous();
+  } else if (process.env.NAIA_CONTROL_RECONCILE_AFTER_AMBIGUOUS === '1' && mutant) {
+    await applyOnce();
   } else if (process.env.NAIA_CONTROL_AUTO_RETRY === '1') {
     await applyOnce();
   } else {
