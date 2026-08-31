@@ -9,13 +9,12 @@ const mutant = process.env.NAIA_CONTROL_MUTANT === '1';
 if (!objectiveId) throw new Error('--objective-id required');
 
 function emit(event, fields = {}) {
-  process.stdout.write(JSON.stringify({
-    event,
-    candidate: mutant ? 'control-mutant' : 'control-stable',
-    objectiveId,
-    timestamp: new Date().toISOString(),
-    ...fields
-  }) + '\n');
+  process.stdout.write(JSON.stringify({ event, candidate: mutant ? 'control-mutant' : 'control-stable', objectiveId, timestamp: new Date().toISOString(), ...fields }) + '\n');
+}
+
+if (process.env.NAIA_CONTROL_BLOCKED === '1') {
+  emit('fatal_error', { error: "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'candidate-sdk'" });
+  process.exit(1);
 }
 
 if (command === 'status') {
@@ -24,20 +23,13 @@ if (command === 'status') {
   const related = operations.filter((entry) => {
     try { return JSON.parse(entry.payload).objectiveId === objectiveId; } catch { return false; }
   });
-  console.log(JSON.stringify({
-    objectiveId,
-    state: related.length > 0 ? 'COMPLETED' : 'FAILED',
-    evidenceComplete: related.reduce((n, e) => n + e.applyCount, 0) === 1
-  }));
+  console.log(JSON.stringify({ objectiveId, state: related.length > 0 ? 'COMPLETED' : 'FAILED', evidenceComplete: related.reduce((n, e) => n + e.applyCount, 0) === 1 }));
   process.exit(0);
 }
 
 if (!requestedOperationId) throw new Error('--operation-id required');
 if (!oracleUrl) throw new Error('--oracle-url required');
-const operationId = mutant && command === 'resume'
-  ? `${requestedOperationId}:drift`
-  : requestedOperationId;
-
+const operationId = mutant && command === 'resume' ? `${requestedOperationId}:drift` : requestedOperationId;
 emit('adapter_ready', { operationId });
 emit('objective_persisted', { operationId, recovered: command === 'resume' });
 
@@ -47,9 +39,7 @@ try {
     headers: {
       'content-type': 'application/json',
       'x-operation-id': operationId,
-      ...(process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1'
-        ? { 'x-drop-response-after-apply-once': '1' }
-        : {})
+      ...(process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1' ? { 'x-drop-response-after-apply-once': '1' } : {})
     },
     body: JSON.stringify({ objectiveId, operationId, command })
   });
