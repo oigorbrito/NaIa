@@ -22,15 +22,7 @@ function spawnWorker(workerId, env) {
     env: { ...env, NAIA_T5_WORKER_ID: workerId },
     stdio: ['pipe', 'pipe', 'pipe']
   });
-  const state = {
-    workerId,
-    child,
-    pid: child.pid ?? null,
-    events: [],
-    stderr: '',
-    waiters: [],
-    exit: null
-  };
+  const state = { workerId, child, pid: child.pid ?? null, events: [], stderr: '', waiters: [], exit: null };
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk) => { state.stderr += chunk; });
   const rl = readline.createInterface({ input: child.stdout });
@@ -155,18 +147,7 @@ export async function runTemporalT5TwoWorker({
     );
     schedule.push('worker-B-new-authority');
 
-    command(workerB, { command: 'complete', attempt: 2, origin: 'new-authority' });
-    const completionB = await waitForEvent(
-      workerB,
-      (event) => event.event === 'completion_response' && event.attempt === 2,
-      timeoutMs,
-      'attempt 2 completion response'
-    );
-    schedule.push('worker-B-completion-submitted');
-
-    const waiting = await waitForWorkflowPhase(handle, 'WAITING_FINAL_RELEASE', timeoutMs);
-    schedule.push('workflow-confirmed-new-completion-authoritative');
-
+    // T5 live ownership race: A tries its old token while B owns attempt 2, before B completes.
     command(workerA, { command: 'complete', attempt: 1, origin: 'old-authority' });
     const completionA = await waitForEvent(
       workerA,
@@ -174,7 +155,20 @@ export async function runTemporalT5TwoWorker({
       timeoutMs,
       'attempt 1 stale completion response'
     );
-    schedule.push('worker-A-stale-completion-submitted');
+    schedule.push('worker-A-stale-completion-during-B-ownership');
+
+    const postStaleState = await waitForWorkflowPhase(handle, 'ACTIVITY_PENDING', timeoutMs);
+    schedule.push('post-stale-workflow-still-pending');
+
+    command(workerB, { command: 'complete', attempt: 2, origin: 'new-authority' });
+    const completionB = await waitForEvent(
+      workerB,
+      (event) => event.event === 'completion_response' && event.attempt === 2,
+      timeoutMs,
+      'attempt 2 completion response'
+    );
+    const waiting = await waitForWorkflowPhase(handle, 'WAITING_FINAL_RELEASE', timeoutMs);
+    schedule.push('worker-B-completion-authoritative');
 
     await handle.signal(t5ReleaseFinalSignal);
     const workflowResult = await handle.result();
@@ -183,6 +177,9 @@ export async function runTemporalT5TwoWorker({
 
     const oldAuthorityIdentity = `temporal-activity-task-token:${attemptA.taskTokenBase64}`;
     const newAuthorityIdentity = `temporal-activity-task-token:${attemptB.taskTokenBase64}`;
+    const staleRejected = completionA.accepted === false && completionA.staleRejected === true;
+    const staleDidNotAdvanceWorkflow = postStaleState.phase === 'ACTIVITY_PENDING';
+
     return {
       oldWorkerIdentity: `${readyA.workerIdentity}`,
       newWorkerIdentity: `${readyB.workerIdentity}`,
@@ -194,15 +191,18 @@ export async function runTemporalT5TwoWorker({
         attemptA.taskTokenBase64 !== attemptB.taskTokenBase64 &&
         attemptA.objectiveId === attemptB.objectiveId,
       oldAuthorityHeldUntilTakeover: workerA.exit === null,
+      staleCompletion: {
+        attempted: true,
+        attemptedBeforeNewCompletion: true,
+        rejectedOrNonAuthoritative: staleRejected && staleDidNotAdvanceWorkflow,
+        becameAuthoritative: !(staleRejected && staleDidNotAdvanceWorkflow),
+        response: completionA
+      },
+      newAuthorityStillCurrentAfterStaleAttempt: staleRejected && staleDidNotAdvanceWorkflow,
       newAuthorityCompletion: {
         attempted: true,
         acceptedOrAuthoritative: completionB.accepted === true && waiting.phase === 'WAITING_FINAL_RELEASE',
         response: completionB
-      },
-      staleCompletion: {
-        attempted: true,
-        rejectedOrNonAuthoritative: completionA.accepted === false && completionA.staleRejected === true,
-        response: completionA
       },
       finalAuthorityIdentity: workflowResult?.origin === 'new-authority' ? newAuthorityIdentity : null,
       finalResultOrigin: workflowResult?.origin ?? null,
@@ -215,6 +215,7 @@ export async function runTemporalT5TwoWorker({
         schedule,
         workerA: { pid: workerA.pid, ready: readyA, attempt: attemptA, events: workerA.events, stderr: workerA.stderr },
         workerB: { pid: workerB.pid, ready: readyB, attempt: attemptB, events: workerB.events, stderr: workerB.stderr },
+        postStaleWorkflowState: postStaleState,
         workflowWaitingState: waiting,
         workflowDescription: description,
         workflowResult
