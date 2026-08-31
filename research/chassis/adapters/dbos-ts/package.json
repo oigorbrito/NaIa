@@ -1,0 +1,11 @@
+{
+  "name": "naia-chassis-adapter-dbos-ts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dbos-inc/dbos-sdk": "4.27.0"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  }
+}
