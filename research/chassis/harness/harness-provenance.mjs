@@ -4,6 +4,7 @@ import path from 'node:path';
 
 export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/benchmark-execution-readiness.mjs',
+  'research/chassis/harness/benchmark-promotion-gate.mjs',
   'research/chassis/harness/candidate-experiment.mjs',
   'research/chassis/harness/candidate-setup.mjs',
   'research/chassis/harness/common-runner.mjs',
