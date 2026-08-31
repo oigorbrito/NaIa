@@ -16,8 +16,9 @@ async function performExternalEffectInternal(input) {
   const attempt = DBOS.stepStatus?.currentAttempt ?? 0;
   const { oracleUrl, objectiveId, operationId } = input;
   const injectResponseLoss = process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1';
+  const nonIdempotentProvider = process.env.NAIA_NON_IDEMPOTENT_PROVIDER === '1';
 
-  emit('external_request_starting', { objectiveId, operationId, injectResponseLoss });
+  emit('external_request_starting', { objectiveId, operationId, injectResponseLoss, nonIdempotentProvider });
 
   try {
     const response = await fetch(`${oracleUrl}/apply`, {
@@ -25,7 +26,8 @@ async function performExternalEffectInternal(input) {
       headers: {
         'content-type': 'application/json',
         'x-operation-id': operationId,
-        ...(injectResponseLoss ? { 'x-drop-response-after-apply-once': '1' } : {})
+        ...(injectResponseLoss ? { 'x-drop-response-after-apply-once': '1' } : {}),
+        ...(nonIdempotentProvider ? { 'x-non-idempotent-provider': '1' } : {})
       },
       body: JSON.stringify({ objectiveId, operationId, attempt })
     });
