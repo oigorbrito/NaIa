@@ -78,7 +78,7 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
   const baseEnv = { ...env, NAIA_ORACLE_URL: oracleUrl, NAIA_OBJECTIVE_ID: objectiveId };
 
   let initial;
-  let resume;
+  let resume = null;
   let statusProcess;
   try {
     if (mutantId === 'T7') {
@@ -105,15 +105,8 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
         env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '1' },
         timeoutMs
       });
-      resume = initial.terminalEvent?.event === 'objective_completed'
-        ? null
-        : await runUntilTerminal({
-            command: process.execPath,
-            args: [adapter, 'resume', ...commonArgs],
-            cwd,
-            env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '0' },
-            timeoutMs
-          });
+      // No restart is allowed inside a T8 repetition. If the measurement cutoff kills
+      // a non-terminating process, the repetition cannot pass as isolated T8 evidence.
     }
 
     statusProcess = await runToExit({
@@ -143,6 +136,7 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
         }
       : {
           exactlyOneResponseLoss: totalResponseLossCount === 1,
+          measurementCutoffNotReached: initial.timedOut !== true,
           exactlyOneExternalApply: totalApplyCount === 1,
           stableOperationIdentity: related.length === 1,
           durableAuthorityResponsiveAfterResponseLoss: durableAuthorityAlive,
@@ -169,7 +163,17 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
             durableAuthorityAlive
           },
       workload: { objectiveId, operationId },
-      rawObservations: { candidate, initial, resume, statusProcess, status, oracleOperations: related, totalApplyCount, totalResponseLossCount },
+      rawObservations: {
+        candidate,
+        initial,
+        resume,
+        statusProcess,
+        status,
+        oracleOperations: related,
+        totalApplyCount,
+        totalResponseLossCount,
+        measurementCutoffKilledProcess: mutantId === 'T8' && initial.timedOut === true
+      },
       acceptanceChecks
     };
   } finally {
