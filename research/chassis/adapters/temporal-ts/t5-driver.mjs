@@ -34,8 +34,9 @@ export async function runTemporalT5({
   address = process.env.TEMPORAL_ADDRESS ?? '127.0.0.1:7233',
   namespace = process.env.TEMPORAL_NAMESPACE ?? 'default',
   taskQueue = process.env.NAIA_TEMPORAL_T5_TASK_QUEUE ?? 'naia-chassis-t5-v1',
-  timeoutMs = 20000
+  timeoutMs = Number(process.env.NAIA_T5_TIMEOUT_MS ?? '20000')
 } = {}) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('T5 timeout must be a positive number');
   const attempts = [];
   attempts.waiters = [];
   t5Activities.setT5AttemptObserver((observation) => publishAttempt(attempts, observation));
@@ -84,7 +85,7 @@ export async function runTemporalT5({
     }
 
     const description = await handle.describe();
-    const evidence = {
+    return {
       oldAuthorityIdentity: `temporal-activity-task-token:${oldAttempt.taskTokenBase64}`,
       newAuthorityIdentity: `temporal-activity-task-token:${newAttempt.taskTokenBase64}`,
       authorityAdvanced: oldAttempt.attempt === 1 && newAttempt.attempt === 2,
@@ -113,8 +114,6 @@ export async function runTemporalT5({
         workflowDescription: description
       }
     };
-
-    return evidence;
   } finally {
     worker.shutdown();
     await runPromise.catch(() => {});
