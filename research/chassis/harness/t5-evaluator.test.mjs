@@ -20,6 +20,26 @@ test('T5 evaluator rejects unfenced stale overwrite control', () => {
   assert.equal(evaluated.checks.finalResultOriginIsNew, false);
 });
 
+test('T5 evaluator rejects single-worker evidence even when authority tokens differ', () => {
+  const control = executeDeterministicT5Control({ unsafe: false });
+  const evidence = controlResultToT5Evidence(control);
+  evidence.oldWorkerIdentity = 'same-worker';
+  evidence.newWorkerIdentity = 'same-worker';
+  const evaluated = evaluateT5Evidence(evidence);
+  assert.equal(evaluated.verdict, 'FAIL');
+  assert.equal(evaluated.checks.workersDistinct, false);
+});
+
+test('T5 evaluator fails closed when worker identity is unavailable', () => {
+  const control = executeDeterministicT5Control({ unsafe: false });
+  const evidence = controlResultToT5Evidence(control);
+  evidence.oldWorkerIdentity = null;
+  const evaluated = evaluateT5Evidence(evidence);
+  assert.equal(evaluated.verdict, 'FAIL');
+  assert.equal(evaluated.checks.oldWorkerConcrete, false);
+  assert.equal(evaluated.checks.workersDistinct, false);
+});
+
 test('T5 evaluator fails closed when authority identity is not concrete', () => {
   const control = executeDeterministicT5Control({ unsafe: false });
   const evidence = controlResultToT5Evidence(control);
