@@ -10,6 +10,10 @@ export function createExternalEffectOracle() {
     return structuredClone(entry);
   }
 
+  function snapshotAll() {
+    return Array.from(operations.values(), (entry) => structuredClone(entry));
+  }
+
   async function start() {
     if (server) throw new Error('oracle already started');
 
@@ -64,6 +68,12 @@ export function createExternalEffectOracle() {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/operations') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(snapshotAll()));
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname.startsWith('/operations/')) {
         const operationId = decodeURIComponent(url.pathname.slice('/operations/'.length));
         const entry = snapshot(operationId);
@@ -104,5 +114,5 @@ export function createExternalEffectOracle() {
     await new Promise((resolve, reject) => current.close((err) => err ? reject(err) : resolve()));
   }
 
-  return { start, stop, snapshot };
+  return { start, stop, snapshot, snapshotAll };
 }
