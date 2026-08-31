@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@dbos-inc/dbos-sdk": "4.27.0"
+    "@dbos-inc/dbos-sdk": "4.27.6"
   },
   "engines": {
     "node": ">=22 <25"
