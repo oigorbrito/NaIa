@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.mjs';
 
+export const COMMON_RUNNER_FORMAL_SUPPORT = Object.freeze({
+  T7: Object.freeze({ modes: Object.freeze(['local-process']), fault: 'worker-process-sigkill' }),
+  T8: Object.freeze({ modes: Object.freeze(['local-process', 'managed-controller']), fault: 'external-response-loss' })
+});
+
 async function spawnAndWait(command, args, options) {
   const child = spawn(command, args, options);
   let stdout = '';
@@ -24,13 +29,24 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
   const runner = path.join(repositoryRoot, 'research', 'chassis', 'harness', 'common-runner.mjs');
 
   return async function runHook(spec, setup, candidate) {
-    if (!['T7', 'T8'].includes(spec.mutantId)) {
+    const support = COMMON_RUNNER_FORMAL_SUPPORT[spec.mutantId];
+    if (!support) {
       return {
         blocked: false,
         blocker: null,
         fault: { intended: spec.mutantId, injected: false, targetKind: null, targetIdentity: null, signal: null, durableAuthorityAlive: null },
         workload: {},
-        rawObservations: { reason: 'COMMON_RUNNER_CURRENT_SLICE_SUPPORTS_ONLY_T7_T8' },
+        rawObservations: { reason: 'COMMON_RUNNER_CURRENT_SLICE_DOES_NOT_IMPLEMENT_THIS_CRITICAL_MUTANT' },
+        acceptanceChecks: {}
+      };
+    }
+    if (!support.modes.includes(candidate.mode)) {
+      return {
+        blocked: false,
+        blocker: null,
+        fault: { intended: spec.mutantId, injected: false, targetKind: 'worker-process-unaddressed', targetIdentity: null, signal: null, durableAuthorityAlive: null },
+        workload: {},
+        rawObservations: { reason: 'COMMON_RUNNER_MUTANT_NOT_IMPLEMENTED_FOR_CANDIDATE_MODE', supportedModes: support.modes, candidateMode: candidate.mode },
         acceptanceChecks: {}
       };
     }
