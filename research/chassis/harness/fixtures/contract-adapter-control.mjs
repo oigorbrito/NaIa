@@ -1,3 +1,5 @@
+import { holdAfterExternalEffectIfRequested } from '../fault-barrier.mjs';
+
 const command = process.argv[2];
 const args = new Map();
 for (let i = 3; i < process.argv.length; i += 2) args.set(process.argv[i], process.argv[i + 1]);
@@ -38,7 +40,7 @@ if (process.env.NAIA_CONTROL_NO_KILLPOINT === '1' && command === 'start') {
   process.exit(0);
 }
 
-try {
+async function applyOnce() {
   const response = await fetch(`${oracleUrl}/apply`, {
     method: 'POST',
     headers: {
@@ -51,9 +53,18 @@ try {
   if (!response.ok) throw new Error(`oracle responded ${response.status}`);
   const result = await response.json();
   emit('external_effect_observed_before_checkpoint', { operationId, result });
+  await holdAfterExternalEffectIfRequested();
   emit('external_request_confirmed', { operationId, result });
   emit('objective_completed', { operationId, result });
+}
+
+try {
+  await applyOnce();
 } catch (error) {
   emit('external_request_applied_or_ambiguous', { operationId, error: String(error) });
-  setInterval(() => {}, 1000);
+  if (process.env.NAIA_CONTROL_AUTO_RETRY === '1') {
+    await applyOnce();
+  } else {
+    setInterval(() => {}, 1000);
+  }
 }
