@@ -80,7 +80,7 @@ async function syntheticBlockedRepository() {
   return root;
 }
 
-test('formal preregistered single-run records missing SDK as valid BLOCKED evidence without executing fault', async (t) => {
+test('declared Temporal T7 single-run records missing SDK as valid BLOCKED evidence without executing fault', async (t) => {
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
@@ -105,9 +105,40 @@ test('formal preregistered single-run records missing SDK as valid BLOCKED evide
   assert.equal(result.record.cleanup.status, 'NOT_APPLICABLE');
 });
 
-test('formal single-run refuses T15 because it is outside the preregistered critical ledger', async () => {
+test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SDK is missing', async (t) => {
+  const repositoryRoot = await syntheticBlockedRepository();
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+
+  const result = await runFormalSingle({
+    repositoryRoot,
+    candidateName: 'Temporal TypeScript',
+    mutantId: 'T5',
+    repetition: 1,
+    env: {},
+    timeoutMs: 1000
+  });
+
+  assert.equal(result.valid, true, result.validationErrors.join('\n'));
+  assert.equal(result.record.experimentId, 'temporal-typescript-t5-001');
+  assert.equal(result.record.randomSeed, 1050001);
+  assert.equal(result.record.verdict, 'BLOCKED');
+  assert.equal(result.record.run.fault.injected, false);
+});
+
+test('formal single-run rejects a critical mutant without a declared executor before record creation', async (t) => {
+  const repositoryRoot = await syntheticBlockedRepository();
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
   await assert.rejects(
-    runFormalSingle({ repositoryRoot: '/unused', candidateName: 'Temporal TypeScript', mutantId: 'T15', repetition: 1, env: {} }),
-    /supports only T7 or T8/
+    runFormalSingle({ repositoryRoot, candidateName: 'Temporal TypeScript', mutantId: 'T11', repetition: 1, env: {} }),
+    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Temporal TypeScript\/T11/
+  );
+});
+
+test('formal single-run rejects T15 because it is outside the declared formal executor set', async (t) => {
+  const repositoryRoot = await syntheticBlockedRepository();
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+  await assert.rejects(
+    runFormalSingle({ repositoryRoot, candidateName: 'Temporal TypeScript', mutantId: 'T15', repetition: 1, env: {} }),
+    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Temporal TypeScript\/T15/
   );
 });
