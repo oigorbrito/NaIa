@@ -1,0 +1,12 @@
+{
+  "name": "naia-research-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:chassis",
+    "test:chassis": "node --test research/chassis/harness/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  }
+}
