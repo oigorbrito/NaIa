@@ -41,18 +41,32 @@ async function syntheticBlockedRepository() {
   };
   const capabilities = {
     schemaVersion: 1,
-    candidates: [{
-      candidate: 'Temporal TypeScript',
-      version: '1.23.0',
-      source_ref: 'temporalio/sdk-typescript v1.23.0',
-      execution_package: { '@temporalio/worker': '1.23.0' },
-      package_manifest: 'research/chassis/adapters/temporal-ts/package.json',
-      adapter: 'research/chassis/adapters/temporal-ts/adapter.mjs',
-      mode: 'local-process',
-      required_env: [],
-      worker_authority_boundary: 'synthetic Temporal worker boundary',
-      blocker: 'B001'
-    }]
+    candidates: [
+      {
+        candidate: 'Temporal TypeScript',
+        version: '1.23.0',
+        source_ref: 'temporalio/sdk-typescript v1.23.0',
+        execution_package: { '@temporalio/worker': '1.23.0' },
+        package_manifest: 'research/chassis/adapters/temporal-ts/package.json',
+        adapter: 'research/chassis/adapters/temporal-ts/adapter.mjs',
+        mode: 'local-process',
+        required_env: [],
+        worker_authority_boundary: 'synthetic Temporal worker boundary',
+        blocker: 'B001'
+      },
+      {
+        candidate: 'DBOS TypeScript',
+        version: '4.27.6',
+        source_ref: 'dbos-inc/dbos-transact-ts v4.27',
+        execution_package: { '@dbos-inc/dbos-sdk': '4.27.6' },
+        package_manifest: 'research/chassis/adapters/dbos-ts/package.json',
+        adapter: 'research/chassis/adapters/dbos-ts/adapter.mjs',
+        mode: 'local-process',
+        required_env: ['DBOS_SYSTEM_DATABASE_URL'],
+        worker_authority_boundary: 'synthetic DBOS executor boundary',
+        blocker: 'B001'
+      }
+    ]
   };
 
   await writeJson(root, 'research/chassis/experiment-protocol.v1.json', protocol);
@@ -73,9 +87,19 @@ async function syntheticBlockedRepository() {
     type: 'module',
     dependencies: { '@temporalio/worker': '1.23.0' }
   });
-  const adapter = path.join(root, 'research/chassis/adapters/temporal-ts/adapter.mjs');
-  await mkdir(path.dirname(adapter), { recursive: true });
-  await writeFile(adapter, '// synthetic adapter; runtime dependency intentionally absent\n');
+  const temporalAdapter = path.join(root, 'research/chassis/adapters/temporal-ts/adapter.mjs');
+  await mkdir(path.dirname(temporalAdapter), { recursive: true });
+  await writeFile(temporalAdapter, '// synthetic Temporal adapter; runtime dependency intentionally absent\n');
+
+  await writeJson(root, 'research/chassis/adapters/dbos-ts/package.json', {
+    name: 'synthetic-dbos-adapter',
+    private: true,
+    type: 'module',
+    dependencies: { '@dbos-inc/dbos-sdk': '4.27.6' }
+  });
+  const dbosAdapter = path.join(root, 'research/chassis/adapters/dbos-ts/adapter.mjs');
+  await mkdir(path.dirname(dbosAdapter), { recursive: true });
+  await writeFile(dbosAdapter, '// synthetic DBOS adapter; runtime dependency intentionally absent\n');
 
   return root;
 }
@@ -123,6 +147,33 @@ test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SD
   assert.equal(result.record.randomSeed, 1050001);
   assert.equal(result.record.verdict, 'BLOCKED');
   assert.equal(result.record.run.fault.injected, false);
+});
+
+test('declared DBOS T16 single-run records missing SDK/env as valid BLOCKED evidence before the driver executes', async (t) => {
+  const repositoryRoot = await syntheticBlockedRepository();
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+
+  const result = await runFormalSingle({
+    repositoryRoot,
+    candidateName: 'DBOS TypeScript',
+    mutantId: 'T16',
+    repetition: 1,
+    env: {},
+    timeoutMs: 1000
+  });
+
+  assert.equal(result.valid, true, result.validationErrors.join('\n'));
+  assert.equal(result.record.experimentId, 'dbos-typescript-t16-001');
+  assert.equal(result.record.randomSeed, 2160001);
+  assert.equal(result.record.verdict, 'BLOCKED');
+  assert.equal(result.record.setup.status, 'BLOCKED_SETUP');
+  assert.match(result.record.blocker, /(DEPENDENCY_NOT_INSTALLED|REQUIRED_ENV_MISSING)/);
+  assert.match(result.record.setup.harnessSha256, /^[a-f0-9]{64}$/);
+  assert.equal(result.record.setup.parameters.harnessProvenanceMode, 'FORMAL_BUNDLE');
+  assert.equal(result.record.run.fault.intended, 'T16');
+  assert.equal(result.record.run.fault.injected, false);
+  assert.deepEqual(result.record.run.rawObservations, { setupBlocked: true });
+  assert.equal(result.record.cleanup.status, 'NOT_APPLICABLE');
 });
 
 test('formal single-run rejects a critical mutant without a declared executor before record creation', async (t) => {
