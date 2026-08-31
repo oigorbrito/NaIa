@@ -59,9 +59,34 @@ stale_completion_rejected
 fatal_error
 ```
 
-The harness may kill the adapter immediately after any emitted event.
+The harness may kill the adapter immediately after any emitted event when the adapter process is itself the worker/executor under test.
 
 An adapter must not emit an event before the underlying semantic point has occurred merely to make testing convenient.
+
+## Managed worker kill boundary
+
+For a `managed-controller` candidate, killing the adapter/controller process is not evidence of worker failure. A T7 worker crash requires a separate hook that targets the real task worker process or worker container while the durable authority remains alive.
+
+The hook must return a machine-readable receipt containing at least:
+
+```json
+{
+  "targetKind": "worker_process|worker_container",
+  "targetIdentity": "candidate-specific worker identity",
+  "pid": 1234,
+  "containerId": null,
+  "killed": true,
+  "signal": "SIGKILL",
+  "controllerOnly": false,
+  "durableAuthority": "candidate durable control-plane identity",
+  "durableAuthorityAlive": true,
+  "timestamp": "RFC3339"
+}
+```
+
+`pid` is required for `worker_process`; `containerId` is required for `worker_container`. A missing/invalid receipt, graceful shutdown, controller-only target, or loss of the durable authority makes the mutant `BLOCKED` or `INCONCLUSIVE`, never `PASS`.
+
+For Trigger.dev v4.5.15 specifically, upstream source separates the controller/executor from `TaskRunProcess`. `TaskRunProcess` forks the task worker as a child process and records its PID; `TaskRunProcessProvider` can kill that process with `SIGKILL`. The reproducible T7 target is therefore the actual `TaskRunProcess` child (or its equivalent worker container in self-hosted deployment), not the NaIA API controller.
 
 ## Status response
 
@@ -97,7 +122,8 @@ Adapters may not:
 - add a custom database transaction unavailable to other candidates solely to win a test;
 - turn a process kill mutant into a caught exception;
 - replace the common external oracle with a candidate-native mock;
-- mark ambiguous external effects successful without consulting the oracle/provider state.
+- mark ambiguous external effects successful without consulting the oracle/provider state;
+- substitute controller/process-manager death for the actual worker/task-process crash required by a mutant.
 
 ## Evidence identity
 
@@ -112,4 +138,6 @@ Every run must record:
 - objective ID;
 - external operation ID;
 - mutant ID;
-- repetition number.
+- repetition number;
+- actual killed process/container identity for worker-crash mutants;
+- durable authority identity and liveness at the time of the kill.
