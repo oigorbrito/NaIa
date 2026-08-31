@@ -30,7 +30,7 @@ export function buildExecutionPlan(protocol, faultSuite) {
 }
 
 function classify({ setup, run, acceptanceChecks, cleanup }) {
-  if (setup.status === 'BLOCKED_SETUP') return 'BLOCKED';
+  if (setup.status === 'BLOCKED_SETUP' || run.blocked === true) return 'BLOCKED';
   if (run.fault.injected !== true) return 'INCONCLUSIVE';
   if (cleanup.status === 'FAIL') return 'INCONCLUSIVE';
   const checks = Object.values(acceptanceChecks);
@@ -85,6 +85,11 @@ export async function executeExperiment(spec, hooks) {
   const acceptanceChecks = runResult.acceptanceChecks ?? {};
   const verdict = classify({ setup: setupResult, run: runResult, acceptanceChecks, cleanup: cleanupResult });
   const finishedAt = new Date().toISOString();
+  const blocker = setupResult.status === 'BLOCKED_SETUP'
+    ? (setupResult.blocker ?? 'SETUP_BLOCKED')
+    : runResult.blocked === true
+      ? (runResult.blocker ?? 'RUNTIME_PREREQUISITE_BLOCKED')
+      : null;
 
   const record = {
     schemaVersion: 1,
@@ -115,7 +120,7 @@ export async function executeExperiment(spec, hooks) {
     cleanup: cleanupResult,
     artifacts,
     verdict,
-    blocker: setupResult.status === 'BLOCKED_SETUP' ? (setupResult.blocker ?? 'SETUP_BLOCKED') : null
+    blocker
   };
 
   const validation = validateExperimentRecord(record);
