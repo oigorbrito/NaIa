@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://naia.local/research/chassis/experiment-record.schema.v1.json",
+  "title": "NaIA Chassis Experiment Record V1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "experimentId",
+    "candidate",
+    "mutantId",
+    "repetition",
+    "setup",
+    "run",
+    "cleanup",
+    "artifacts",
+    "verdict"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "experimentId": {"type": "string", "minLength": 1},
+    "candidate": {"type": "string", "minLength": 1},
+    "mutantId": {"type": "string", "pattern": "^T([1-9]|1[0-6])$"},
+    "repetition": {"type": "integer", "minimum": 1},
+    "setup": {
+      "type": "object",
+      "required": ["status", "candidateVersion", "adapterSha256", "harnessSha256", "environment", "parameters", "cleanupVerifiedBeforeRun"],
+      "properties": {
+        "status": {"enum": ["READY", "BLOCKED_SETUP"]},
+        "candidateVersion": {"type": "string", "minLength": 1},
+        "candidateSourceRef": {"type": ["string", "null"]},
+        "adapterSha256": {"type": "string", "minLength": 16},
+        "harnessSha256": {"type": "string", "minLength": 16},
+        "dependencyIdentity": {"type": ["object", "null"]},
+        "environment": {
+          "type": "object",
+          "required": ["os", "arch", "runtime"],
+          "properties": {
+            "os": {"type": "string"},
+            "arch": {"type": "string"},
+            "runtime": {"type": "string"},
+            "packageManager": {"type": ["string", "null"]},
+            "infrastructure": {"type": "object"},
+            "requiredEnvNames": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+          },
+          "additionalProperties": true
+        },
+        "parameters": {"type": "object"},
+        "cleanupVerifiedBeforeRun": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "run": {
+      "type": "object",
+      "required": ["startedAt", "finishedAt", "fault", "workload", "rawObservations", "acceptanceChecks"],
+      "properties": {
+        "startedAt": {"type": "string"},
+        "finishedAt": {"type": "string"},
+        "workload": {"type": "object"},
+        "fault": {
+          "type": "object",
+          "required": ["intended", "injected"],
+          "properties": {
+            "intended": {"type": "string", "minLength": 1},
+            "injected": {"type": "boolean"},
+            "targetKind": {"type": ["string", "null"]},
+            "targetIdentity": {"type": ["string", "number", "null"]},
+            "signal": {"type": ["string", "null"]},
+            "durableAuthorityAlive": {"type": ["boolean", "null"]}
+          },
+          "additionalProperties": true
+        },
+        "rawObservations": {"type": "object"},
+        "acceptanceChecks": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "cleanup": {
+      "type": "object",
+      "required": ["status", "workerCleanup", "durableStateCleanup", "oracleCleanup", "temporaryResourcesCleanup"],
+      "properties": {
+        "status": {"enum": ["PASS", "FAIL", "NOT_APPLICABLE"]},
+        "workerCleanup": {"type": "boolean"},
+        "durableStateCleanup": {"type": "boolean"},
+        "oracleCleanup": {"type": "boolean"},
+        "temporaryResourcesCleanup": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "sha256"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "path": {"type": ["string", "null"]},
+          "sha256": {"type": "string", "minLength": 16}
+        }
+      }
+    },
+    "verdict": {"enum": ["PASS", "FAIL", "BLOCKED", "INCONCLUSIVE", "PARTIAL"]},
+    "blocker": {"type": ["string", "null"]},
+    "notes": {"type": ["string", "null"]}
+  },
+  "additionalProperties": true
+}
