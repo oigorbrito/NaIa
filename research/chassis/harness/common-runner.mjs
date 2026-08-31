@@ -44,8 +44,7 @@ async function runUntilTerminal({ command, args, cwd, env, timeoutMs }) {
     child.once('error', reject);
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
-  clearTimeout(timer);
-  rl.close();
+  clearTimeout(timer); rl.close();
   return { ...result, events, stderr: stderr.join(''), terminalEvent, timedOut, terminationIssued };
 }
 
@@ -85,6 +84,19 @@ function parseStatus(stdout) {
   return lines.reverse().find((entry) => typeof entry.state === 'string') ?? null;
 }
 
+function prerequisiteFailure(initial, resume, statusResult) {
+  const text = [
+    initial?.stderr,
+    resume?.stderr,
+    statusResult?.stderr,
+    JSON.stringify(initial?.events ?? []),
+    JSON.stringify(resume?.events ?? []),
+    statusResult?.stdout
+  ].filter(Boolean).join('\n');
+  const pattern = /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i;
+  return pattern.test(text) ? text : null;
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   const adapter = path.resolve(args.get('--adapter') ?? '');
@@ -98,9 +110,7 @@ async function main() {
   const externalOracleUrl = args.get('--oracle-url');
 
   if (!adapter) throw new Error('--adapter is required');
-  if (!['local-process', 'managed-controller'].includes(mode)) {
-    throw new Error('--mode must be local-process or managed-controller');
-  }
+  if (!['local-process', 'managed-controller'].includes(mode)) throw new Error('--mode must be local-process or managed-controller');
 
   let oracle = null;
   let oracleUrl = externalOracleUrl;
@@ -118,10 +128,7 @@ async function main() {
   let statusResult;
 
   try {
-    const killOnEvent = mode === 'local-process'
-      ? 'external_request_applied_or_ambiguous'
-      : 'objective_persisted';
-
+    const killOnEvent = mode === 'local-process' ? 'external_request_applied_or_ambiguous' : 'objective_persisted';
     initial = await runUntilKillpoint({
       command: process.execPath,
       args: [adapter, 'start', ...commonArgs],
@@ -135,10 +142,7 @@ async function main() {
       command: process.execPath,
       args: [adapter, 'resume', ...commonArgs],
       cwd,
-      env: {
-        ...baseEnv,
-        NAIA_DROP_RESPONSE_AFTER_APPLY: mode === 'managed-controller' ? '1' : '0'
-      },
+      env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: mode === 'managed-controller' ? '1' : '0' },
       timeoutMs
     });
 
@@ -168,6 +172,15 @@ async function main() {
     };
 
     const measuredPass = Object.values(checks).every(Boolean);
+    const prerequisiteError = related.length === 0 && !initial.killIssued
+      ? prerequisiteFailure(initial, resume, statusResult)
+      : null;
+    const verdict = prerequisiteError
+      ? 'BLOCKED'
+      : mode === 'managed-controller'
+        ? 'INCONCLUSIVE'
+        : measuredPass ? 'PASS' : 'FAIL';
+    const mutantVerdict = prerequisiteError ? 'BLOCKED' : (measuredPass ? 'PASS' : 'FAIL');
     const evidence = {
       schemaVersion: 1,
       candidate,
@@ -177,35 +190,36 @@ async function main() {
       startedAt,
       finishedAt: new Date().toISOString(),
       adapter: { path: adapter, sha256: await fileSha256(adapter) },
-      oracle: {
-        url: oracleUrl,
-        ownedByRunner: Boolean(oracle),
-        operations: related,
-        totalApplyCount,
-        totalResponseLossCount
-      },
+      oracle: { url: oracleUrl, ownedByRunner: Boolean(oracle), operations: related, totalApplyCount, totalResponseLossCount },
       initial,
       resume,
       status: { process: statusResult, parsed: status },
       checks,
       mutants: mode === 'local-process'
         ? {
-            T7_process_sigkill: measuredPass ? 'PASS' : 'FAIL',
-            T8_response_loss: measuredPass ? 'PASS' : 'FAIL',
-            T15_operation_identity: checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
+            T7_process_sigkill: mutantVerdict,
+            T8_response_loss: mutantVerdict,
+            T15_operation_identity: prerequisiteError
+              ? 'BLOCKED'
+              : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
           }
         : {
-            T7_worker_sigkill: 'NOT_EXECUTED',
-            T8_response_loss: measuredPass ? 'PASS' : 'FAIL',
-            T15_operation_identity: checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
+            T7_worker_sigkill: prerequisiteError ? 'BLOCKED' : 'NOT_EXECUTED',
+            T8_response_loss: mutantVerdict,
+            T15_operation_identity: prerequisiteError
+              ? 'BLOCKED'
+              : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
           },
-      verdict: mode === 'managed-controller' ? 'INCONCLUSIVE' : (measuredPass ? 'PASS' : 'FAIL'),
-      blocker: mode === 'managed-controller' ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7' : null
+      verdict,
+      blocker: prerequisiteError
+        ? 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT'
+        : mode === 'managed-controller' ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7' : null,
+      prerequisiteError: prerequisiteError ? prerequisiteError.slice(0, 4000) : null
     };
 
     if (outputPath) await writeFile(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
     process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
-    process.exitCode = evidence.verdict === 'FAIL' ? 1 : 0;
+    process.exitCode = evidence.verdict === 'PASS' ? 0 : evidence.verdict === 'FAIL' ? 1 : 2;
   } finally {
     if (oracle) await oracle.stop();
   }
