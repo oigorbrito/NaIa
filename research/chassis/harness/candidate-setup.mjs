@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { computeHarnessProvenance } from './harness-provenance.mjs';
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -22,7 +23,7 @@ function packageJsonPath(root, packageName) {
   return path.join(root, 'node_modules', ...packageName.split('/'), 'package.json');
 }
 
-export async function inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env = process.env }) {
+export async function inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env = process.env, formalProvenance = false }) {
   if (!candidate || typeof candidate !== 'object') throw new Error('candidate capability entry is required');
   if (!repositoryRoot) throw new Error('repositoryRoot is required');
   if (!harnessPath) throw new Error('harnessPath is required');
@@ -70,33 +71,52 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
     }))
   };
 
+  let harnessProvenance = null;
+  if (harnessPresent && formalProvenance) {
+    try {
+      harnessProvenance = await computeHarnessProvenance(repositoryRoot);
+    } catch (error) {
+      harnessProvenance = { error: String(error) };
+    }
+  }
+
   const blockers = [];
   if (!adapterPresent) blockers.push('ADAPTER_SOURCE_MISSING');
   if (!manifestPresent) blockers.push('PACKAGE_MANIFEST_MISSING');
   if (!harnessPresent) blockers.push('HARNESS_SOURCE_MISSING');
+  if (formalProvenance && (!harnessProvenance || harnessProvenance.error)) blockers.push('HARNESS_PROVENANCE_INCOMPLETE');
   if (packageChecks.some((entry) => !entry.declaredExact)) blockers.push('DEPENDENCY_PIN_MISMATCH');
   if (packageChecks.some((entry) => !entry.installedPresent)) blockers.push('DEPENDENCY_NOT_INSTALLED');
   if (packageChecks.some((entry) => entry.installedPresent && !entry.installedExact)) blockers.push('INSTALLED_DEPENDENCY_VERSION_MISMATCH');
   if (missingEnv.length > 0) blockers.push('REQUIRED_ENV_MISSING');
 
   const ready = blockers.length === 0;
+  const harnessSha256 = harnessPresent
+    ? formalProvenance
+      ? (harnessProvenance?.aggregateSha256 ?? '')
+      : sha256(await readFile(harnessPath))
+    : '';
+
+  if (formalProvenance) dependencyIdentity.harnessProvenance = harnessProvenance;
+
   return {
     status: ready ? 'READY' : 'BLOCKED_SETUP',
     blocker: ready ? null : blockers.join('+'),
     candidateVersion: candidate.version,
     candidateSourceRef: candidate.source_ref ?? null,
     adapterSha256: adapterPresent ? sha256(await readFile(adapterPath)) : '',
-    harnessSha256: harnessPresent ? sha256(await readFile(harnessPath)) : '',
+    harnessSha256,
     dependencyIdentity,
     parameters: {
       mode: candidate.mode,
       workerAuthorityBoundary: candidate.worker_authority_boundary,
       requiredEnvNames: requiredEnv,
       missingEnvNames: missingEnv,
-      blockerRegisterRef: candidate.blocker ?? null
+      blockerRegisterRef: candidate.blocker ?? null,
+      harnessProvenanceMode: formalProvenance ? 'FORMAL_BUNDLE' : 'SINGLE_FILE'
     },
     cleanupVerifiedBeforeRun: ready,
-    diagnostics: { adapterPresent, manifestPresent, harnessPresent, packageChecks, missingEnv, blockers }
+    diagnostics: { adapterPresent, manifestPresent, harnessPresent, harnessProvenance, packageChecks, missingEnv, blockers }
   };
 }
 
