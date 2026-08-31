@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "ENVIRONMENT_PREREQUISITE_PREFLIGHT",
+  "date": "2026-08-31",
+  "candidateVerdictAuthority": false,
+  "environment": {
+    "node": "v22.16.0",
+    "npm": "10.9.2",
+    "npmRegistryHost": "registry.npmjs.org",
+    "npmRegistryDnsResolution": "FAILED",
+    "observedError": "curl: (6) Could not resolve host: registry.npmjs.org"
+  },
+  "classification": {
+    "blockerId": "B001",
+    "verdict": "BLOCKED",
+    "scope": "candidate runtime installation/bootstrap",
+    "rule": "A missing package, required configuration, or bootstrap dependency before fault injection is not candidate FAIL."
+  },
+  "profiles": [
+    {
+      "profileId": "temporal-ts-restricted-v1",
+      "verdict": "BLOCKED",
+      "blockers": ["PACKAGE_NOT_INSTALLED"],
+      "missingPackages": [
+        "@temporalio/worker@1.23.0",
+        "@temporalio/client@1.23.0",
+        "@temporalio/workflow@1.23.0",
+        "@temporalio/activity@1.23.0"
+      ]
+    },
+    {
+      "profileId": "dbos-ts-v4.27",
+      "verdict": "BLOCKED",
+      "blockers": ["PACKAGE_NOT_INSTALLED", "REQUIRED_ENVIRONMENT_MISSING"],
+      "missingPackages": ["@dbos-inc/dbos-sdk@4.27.6"],
+      "missingEnvironment": ["DBOS_SYSTEM_DATABASE_URL"]
+    },
+    {
+      "profileId": "restate-ts-v1",
+      "verdict": "BLOCKED",
+      "blockers": ["PACKAGE_NOT_INSTALLED"],
+      "missingPackages": [
+        "@restatedev/restate-sdk@1.16.9",
+        "@restatedev/restate-sdk-clients@1.16.9"
+      ]
+    },
+    {
+      "profileId": "triggerdev-v4.5.15",
+      "verdict": "BLOCKED",
+      "blockers": ["PACKAGE_NOT_INSTALLED", "REQUIRED_ENVIRONMENT_MISSING"],
+      "missingPackages": [
+        "@trigger.dev/sdk@4.5.15",
+        "@trigger.dev/build@4.5.15",
+        "trigger.dev@4.5.15"
+      ],
+      "missingEnvironment": ["NAIA_TRIGGER_PROJECT_REF", "TRIGGER_SECRET_KEY"]
+    }
+  ],
+  "notes": [
+    "The package manifests themselves retain the frozen exact versions.",
+    "This evidence is environmental prerequisite evidence only and cannot establish PASS or FAIL for T7, T8, or T15.",
+    "The preflight was run without bootstrap probing because required artifacts were not installed; candidate runtime execution remains pending."
+  ]
+}
