@@ -88,6 +88,21 @@ test('drop-once fault is consumed by first request and retry succeeds with ident
   assert.equal(state.responseLossCount, 1);
 });
 
+test('global operations snapshot exposes identity drift across retries', async (t) => {
+  const oracle = createExternalEffectOracle();
+  const baseUrl = await oracle.start();
+  t.after(() => oracle.stop());
+
+  await post(baseUrl, 'mission-drift:attempt-1', { attempt: 1 });
+  await post(baseUrl, 'mission-drift:attempt-2', { attempt: 2 });
+
+  const response = await fetch(`${baseUrl}/operations`);
+  assert.equal(response.status, 200);
+  const operations = await response.json();
+  assert.equal(operations.length, 2);
+  assert.equal(operations.reduce((sum, entry) => sum + entry.applyCount, 0), 2);
+});
+
 test('missing operation id fails closed', async (t) => {
   const oracle = createExternalEffectOracle();
   const baseUrl = await oracle.start();
