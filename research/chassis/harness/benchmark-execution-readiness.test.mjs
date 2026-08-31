@@ -12,14 +12,14 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current gate records partial T5/T11/T12 support while keeping remaining executor gaps explicit', async () => {
+test('current gate records DBOS coverage for all six critical mutants while keeping cross-candidate gaps explicit', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
 
   assert.equal(result.ready, false);
   assert.equal(result.status, 'BENCHMARK_EXECUTION_NOT_READY');
-  assert.deepEqual(result.unsupportedMutants.sort(), ['T16']);
+  assert.deepEqual(result.unsupportedMutants, []);
   assert.deepEqual(result.unsupportedCandidateMutants, [
     {
       candidate: 'Temporal TypeScript', mutantId: 'T11', mode: 'local-process',
@@ -27,6 +27,10 @@ test('current gate records partial T5/T11/T12 support while keeping remaining ex
     },
     {
       candidate: 'Temporal TypeScript', mutantId: 'T12', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Temporal TypeScript', mutantId: 'T16', mode: 'local-process',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     },
     {
@@ -39,6 +43,10 @@ test('current gate records partial T5/T11/T12 support while keeping remaining ex
     },
     {
       candidate: 'Restate', mutantId: 'T12', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Restate', mutantId: 'T16', mode: 'local-process',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     },
     {
@@ -55,6 +63,10 @@ test('current gate records partial T5/T11/T12 support while keeping remaining ex
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T12', mode: 'managed-controller',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Trigger.dev', mutantId: 'T16', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     }
   ]);
@@ -93,11 +105,11 @@ test('candidate allowlist is enforced independently of execution mode', () => {
   assert.equal(result.unsupportedCandidateMutants[0].candidate, 'DBOS TypeScript');
 });
 
-test('assertBenchmarkExecutionReady fails closed with explicit remaining executor reasons', async () => {
+test('assertBenchmarkExecutionReady fails closed with explicit remaining candidate gaps', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /T16: formal executor not implemented/
+    /Temporal TypeScript\/T11: formal executor not implemented for candidate\/mode/
   );
 });
