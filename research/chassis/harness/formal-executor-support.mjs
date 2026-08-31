@@ -26,8 +26,8 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
   }),
   T16: Object.freeze({
     modes: Object.freeze(['local-process']),
-    candidates: Object.freeze(['DBOS TypeScript']),
-    fault: 'application-version-compatible-recovery-routing'
+    candidates: Object.freeze(['Temporal TypeScript', 'DBOS TypeScript']),
+    fault: 'native-semantic-compatibility-recovery'
   })
 });
 
