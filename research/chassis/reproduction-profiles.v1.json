@@ -9,12 +9,16 @@
     "node": ["22", "24"],
     "externalOracle": "research/chassis/harness/external-oracle.mjs",
     "crashController": "research/chassis/harness/crash-controller.mjs",
+    "commonRunner": "research/chassis/harness/common-runner.mjs",
     "faultSuite": "research/chassis/fault-suite.v1.json",
     "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+    "currentExecutableSlice": ["T7", "T8", "T15"],
+    "faultInjection": "The harness requests response loss; the common oracle consumes the response-loss fault exactly once per semantic operation. Candidate-native attempt counters are evidence only and do not decide which request is faulted.",
     "rules": [
       "Do not change oracle semantics per candidate",
       "Do not infer exactly-once for arbitrary external I/O",
       "Preserve semantic operation identity across retries/restarts",
+      "Reject identity drift by checking total related external effects across all operation IDs",
       "Record runtime/package/container identities for every run"
     ]
   },
@@ -23,6 +27,9 @@
       "id": "temporal-ts-restricted-v1",
       "candidate": "Temporal TypeScript",
       "status": "READY_FOR_INSTALLATION",
+      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "adapter": "research/chassis/adapters/temporal-ts/adapter.mjs",
+      "executionMode": "local-process",
       "sdkTag": "v1.23.0",
       "sdkPackages": {
         "@temporalio/worker": "1.23.0",
@@ -44,6 +51,9 @@
       "id": "dbos-ts-v4.27",
       "candidate": "DBOS TypeScript",
       "status": "READY_FOR_INSTALLATION",
+      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "adapter": "research/chassis/adapters/dbos-ts/adapter.mjs",
+      "executionMode": "local-process",
       "sourceTag": "v4.27",
       "publishedPackageObservedAtBaseline": "4.27.6",
       "sdkPackages": {
@@ -63,10 +73,14 @@
       "id": "restate-ts-v1",
       "candidate": "Restate",
       "status": "READY_FOR_INSTALLATION",
+      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "adapter": "research/chassis/adapters/restate-ts/adapter.mjs",
+      "executionMode": "local-process",
       "serverTag": "v1.7.8",
       "sdkTag": "v1.16.9",
       "sdkPackages": {
-        "@restatedev/restate-sdk": "1.16.9"
+        "@restatedev/restate-sdk": "1.16.9",
+        "@restatedev/restate-sdk-clients": "1.16.9"
       },
       "runtimePolicy": {
         "allowedNodeMajors": [22, 24]
@@ -78,14 +92,21 @@
       "id": "triggerdev-v4.5.15",
       "candidate": "Trigger.dev",
       "status": "READY_FOR_INSTALLATION",
+      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "adapter": "research/chassis/adapters/triggerdev/adapter.mjs",
+      "executionMode": "managed-controller",
       "releaseTag": "v4.5.15",
       "sdkPackages": {
-        "@trigger.dev/sdk": "4.5.15"
+        "@trigger.dev/sdk": "4.5.15",
+        "@trigger.dev/build": "4.5.15",
+        "trigger.dev": "4.5.15"
       },
       "selfHostedImage": "ghcr.io/triggerdotdev/trigger.dev:v4.5.15",
       "runtimePolicy": {
-        "allowedNodeMajors": [22, 24]
+        "allowedNodeMajors": [22, 24],
+        "requires": ["NAIA_TRIGGER_PROJECT_REF", "TRIGGER_SECRET_KEY", "reachable external oracle URL"]
       },
+      "t7Constraint": "Current Trigger.dev v4.5.15 documentation states that a CRASHED run means the worker process crashed and will not be retried. managed-controller mode only tests controller restart plus response-loss recovery; it MUST NOT be counted as T7 worker-SIGKILL evidence. A direct self-hosted worker crash hook is required before T7 can receive PASS or FAIL from this laboratory.",
       "externalEffectSemantics": "TASK_TRIGGER_IDEMPOTENCY_MUST_NOT_BE_COUNTED_AS_ARBITRARY_EXTERNAL_EFFECT_IDEMPOTENCY"
     }
   ]
