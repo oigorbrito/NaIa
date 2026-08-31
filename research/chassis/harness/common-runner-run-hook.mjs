@@ -6,22 +6,28 @@ import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.m
 import { evaluateT5Evidence } from './t5-evaluator.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
-async function spawnAndWait(command, args, options) {
+async function spawnAndWait(command, args, options, timeoutMs = null) {
   const child = spawn(command, args, options);
   let stdout = '';
   let stderr = '';
+  let timedOut = false;
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk) => { stdout += chunk; });
   child.stderr.on('data', (chunk) => { stderr += chunk; });
+  const timer = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs)
+    : null;
   const exitCode = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', resolve);
   });
-  return { exitCode, stdout, stderr };
+  if (timer) clearTimeout(timer);
+  return { exitCode, stdout, stderr, timedOut };
 }
 
 function runtimePrerequisiteFailure(processResult) {
+  if (processResult?.timedOut) return false;
   return /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i.test(
     `${processResult?.stdout ?? ''}\n${processResult?.stderr ?? ''}`
   );
@@ -31,9 +37,9 @@ async function runTemporalT5({ repositoryRoot, spec, setup, candidate, env, time
   const driver = path.join(repositoryRoot, 'research', 'chassis', 'adapters', 'temporal-ts', 't5-driver.mjs');
   const processResult = await spawnAndWait(process.execPath, [driver], {
     cwd: path.dirname(driver),
-    env,
+    env: { ...env, NAIA_T5_TIMEOUT_MS: String(timeoutMs) },
     stdio: ['ignore', 'pipe', 'pipe']
-  });
+  }, timeoutMs + 5000);
 
   let evidence;
   try {
@@ -49,7 +55,9 @@ async function runTemporalT5({ repositoryRoot, spec, setup, candidate, env, time
       },
       workload: { experimentId: spec.experimentId },
       rawObservations: {
-        reason: 'TEMPORAL_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
+        reason: processResult.timedOut
+          ? 'TEMPORAL_T5_DRIVER_TIMEOUT'
+          : 'TEMPORAL_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
         process: processResult,
         parseError: String(error),
         setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
@@ -155,7 +163,7 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
         cwd: path.dirname(adapter),
         env,
         stdio: ['ignore', 'pipe', 'pipe']
-      });
+      }, timeoutMs + 5000);
       let evidence;
       try {
         evidence = JSON.parse(await readFile(output, 'utf8'));
@@ -166,7 +174,7 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
           fault: { intended: spec.mutantId, injected: false, targetKind: null, targetIdentity: null, signal: null, durableAuthorityAlive: null },
           workload: {},
           rawObservations: {
-            reason: 'COMMON_RUNNER_DID_NOT_EMIT_VALID_EVIDENCE',
+            reason: processResult.timedOut ? 'COMMON_RUNNER_PROCESS_TIMEOUT' : 'COMMON_RUNNER_DID_NOT_EMIT_VALID_EVIDENCE',
             process: processResult,
             readError: String(error)
           },
