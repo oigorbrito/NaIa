@@ -1,4 +1,5 @@
 import * as restate from '@restatedev/restate-sdk';
+import { holdAfterExternalEffectIfRequested } from '../../harness/fault-barrier.mjs';
 
 function emit(event, fields = {}) {
   process.stdout.write(JSON.stringify({
@@ -37,6 +38,7 @@ export const naiaObjective = restate.workflow({
             if (!response.ok) throw new Error(`oracle responded ${response.status}`);
             const state = await response.json();
             emit('external_effect_observed_before_checkpoint', { objectiveId, operationId, externalState: state });
+            await holdAfterExternalEffectIfRequested();
             emit('external_request_confirmed', { objectiveId, operationId, externalState: state });
             return state;
           } catch (error) {
