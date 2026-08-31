@@ -12,17 +12,21 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current gate records partial T5 and T11 support while keeping remaining executor gaps explicit', async () => {
+test('current gate records partial T5/T11/T12 support while keeping remaining executor gaps explicit', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
 
   assert.equal(result.ready, false);
   assert.equal(result.status, 'BENCHMARK_EXECUTION_NOT_READY');
-  assert.deepEqual(result.unsupportedMutants.sort(), ['T12', 'T16']);
+  assert.deepEqual(result.unsupportedMutants.sort(), ['T16']);
   assert.deepEqual(result.unsupportedCandidateMutants, [
     {
       candidate: 'Temporal TypeScript', mutantId: 'T11', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Temporal TypeScript', mutantId: 'T12', mode: 'local-process',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     },
     {
@@ -31,6 +35,10 @@ test('current gate records partial T5 and T11 support while keeping remaining ex
     },
     {
       candidate: 'Restate', mutantId: 'T11', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Restate', mutantId: 'T12', mode: 'local-process',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     },
     {
@@ -43,6 +51,10 @@ test('current gate records partial T5 and T11 support while keeping remaining ex
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T11', mode: 'managed-controller',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
+    {
+      candidate: 'Trigger.dev', mutantId: 'T12', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     }
   ]);
@@ -86,6 +98,6 @@ test('assertBenchmarkExecutionReady fails closed with explicit remaining executo
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /T12: formal executor not implemented/
+    /T16: formal executor not implemented/
   );
 });
