@@ -6,7 +6,7 @@ export async function t16VersionedWorkflow(input) {
   let released = false;
   setHandler(releaseSignal, () => { released = true; });
 
-  await sleep('1 millisecond');
+  await sleep('1ms');
   await condition(() => released);
 
   return {
