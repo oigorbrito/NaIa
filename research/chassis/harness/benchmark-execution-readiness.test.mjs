@@ -12,18 +12,26 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current gate records Temporal and DBOS T5 support while keeping remaining executor gaps explicit', async () => {
+test('current gate records partial T5 and T11 support while keeping remaining executor gaps explicit', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
 
   assert.equal(result.ready, false);
   assert.equal(result.status, 'BENCHMARK_EXECUTION_NOT_READY');
-  assert.deepEqual(result.unsupportedMutants.sort(), ['T11', 'T12', 'T16']);
+  assert.deepEqual(result.unsupportedMutants.sort(), ['T12', 'T16']);
   assert.deepEqual(result.unsupportedCandidateMutants, [
+    {
+      candidate: 'Temporal TypeScript', mutantId: 'T11', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
+    },
     {
       candidate: 'Restate', mutantId: 'T5', mode: 'local-process',
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
+    },
+    {
+      candidate: 'Restate', mutantId: 'T11', mode: 'local-process',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T5', mode: 'managed-controller',
@@ -32,6 +40,10 @@ test('current gate records Temporal and DBOS T5 support while keeping remaining 
     {
       candidate: 'Trigger.dev', mutantId: 'T7', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: null
+    },
+    {
+      candidate: 'Trigger.dev', mutantId: 'T11', mode: 'managed-controller',
+      supportedModes: ['local-process'], supportedCandidates: ['DBOS TypeScript']
     }
   ]);
 });
@@ -74,6 +86,6 @@ test('assertBenchmarkExecutionReady fails closed with explicit remaining executo
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /T11: formal executor not implemented/
+    /T12: formal executor not implemented/
   );
 });
