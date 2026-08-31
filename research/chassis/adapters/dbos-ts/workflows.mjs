@@ -24,7 +24,7 @@ async function performExternalEffectInternal(input) {
       headers: {
         'content-type': 'application/json',
         'x-operation-id': operationId,
-        ...(injectResponseLoss ? { 'x-drop-response-after-apply': '1' } : {})
+        ...(injectResponseLoss ? { 'x-drop-response-after-apply-once': '1' } : {})
       },
       body: JSON.stringify({ objectiveId, operationId, attempt })
     });
