@@ -3,21 +3,31 @@ import test from 'node:test';
 import { executeDeterministicT5Control } from './t5-ownership-control.mjs';
 import { controlResultToT5Evidence, evaluateT5Evidence } from './t5-evaluator.mjs';
 
-test('T5 evaluator accepts fenced positive control', () => {
+test('T5 evaluator accepts fenced live-ownership-race control', () => {
   const control = executeDeterministicT5Control({ unsafe: false });
   const evaluated = evaluateT5Evidence(controlResultToT5Evidence(control));
   assert.equal(evaluated.verdict, 'PASS');
   assert.equal(Object.values(evaluated.checks).every(Boolean), true);
 });
 
-test('T5 evaluator rejects unfenced stale overwrite control', () => {
+test('T5 evaluator rejects transient stale authority even if B later owns final state', () => {
   const control = executeDeterministicT5Control({ unsafe: true });
   const evidence = controlResultToT5Evidence(control);
   const evaluated = evaluateT5Evidence(evidence);
   assert.equal(evaluated.verdict, 'FAIL');
   assert.equal(evaluated.checks.staleCompletionRejectedOrNonAuthoritative, false);
-  assert.equal(evaluated.checks.finalAuthorityIsNew, false);
-  assert.equal(evaluated.checks.finalResultOriginIsNew, false);
+  assert.equal(evaluated.checks.staleNeverBecameAuthoritative, false);
+  assert.equal(evaluated.checks.newAuthorityStillCurrentAfterStaleAttempt, false);
+  assert.equal(evaluated.checks.finalAuthorityIsNew, true);
+  assert.equal(evaluated.checks.finalResultOriginIsNew, true);
+});
+
+test('T5 evaluator rejects evidence where stale attempt occurs only after B completion', () => {
+  const evidence = controlResultToT5Evidence(executeDeterministicT5Control({ unsafe: false }));
+  evidence.staleCompletion.attemptedBeforeNewCompletion = false;
+  const evaluated = evaluateT5Evidence(evidence);
+  assert.equal(evaluated.verdict, 'FAIL');
+  assert.equal(evaluated.checks.staleAttemptBeforeNewCompletion, false);
 });
 
 test('T5 evaluator rejects single-worker evidence even when authority tokens differ', () => {
