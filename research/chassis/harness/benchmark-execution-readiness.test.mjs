@@ -12,32 +12,18 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current benchmark gate records Temporal-only T5 and keeps remaining candidate gaps explicit', async () => {
+test('current benchmark execution gate remains closed for T5/T11/T12/T16 and Trigger T7', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
 
   assert.equal(result.ready, false);
   assert.equal(result.status, 'BENCHMARK_EXECUTION_NOT_READY');
-  assert.deepEqual(result.unsupportedMutants.sort(), ['T11', 'T12', 'T16']);
-  assert.deepEqual(result.unsupportedCandidateMutants, [
-    {
-      candidate: 'DBOS TypeScript', mutantId: 'T5', mode: 'local-process',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript']
-    },
-    {
-      candidate: 'Restate', mutantId: 'T5', mode: 'local-process',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript']
-    },
-    {
-      candidate: 'Trigger.dev', mutantId: 'T5', mode: 'managed-controller',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript']
-    },
-    {
-      candidate: 'Trigger.dev', mutantId: 'T7', mode: 'managed-controller',
-      supportedModes: ['local-process'], supportedCandidates: null
-    }
-  ]);
+  assert.deepEqual(result.unsupportedMutants.sort(), ['T11', 'T12', 'T16', 'T5']);
+  assert.deepEqual(result.unsupportedCandidateMutants, [{
+    candidate: 'Trigger.dev', mutantId: 'T7', mode: 'managed-controller',
+    supportedModes: ['local-process'], supportedCandidates: null
+  }]);
 });
 
 test('readiness opens only when every critical mutant supports every candidate', async () => {
@@ -57,7 +43,7 @@ test('readiness opens only when every critical mutant supports every candidate',
   assert.equal(assertBenchmarkExecutionReady(protocol, plan, completeSupport).ready, true);
 });
 
-test('candidate allowlist is enforced independently of execution mode', async () => {
+test('candidate allowlist is enforced independently of execution mode', () => {
   const protocol = { criticalMutants: ['T5'] };
   const plan = {
     criticalMutants: ['T5'],
@@ -78,6 +64,6 @@ test('assertBenchmarkExecutionReady fails closed with explicit missing executor 
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /T11: formal executor not implemented/
+    /T5: formal executor not implemented/
   );
 });
