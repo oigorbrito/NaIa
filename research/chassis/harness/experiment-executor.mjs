@@ -95,10 +95,10 @@ export async function executeExperiment(spec, hooks) {
     randomSeed: spec.randomSeed,
     setup: {
       status: setupResult.status,
-      candidateVersion: setupResult.candidateVersion ?? 'UNKNOWN',
+      candidateVersion: setupResult.candidateVersion ?? '',
       candidateSourceRef: setupResult.candidateSourceRef ?? null,
-      adapterSha256: setupResult.adapterSha256 ?? sha256('UNKNOWN_ADAPTER'),
-      harnessSha256: setupResult.harnessSha256 ?? sha256('UNKNOWN_HARNESS'),
+      adapterSha256: setupResult.adapterSha256 ?? '',
+      harnessSha256: setupResult.harnessSha256 ?? '',
       dependencyIdentity: setupResult.dependencyIdentity ?? null,
       environment: runtimeEnvironment,
       parameters: { randomSeed: spec.randomSeed, ...(setupResult.parameters ?? {}) },
