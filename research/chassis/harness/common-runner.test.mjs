@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const runner = path.join(here, 'common-runner.mjs');
 const adapter = path.join(here, 'fixtures', 'contract-adapter-control.mjs');
 
-async function run(mutant) {
+async function run(mutant, blocked = false) {
   const dir = await mkdtemp(path.join(tmpdir(), 'naia-runner-'));
   const output = path.join(dir, 'evidence.json');
   const child = spawn(process.execPath, [
@@ -21,14 +21,12 @@ async function run(mutant) {
     '--timeout-ms', '5000',
     '--output', output
   ], {
-    env: { ...process.env, NAIA_CONTROL_MUTANT: mutant ? '1' : '0' },
+    env: { ...process.env, NAIA_CONTROL_MUTANT: mutant ? '1' : '0', NAIA_CONTROL_BLOCKED: blocked ? '1' : '0' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
-
   let stderr = '';
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk) => { stderr += chunk; });
-
   const exitCode = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', resolve);
@@ -58,4 +56,15 @@ test('common runner rejects identity drift even when adapter reports completion'
   assert.equal(result.evidence.checks.noDuplicateExternalEffect, false);
   assert.equal(result.evidence.oracle.totalApplyCount, 2);
   assert.equal(result.evidence.mutants.T15_operation_identity, 'FAIL');
+});
+
+test('common runner classifies missing runtime prerequisite as BLOCKED, not FAIL', async () => {
+  const result = await run(false, true);
+  assert.equal(result.exitCode, 2, result.stderr);
+  assert.equal(result.evidence.verdict, 'BLOCKED');
+  assert.equal(result.evidence.blocker, 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT');
+  assert.equal(result.evidence.oracle.totalApplyCount, 0);
+  assert.equal(result.evidence.mutants.T7_process_sigkill, 'BLOCKED');
+  assert.equal(result.evidence.mutants.T8_response_loss, 'BLOCKED');
+  assert.equal(result.evidence.mutants.T15_operation_identity, 'BLOCKED');
 });
