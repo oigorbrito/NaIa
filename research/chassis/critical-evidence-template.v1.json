@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "candidate": "REQUIRED",
+  "profile": "REQUIRED",
+  "mutant": "T5|T7|T8|T11|T12|T16",
+  "mode": "local-process|managed-controller",
+  "verdict": "NOT_EXECUTED",
+  "startedAt": null,
+  "finishedAt": null,
+  "runtimeIdentity": null,
+  "sourceRef": null,
+  "faultPrimitive": null,
+  "durableAuthority": null,
+  "authorityUnderFault": null,
+  "objectiveId": null,
+  "operationId": null,
+  "reproduction": {
+    "command": null,
+    "repetitions": 0,
+    "environment": {},
+    "packageIntegrity": {},
+    "containerImages": {}
+  },
+  "workerKillEvidence": null,
+  "mutation": null,
+  "semanticCompatibilityOutcome": null,
+  "checks": {},
+  "artifacts": [],
+  "blockers": [],
+  "notes": "Template only. This file is not candidate evidence and MUST NOT be counted toward benchmark eligibility."
+}
