@@ -63,6 +63,10 @@ function parseStatus(stdout) {
   return stdout.split(/\r?\n/).filter(Boolean).map(parseLine).reverse().find((entry) => typeof entry.state === 'string') ?? null;
 }
 
+function authorityResponsive(statusProcess, status) {
+  return statusProcess?.timedOut !== true && statusProcess?.code === 0 && typeof status?.state === 'string';
+}
+
 export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutantId, timeoutMs = 15000, env = process.env }) {
   if (!['T7', 'T8'].includes(mutantId)) throw new Error('isolated external fault runner supports only T7 or T8');
 
@@ -125,6 +129,7 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
     const totalResponseLossCount = related.reduce((sum, entry) => sum + (entry.responseLossCount ?? 0), 0);
     const status = parseStatus(statusProcess.stdout);
     const terminal = resume?.terminalEvent ?? initial?.terminalEvent ?? null;
+    const durableAuthorityAlive = authorityResponsive(statusProcess, status);
 
     const acceptanceChecks = mutantId === 'T7'
       ? {
@@ -132,14 +137,15 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
           responseLossNotInjected: totalResponseLossCount === 0,
           exactlyOneExternalApply: totalApplyCount === 1,
           stableOperationIdentity: related.length === 1,
+          durableAuthorityResponsiveAfterCrash: durableAuthorityAlive,
           recoveredToTerminalState: ['objective_completed', 'reconciliation_required'].includes(terminal?.event),
           terminalStatusObservable: ['COMPLETED', 'RECONCILIATION_REQUIRED'].includes(status?.state)
         }
       : {
-          processCrashNotInjected: true,
           exactlyOneResponseLoss: totalResponseLossCount === 1,
           exactlyOneExternalApply: totalApplyCount === 1,
           stableOperationIdentity: related.length === 1,
+          durableAuthorityResponsiveAfterResponseLoss: durableAuthorityAlive,
           recoveredToTerminalState: ['objective_completed', 'reconciliation_required'].includes(terminal?.event),
           terminalStatusObservable: ['COMPLETED', 'RECONCILIATION_REQUIRED'].includes(status?.state)
         };
@@ -147,12 +153,12 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
     return {
       fault: mutantId === 'T7'
         ? {
-            intended: 'worker process SIGKILL after external effect before durable result checkpoint',
+            intended: 'local candidate execution process SIGKILL after external effect before durable result checkpoint',
             injected: initial.killIssued === true && initial.timedOut !== true,
             targetKind: 'worker-process',
             targetIdentity: initial.pid ?? null,
             signal: 'SIGKILL',
-            durableAuthorityAlive: true
+            durableAuthorityAlive
           }
         : {
             intended: 'external provider applies effect then response is lost without process crash',
@@ -160,7 +166,7 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
             targetKind: 'provider-response',
             targetIdentity: operationId,
             signal: null,
-            durableAuthorityAlive: true
+            durableAuthorityAlive
           },
       workload: { objectiveId, operationId },
       rawObservations: { candidate, initial, resume, statusProcess, status, oracleOperations: related, totalApplyCount, totalResponseLossCount },
