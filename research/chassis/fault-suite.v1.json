@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "status": "SPECIFIED_NOT_EXECUTED",
+  "decision": {
+    "winner": null,
+    "benchmarkToBeat": null
+  },
+  "finalists": [
+    "temporal-typescript-restricted",
+    "dbos-typescript",
+    "restate",
+    "triggerdev"
+  ],
+  "requiredInvariants": [
+    "stable_objective_identity",
+    "stale_attempt_cannot_overwrite_current_authority",
+    "durable_internal_work_not_silently_lost",
+    "ambiguous_external_effect_not_reported_as_success",
+    "cancellation_blocks_future_unauthorized_progress",
+    "human_approval_survives_restart",
+    "degraded_execution_not_indefinitely_reported_healthy",
+    "terminal_verdict_has_machine_readable_evidence"
+  ],
+  "mutants": [
+    {"id":"T1","name":"kill_before_step","critical":false},
+    {"id":"T2","name":"kill_during_internal_step","critical":false},
+    {"id":"T3","name":"kill_after_internal_effect_before_checkpoint","critical":false},
+    {"id":"T4","name":"kill_after_checkpoint","critical":false},
+    {"id":"T5","name":"concurrent_worker_ownership_race","critical":true,"minRepetitions":100},
+    {"id":"T6","name":"persistence_unavailable_before_commit","critical":false},
+    {"id":"T7","name":"external_effect_applied_persistence_fails","critical":true,"minRepetitions":100},
+    {"id":"T8","name":"response_lost_after_external_apply","critical":true,"minRepetitions":100},
+    {"id":"T9","name":"timer_survives_restart","critical":false},
+    {"id":"T10","name":"human_approval_survives_restart","critical":false},
+    {"id":"T11","name":"cancel_crash_retry_race","critical":true,"minRepetitions":100},
+    {"id":"T12","name":"stale_completion_after_new_owner","critical":true,"minRepetitions":100},
+    {"id":"T13","name":"supported_upgrade_replay","critical":false},
+    {"id":"T14","name":"long_history_recovery","critical":false},
+    {"id":"T15","name":"non_idempotent_external_provider","critical":false},
+    {"id":"T16","name":"identity_or_config_changes_before_recovery","critical":true,"minRepetitions":100}
+  ],
+  "verdicts": ["PASS","PARTIAL","FAIL","BLOCKED","INCONCLUSIVE"],
+  "benchmarkEligibility": {
+    "forbidBlockedOrInconclusive": ["T5","T7","T8","T11","T12","T16"],
+    "partialAllowedWithEnforcedPolicy": ["T7","T8","T15"]
+  }
+}
