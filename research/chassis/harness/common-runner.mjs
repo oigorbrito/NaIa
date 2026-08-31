@@ -146,15 +146,21 @@ async function main() {
   let statusResult;
 
   try {
-    if (mutant === 'T8') {
+    if (mutant === 'T8' || mutant === 'T15') {
       initial = await runUntilTerminal({
         command: process.execPath,
         args: [adapter, 'start', ...commonArgs],
         cwd,
-        env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '1', NAIA_CONTROL_AUTO_RETRY: '1' },
+        env: {
+          ...baseEnv,
+          NAIA_DROP_RESPONSE_AFTER_APPLY: '1',
+          NAIA_NON_IDEMPOTENT_PROVIDER: mutant === 'T15' ? '1' : '0',
+          NAIA_CONTROL_AUTO_RETRY: mutant === 'T8' ? '1' : '0',
+          NAIA_CONTROL_RECONCILE_AFTER_AMBIGUOUS: mutant === 'T15' ? '1' : '0'
+        },
         timeoutMs
       });
-      resume = skippedRun('T8_ISOLATED_DOES_NOT_REQUIRE_PROCESS_RESTART');
+      resume = skippedRun(`${mutant}_ISOLATED_DOES_NOT_REQUIRE_PROCESS_RESTART`);
     } else {
       const killOnEvent = mutant === 'T7'
         ? 'external_effect_observed_before_checkpoint'
@@ -169,6 +175,7 @@ async function main() {
         env: {
           ...baseEnv,
           NAIA_DROP_RESPONSE_AFTER_APPLY: injectResponseLoss,
+          NAIA_NON_IDEMPOTENT_PROVIDER: '0',
           NAIA_HOLD_AFTER_EXTERNAL_EFFECT: mutant === 'T7' ? '1' : '0'
         },
         killOnEvent,
@@ -182,6 +189,7 @@ async function main() {
         env: {
           ...baseEnv,
           NAIA_DROP_RESPONSE_AFTER_APPLY: mutant === 'COMPOSITE' && mode === 'managed-controller' ? '1' : '0',
+          NAIA_NON_IDEMPOTENT_PROVIDER: '0',
           NAIA_HOLD_AFTER_EXTERNAL_EFFECT: '0'
         },
         timeoutMs
@@ -203,13 +211,14 @@ async function main() {
     const totalResponseLossCount = related.reduce((sum, entry) => sum + (entry.responseLossCount ?? 0), 0);
     const status = parseStatus(statusResult.stdout);
 
-    const completionObserved = mutant === 'T8'
+    const completionObserved = mutant === 'T8' || mutant === 'T15'
       ? initial.terminalEvent?.event === 'objective_completed'
       : resume.terminalEvent?.event === 'objective_completed';
 
     const checks = {
       crashInjected: Boolean(initial.killIssued && !initial.timedOut),
       responseLossInjected: totalResponseLossCount === 1,
+      nonIdempotentProviderInjected: expected?.providerMode === 'NON_IDEMPOTENT',
       resumedToCompletion: completionObserved,
       expectedOperationApplied: expected?.applyCount === 1,
       noIdentityDrift: related.length === 1,
@@ -222,9 +231,17 @@ async function main() {
     const prerequisiteError = related.length === 0 && !initial.killIssued
       ? prerequisiteFailure(initial, resume, statusResult)
       : null;
-    const requiredFaultInjected = mutant === 'T8' ? checks.responseLossInjected : checks.crashInjected;
+    const requiredFaultInjected = mutant === 'T8'
+      ? checks.responseLossInjected
+      : mutant === 'T15'
+        ? checks.responseLossInjected && checks.nonIdempotentProviderInjected
+        : checks.crashInjected;
     const faultNotInjected = !prerequisiteError && !requiredFaultInjected
-      ? mutant === 'T8' ? 'RESPONSE_LOSS_NOT_OBSERVED' : 'KILLPOINT_NOT_REACHED_BEFORE_PROCESS_EXIT_OR_TIMEOUT'
+      ? mutant === 'T8'
+        ? 'RESPONSE_LOSS_NOT_OBSERVED'
+        : mutant === 'T15'
+          ? 'NON_IDEMPOTENT_PROVIDER_OR_RESPONSE_LOSS_NOT_OBSERVED'
+          : 'KILLPOINT_NOT_REACHED_BEFORE_PROCESS_EXIT_OR_TIMEOUT'
       : null;
     const workerT7Unavailable = mutant === 'T7' && mode === 'managed-controller';
     const managedComposite = mutant === 'COMPOSITE' && mode === 'managed-controller';
@@ -251,15 +268,25 @@ async function main() {
             checks.noDuplicateExternalEffect,
             checks.finalStatusCompleted
           ].every(Boolean)
-        : [
-            checks.crashInjected,
-            checks.resumedToCompletion,
-            checks.expectedOperationApplied,
-            checks.noIdentityDrift,
-            checks.noDuplicateExternalEffect,
-            checks.oneResponseLossObserved,
-            checks.finalStatusCompleted
-          ].every(Boolean);
+        : mutant === 'T15'
+          ? [
+              checks.responseLossInjected,
+              checks.nonIdempotentProviderInjected,
+              checks.resumedToCompletion,
+              checks.expectedOperationApplied,
+              checks.noIdentityDrift,
+              checks.noDuplicateExternalEffect,
+              checks.finalStatusCompleted
+            ].every(Boolean)
+          : [
+              checks.crashInjected,
+              checks.resumedToCompletion,
+              checks.expectedOperationApplied,
+              checks.noIdentityDrift,
+              checks.noDuplicateExternalEffect,
+              checks.oneResponseLossObserved,
+              checks.finalStatusCompleted
+            ].every(Boolean);
 
     const verdict = prerequisiteError
       ? 'BLOCKED'
@@ -277,6 +304,7 @@ async function main() {
       ? {
           T7_process_sigkill: mutant === 'T7' || mutant === 'COMPOSITE' ? verdict : 'NOT_EXECUTED',
           T8_response_loss: mutant === 'T8' ? verdict : mutant === 'COMPOSITE' ? verdict : 'NOT_EXECUTED',
+          T15_non_idempotent_provider: mutant === 'T15' ? verdict : 'NOT_EXECUTED',
           T15_operation_identity: mutant === 'T15' ? verdict : mutant === 'COMPOSITE' ? compositeIdentityVerdict : 'NOT_EXECUTED'
         }
       : {
@@ -286,6 +314,7 @@ async function main() {
             : mutant === 'COMPOSITE'
               ? (prerequisiteError ? 'BLOCKED' : faultNotInjected ? 'INCONCLUSIVE' : measuredPass ? 'PASS' : 'FAIL')
               : 'NOT_EXECUTED',
+          T15_non_idempotent_provider: mutant === 'T15' ? verdict : 'NOT_EXECUTED',
           T15_operation_identity: mutant === 'T15' ? verdict : mutant === 'COMPOSITE' ? compositeIdentityVerdict : 'NOT_EXECUTED'
         };
 
