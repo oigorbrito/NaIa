@@ -87,7 +87,7 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
         args: [adapter, 'start', ...commonArgs],
         cwd,
         env: { ...baseEnv, NAIA_DROP_RESPONSE_AFTER_APPLY: '0' },
-        killOnEvent: 'external_request_applied_or_ambiguous',
+        killOnEvent: 'external_effect_observed_before_checkpoint',
         timeoutMs
       });
       resume = await runUntilTerminal({
