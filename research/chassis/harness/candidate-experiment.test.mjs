@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectExperiment } from './candidate-experiment.mjs';
+import { defaultCleanupResult, selectExperiment } from './candidate-experiment.mjs';
 
 const plan = [
   { experimentId: 'temporal-t5-001', candidate: 'Temporal TypeScript', mutantId: 'T5', repetition: 1, randomSeed: 1050001 },
@@ -25,4 +25,21 @@ test('selectExperiment rejects a candidate substitution', () => {
     () => selectExperiment(plan, { candidate: 'Restate', mutantId: 'T5', repetition: 1 }),
     /experiment not found in preregistered plan/
   );
+});
+
+test('default cleanup is NOT_APPLICABLE only when setup prevented execution', () => {
+  const result = defaultCleanupResult({ status: 'BLOCKED_SETUP' });
+  assert.equal(result.status, 'NOT_APPLICABLE');
+  assert.equal(result.workerCleanup, true);
+  assert.equal(result.durableStateCleanup, true);
+});
+
+test('default cleanup fails closed after READY setup when cleanup hook is absent', () => {
+  const result = defaultCleanupResult({ status: 'READY' });
+  assert.equal(result.status, 'FAIL');
+  assert.equal(result.reason, 'CLEANUP_HOOK_NOT_CONFIGURED');
+  assert.equal(result.workerCleanup, false);
+  assert.equal(result.durableStateCleanup, false);
+  assert.equal(result.oracleCleanup, false);
+  assert.equal(result.temporaryResourcesCleanup, false);
 });
