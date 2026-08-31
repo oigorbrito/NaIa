@@ -1,6 +1,6 @@
 # T16 Semantic Compatibility Contract V1
 
-Status: CONTROL_VALIDATED / DBOS_EXECUTOR_IMPLEMENTED_NOT_RUNTIME_VERIFIED
+Status: CONTROL_VALIDATED / TEMPORAL_DBOS_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T16 tests `identity_or_config_changes_before_recovery`: durable work created under semantic profile A is recovered under intentionally changed profile B while the semantic objective identity is preserved.
 
@@ -74,6 +74,18 @@ Unknown/ambiguous disposition is not PASS.
 ```
 
 For `EXPLICIT_MIGRATION`, `migrationIdentity` is required. For rejection/routing it may be null.
+
+## Temporal TypeScript 1.23.0 structural slice
+
+The Temporal T16 driver mutates exactly the workflow implementation content SHA while preserving workflow ID, workflow type, task queue, namespace and durable server/history. Profile A emits a durable timer command and then waits for a release signal. After the timer and a subsequent Workflow Task completion are present in history, worker A is SIGKILLed. Profile B deliberately omits that timer command.
+
+Worker B uses the same workflow type and task queue with `maxCachedWorkflows=0`, forcing replay. The harness polls the public `WorkflowHandle.fetchHistory()` API and requires an actual `WorkflowTaskFailed` event whose native failure message contains `Nondeterminism`. Only that native history event classifies B as `REJECTED_INCOMPATIBLE`; timeout or absence of progress does not.
+
+Worker C then starts with profile A, signals the original workflow and must receive a terminal result whose semantic profile is A. This proves that the incompatible B task was rejected while the original durable meaning remained recoverable.
+
+The design follows the Temporal TypeScript 1.23.0 upstream nondeterminism test, which itself uses `fetchHistory()` to detect `WorkflowTaskFailed` containing `Nondeterminism` and documents that the default behavior fails the Workflow Task rather than silently completing the workflow under incompatible semantics.
+
+Structural implementation is not candidate PASS. It remains runtime-unverified while B001 prevents execution of the exact Temporal SDK/server profile.
 
 ## DBOS v4.27 structural slice
 
