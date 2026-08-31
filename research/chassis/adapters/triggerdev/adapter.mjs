@@ -10,7 +10,7 @@ for (let i = 3; i < process.argv.length; i += 2) {
 const objectiveId = args.get('--objective-id');
 const operationId = args.get('--operation-id');
 const oracleUrl = args.get('--oracle-url');
-const secretKey = process.env.TRIGGER_SECRET_KEY;
+const accessToken = process.env.TRIGGER_SECRET_KEY;
 const baseURL = process.env.TRIGGER_API_URL;
 const previewBranch = process.env.TRIGGER_PREVIEW_BRANCH;
 
@@ -45,12 +45,15 @@ function requireIdentity({ external = false } = {}) {
   if (!objectiveId) throw new Error('--objective-id is required');
   if (external && !operationId) throw new Error('--operation-id is required');
   if (external && !oracleUrl) throw new Error('--oracle-url is required');
-  if (!secretKey) throw new Error('TRIGGER_SECRET_KEY is required');
+  if (!accessToken) throw new Error('TRIGGER_SECRET_KEY is required');
 }
 
 function configureSdk() {
+  // Trigger.dev v4.5.15 keeps `secretKey` for compatibility but marks it deprecated.
+  // `accessToken` is the non-deprecated ApiClientConfiguration field; the project
+  // secret key remains the credential supplied by TRIGGER_SECRET_KEY.
   configure({
-    secretKey,
+    accessToken,
     ...(baseURL ? { baseURL } : {}),
     ...(previewBranch ? { previewBranch } : {})
   });
@@ -59,8 +62,8 @@ function configureSdk() {
 
 async function findRuns() {
   const page = await runs.list({
-    taskIdentifier: 'naia-chassis-objective',
-    tag: objectiveTag(),
+    taskIdentifier: ['naia-chassis-objective'],
+    tag: [objectiveTag()],
     limit: 2
   });
   return page.data;
@@ -89,11 +92,13 @@ async function triggerOrAttach() {
     {
       idempotencyKey: idempotencyKey(),
       idempotencyKeyTTL: '1h',
-      tags: [objectiveTag(), operationTag()],
-      maxAttempts: 3
+      tags: [objectiveTag(), operationTag()]
     }
   );
-  return { id: handle.id, recovered: Boolean(handle.isCached) };
+  // Single-trigger RunHandle has id/publicAccessToken/taskIdentifier in v4.5.15.
+  // `isCached` belongs to BatchedRunHandle, so recovery is derived only from
+  // the explicit existing-run lookup above.
+  return { id: handle.id, recovered: false };
 }
 
 async function waitForRun(runId) {
@@ -109,12 +114,23 @@ function contractState(status) {
     case 'COMPLETED': return 'COMPLETED';
     case 'CANCELED': return 'CANCELLED';
     case 'PENDING_VERSION':
+    case 'PENDING':
     case 'DELAYED':
-    case 'QUEUED': return 'PENDING';
+    case 'QUEUED':
+    case 'WAITING_FOR_DEPLOY': return 'PENDING';
     case 'DEQUEUED':
     case 'EXECUTING':
-    case 'WAITING': return 'RUNNING';
-    default: return 'FAILED';
+    case 'WAITING':
+    case 'WAITING_TO_RESUME':
+    case 'RETRYING_AFTER_FAILURE':
+    case 'PAUSED': return 'RUNNING';
+    case 'FAILED':
+    case 'CRASHED':
+    case 'INTERRUPTED':
+    case 'SYSTEM_FAILURE':
+    case 'EXPIRED':
+    case 'TIMED_OUT': return 'FAILED';
+    default: return 'UNKNOWN';
   }
 }
 
