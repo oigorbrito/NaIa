@@ -3,11 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.mjs';
-
-export const COMMON_RUNNER_FORMAL_SUPPORT = Object.freeze({
-  T7: Object.freeze({ modes: Object.freeze(['local-process']), fault: 'worker-process-sigkill' }),
-  T8: Object.freeze({ modes: Object.freeze(['local-process', 'managed-controller']), fault: 'external-response-loss' })
-});
+import { FORMAL_EXECUTOR_SUPPORT } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options) {
   const child = spawn(command, args, options);
@@ -29,7 +25,7 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
   const runner = path.join(repositoryRoot, 'research', 'chassis', 'harness', 'common-runner.mjs');
 
   return async function runHook(spec, setup, candidate) {
-    const support = COMMON_RUNNER_FORMAL_SUPPORT[spec.mutantId];
+    const support = FORMAL_EXECUTOR_SUPPORT[spec.mutantId];
     if (!support) {
       return {
         blocked: false,
