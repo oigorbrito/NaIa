@@ -84,3 +84,35 @@ test('missing operation id fails closed', async (t) => {
 
   assert.equal(response.status, 400);
 });
+
+test('100 ambiguous response-loss cycles reconcile without duplicate apply', async (t) => {
+  const oracle = createExternalEffectOracle();
+  const baseUrl = await oracle.start();
+  t.after(() => oracle.stop());
+
+  for (let i = 0; i < 100; i += 1) {
+    const operationId = `stress-loss-${i}`;
+    await assert.rejects(post(baseUrl, operationId, { i }, true));
+    const retry = await post(baseUrl, operationId, { i });
+    assert.equal(retry.status, 200);
+    const state = await readOperation(baseUrl, operationId);
+    assert.equal(state.requestCount, 2);
+    assert.equal(state.applyCount, 1);
+  }
+});
+
+test('concurrent duplicate requests with one operation id apply once', async (t) => {
+  const oracle = createExternalEffectOracle();
+  const baseUrl = await oracle.start();
+  t.after(() => oracle.stop());
+
+  const operationId = 'concurrent-duplicate';
+  const responses = await Promise.all(
+    Array.from({ length: 25 }, (_, i) => post(baseUrl, operationId, { i }))
+  );
+  for (const response of responses) assert.equal(response.status, 200);
+
+  const state = await readOperation(baseUrl, operationId);
+  assert.equal(state.requestCount, 25);
+  assert.equal(state.applyCount, 1);
+});
