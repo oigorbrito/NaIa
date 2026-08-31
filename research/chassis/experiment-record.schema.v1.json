@@ -56,6 +56,8 @@
       "properties": {
         "startedAt": {"type": "string"},
         "finishedAt": {"type": "string"},
+        "blocked": {"type": "boolean"},
+        "blocker": {"type": ["string", "null"]},
         "workload": {"type": "object"},
         "fault": {
           "type": "object",
@@ -76,6 +78,12 @@
           "additionalProperties": {"type": "boolean"}
         }
       },
+      "allOf": [
+        {
+          "if": {"properties": {"blocked": {"const": true}}, "required": ["blocked"]},
+          "then": {"required": ["blocker"], "properties": {"blocker": {"type": "string", "minLength": 1}}}
+        }
+      ],
       "additionalProperties": true
     },
     "cleanup": {
