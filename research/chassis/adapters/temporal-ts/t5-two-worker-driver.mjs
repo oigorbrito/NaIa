@@ -201,7 +201,7 @@ export async function runTemporalT5TwoWorker({
       },
       staleCompletion: {
         attempted: true,
-        rejectedOrNonAuthoritative: completionA.accepted === false,
+        rejectedOrNonAuthoritative: completionA.accepted === false && completionA.staleRejected === true,
         response: completionA
       },
       finalAuthorityIdentity: workflowResult?.origin === 'new-authority' ? newAuthorityIdentity : null,
