@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commonRunnerEvidenceToRunResult } from './common-runner-record-bridge.mjs';
+import { t5EvidenceToRunResult } from './t5-record-bridge.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options, timeoutMs = null) {
@@ -23,6 +24,55 @@ async function spawnAndWait(command, args, options, timeoutMs = null) {
   });
   if (timer) clearTimeout(timer);
   return { exitCode, stdout, stderr, timedOut };
+}
+
+function runtimePrerequisiteFailure(processResult) {
+  if (processResult?.timedOut) return false;
+  return /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i.test(
+    `${processResult?.stdout ?? ''}\n${processResult?.stderr ?? ''}`
+  );
+}
+
+async function runTemporalT5({ repositoryRoot, spec, setup, env, timeoutMs }) {
+  const dir = await mkdtemp(path.join(tmpdir(), 'naia-temporal-t5-'));
+  const output = path.join(dir, 'evidence.json');
+  const driver = path.join(repositoryRoot, 'research', 'chassis', 'adapters', 'temporal-ts', 't5-two-worker-driver.mjs');
+  try {
+    const processResult = await spawnAndWait(process.execPath, [driver, '--output', output], {
+      cwd: path.dirname(driver),
+      env: { ...env, NAIA_T5_TIMEOUT_MS: String(timeoutMs) },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }, timeoutMs * 4 + 10000);
+
+    let evidence;
+    try {
+      evidence = JSON.parse(await readFile(output, 'utf8'));
+    } catch (error) {
+      const blocked = runtimePrerequisiteFailure(processResult);
+      return {
+        blocked,
+        blocker: blocked ? 'TEMPORAL_T5_RUNTIME_PREREQUISITE_UNAVAILABLE' : null,
+        fault: {
+          intended: 'T5', injected: false, targetKind: 'stale-worker-authority', targetIdentity: null,
+          signal: null, durableAuthorityAlive: false
+        },
+        workload: { experimentId: spec.experimentId },
+        rawObservations: {
+          reason: processResult.timedOut ? 'TEMPORAL_T5_DRIVER_TIMEOUT' : 'TEMPORAL_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE',
+          process: processResult,
+          readError: String(error),
+          setupIdentity: { adapterSha256: setup.adapterSha256, harnessSha256: setup.harnessSha256 }
+        },
+        acceptanceChecks: {}
+      };
+    }
+
+    const bridged = t5EvidenceToRunResult(evidence, spec, setup);
+    bridged.rawObservations.runnerProcess = processResult;
+    return bridged;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, timeoutMs = 15000 } = {}) {
@@ -56,6 +106,10 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
         },
         acceptanceChecks: {}
       };
+    }
+
+    if (spec.mutantId === 'T5' && candidate.candidate === 'Temporal TypeScript') {
+      return runTemporalT5({ repositoryRoot, spec, setup, env, timeoutMs });
     }
 
     const managedOracleUrl = candidate.mode === 'managed-controller' ? env.NAIA_EXTERNAL_ORACLE_URL : null;
