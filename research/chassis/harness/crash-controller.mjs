@@ -16,6 +16,7 @@ export async function runUntilKillpoint({
     env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  const pid = child.pid ?? null;
 
   const events = [];
   const stderr = [];
@@ -56,6 +57,7 @@ export async function runUntilKillpoint({
 
   return {
     ...result,
+    pid,
     killIssued,
     timedOut,
     events,
