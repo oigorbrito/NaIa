@@ -99,7 +99,9 @@ function prerequisiteFailure(initial, resume, statusResult) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const adapter = path.resolve(args.get('--adapter') ?? '');
+  const adapterArg = args.get('--adapter');
+  if (!adapterArg) throw new Error('--adapter is required');
+  const adapter = path.resolve(adapterArg);
   const candidate = args.get('--candidate') ?? path.basename(path.dirname(adapter));
   const mode = args.get('--mode') ?? 'local-process';
   const cwd = path.resolve(args.get('--cwd') ?? path.dirname(adapter));
@@ -109,7 +111,6 @@ async function main() {
   const outputPath = args.get('--output') ? path.resolve(args.get('--output')) : null;
   const externalOracleUrl = args.get('--oracle-url');
 
-  if (!adapter) throw new Error('--adapter is required');
   if (!['local-process', 'managed-controller'].includes(mode)) throw new Error('--mode must be local-process or managed-controller');
 
   let oracle = null;
@@ -175,12 +176,22 @@ async function main() {
     const prerequisiteError = related.length === 0 && !initial.killIssued
       ? prerequisiteFailure(initial, resume, statusResult)
       : null;
+    const faultInjected = initial.killIssued && !initial.timedOut;
+    const killpointError = !prerequisiteError && !faultInjected
+      ? 'KILLPOINT_NOT_REACHED_BEFORE_PROCESS_EXIT_OR_TIMEOUT'
+      : null;
     const verdict = prerequisiteError
       ? 'BLOCKED'
-      : mode === 'managed-controller'
+      : killpointError
         ? 'INCONCLUSIVE'
-        : measuredPass ? 'PASS' : 'FAIL';
-    const mutantVerdict = prerequisiteError ? 'BLOCKED' : (measuredPass ? 'PASS' : 'FAIL');
+        : mode === 'managed-controller'
+          ? 'INCONCLUSIVE'
+          : measuredPass ? 'PASS' : 'FAIL';
+    const mutantVerdict = prerequisiteError
+      ? 'BLOCKED'
+      : killpointError
+        ? 'INCONCLUSIVE'
+        : (measuredPass ? 'PASS' : 'FAIL');
     const evidence = {
       schemaVersion: 1,
       candidate,
@@ -201,19 +212,25 @@ async function main() {
             T8_response_loss: mutantVerdict,
             T15_operation_identity: prerequisiteError
               ? 'BLOCKED'
-              : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
+              : killpointError
+                ? 'INCONCLUSIVE'
+                : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
           }
         : {
             T7_worker_sigkill: prerequisiteError ? 'BLOCKED' : 'NOT_EXECUTED',
             T8_response_loss: mutantVerdict,
             T15_operation_identity: prerequisiteError
               ? 'BLOCKED'
-              : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
+              : killpointError
+                ? 'INCONCLUSIVE'
+                : checks.noIdentityDrift && checks.noDuplicateExternalEffect ? 'PASS' : 'FAIL'
           },
       verdict,
       blocker: prerequisiteError
         ? 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT'
-        : mode === 'managed-controller' ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7' : null,
+        : killpointError
+          ? killpointError
+          : mode === 'managed-controller' ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7' : null,
       prerequisiteError: prerequisiteError ? prerequisiteError.slice(0, 4000) : null
     };
 
