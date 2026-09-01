@@ -34,6 +34,7 @@ on:
       - 'research/chassis/harness/common-runner-run-hook.mjs'
       - 'research/chassis/harness/experiment-executor.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.mjs'
+      - 'research/chassis/harness/experiment-protocol-validator.test.mjs'
       - 'research/chassis/harness/experiment-record-schema-validator.mjs'
       - 'research/chassis/harness/formal-executor-support.mjs'
       - 'research/chassis/harness/formal-promotion-policy.mjs'
@@ -100,6 +101,7 @@ jobs:
           echo 'credential_bypass=NO CREDENTIAL BYPASS'
           echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
           node --test \
+            research/chassis/harness/experiment-protocol-validator.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
