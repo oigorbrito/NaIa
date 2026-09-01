@@ -21,6 +21,7 @@ const COMMON_FILES = Object.freeze([
   'research/chassis/harness/formal-single-run.mjs',
   'research/chassis/harness/formal-worker-pid-provenance.mjs',
   'research/chassis/harness/harness-provenance.mjs',
+  'research/chassis/harness/repository-provenance.mjs',
   'research/chassis/harness/t5-evaluator.mjs',
   'research/chassis/harness/t5-record-bridge.mjs',
   'research/chassis/adapter-capabilities.v1.json',
