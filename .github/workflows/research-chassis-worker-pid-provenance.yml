@@ -47,6 +47,8 @@ on:
       - 'research/chassis/harness/formal-single-run.test.mjs'
       - 'research/chassis/harness/harness-provenance.mjs'
       - 'research/chassis/harness/harness-provenance.test.mjs'
+      - 'research/chassis/harness/repository-provenance.mjs'
+      - 'research/chassis/harness/repository-provenance.test.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
@@ -96,6 +98,7 @@ jobs:
           echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
           node --test \
             research/chassis/harness/harness-provenance.test.mjs \
+            research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
