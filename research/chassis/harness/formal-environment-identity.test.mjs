@@ -106,7 +106,7 @@ function dbosRecord(overrides = {}) {
   };
 }
 
-test('dynamic paths ports PIDs queues and container identities do not change canonical formal identity', () => {
+test('dynamic paths ports PIDs queues and container identities do not change canonical formal or native runtime identity', () => {
   const a = deriveFormalEnvironmentIdentity(temporalRecord());
   const b = deriveFormalEnvironmentIdentity(temporalRecord({
     manifestPath: '/different/checkout/package.json',
@@ -120,13 +120,16 @@ test('dynamic paths ports PIDs queues and container identities do not change can
   assert.equal(b.valid, true, b.errors.join('\n'));
   assert.equal(a.commonSha256, b.commonSha256);
   assert.equal(a.candidateProfileSha256, b.candidateProfileSha256);
+  assert.equal(a.runtimeIdentitySha256, b.runtimeIdentitySha256);
+  assert.match(a.runtimeIdentitySha256, /^[a-f0-9]{64}$/);
 
   const dbosA = deriveFormalEnvironmentIdentity(dbosRecord({ containerId: 'one' }));
   const dbosB = deriveFormalEnvironmentIdentity(dbosRecord({ containerId: 'two' }));
   assert.equal(dbosA.candidateProfileSha256, dbosB.candidateProfileSha256);
+  assert.equal(dbosA.runtimeIdentitySha256, dbosB.runtimeIdentitySha256);
 });
 
-test('Node OS architecture or package-manager drift changes common execution environment identity', () => {
+test('Node OS architecture or package-manager drift changes common execution environment identity but not native runtime identity', () => {
   const base = deriveFormalEnvironmentIdentity(temporalRecord());
   const nodeChanged = deriveFormalEnvironmentIdentity(temporalRecord({ runtime: 'node v24.0.0' }));
   const osChanged = deriveFormalEnvironmentIdentity(temporalRecord({ os: 'linux 6.12.0' }));
@@ -136,6 +139,9 @@ test('Node OS architecture or package-manager drift changes common execution env
   assert.notEqual(base.commonSha256, osChanged.commonSha256);
   assert.notEqual(base.commonSha256, archChanged.commonSha256);
   assert.notEqual(base.commonSha256, packageManagerChanged.commonSha256);
+  assert.equal(base.runtimeIdentitySha256, nodeChanged.runtimeIdentitySha256);
+  assert.equal(base.runtimeIdentitySha256, osChanged.runtimeIdentitySha256);
+  assert.equal(base.runtimeIdentitySha256, packageManagerChanged.runtimeIdentitySha256);
 });
 
 test('every frozen candidate profile dimension contributes to candidate profile identity', () => {
@@ -159,6 +165,18 @@ test('every frozen candidate profile dimension contributes to candidate profile 
     assert.equal(identity.valid, true, identity.errors.join('\n'));
     assert.notEqual(base.candidateProfileSha256, identity.candidateProfileSha256);
   }
+});
+
+test('native runtime drift changes both native runtime identity and candidate profile identity', () => {
+  const temporalBase = deriveFormalEnvironmentIdentity(temporalRecord());
+  const temporalChanged = deriveFormalEnvironmentIdentity(temporalRecord({ cliSha256: '6'.repeat(64) }));
+  assert.notEqual(temporalBase.runtimeIdentitySha256, temporalChanged.runtimeIdentitySha256);
+  assert.notEqual(temporalBase.candidateProfileSha256, temporalChanged.candidateProfileSha256);
+
+  const dbosBase = deriveFormalEnvironmentIdentity(dbosRecord());
+  const dockerChanged = deriveFormalEnvironmentIdentity(dbosRecord({ dockerVersion: 'Docker version 29.0.0' }));
+  assert.notEqual(dbosBase.runtimeIdentitySha256, dockerChanged.runtimeIdentitySha256);
+  assert.notEqual(dbosBase.candidateProfileSha256, dockerChanged.candidateProfileSha256);
 });
 
 test('installed dependency or native runtime drift changes candidate profile identity', () => {
@@ -202,5 +220,6 @@ test('READY record with missing installed dependency identity is rejected rather
   value.setup.dependencyIdentity.packages[0].installedVersion = null;
   const result = deriveFormalEnvironmentIdentity(value);
   assert.equal(result.valid, false);
+  assert.equal(result.runtimeIdentitySha256, null);
   assert.match(result.errors.join('\n'), /installedVersion is required/);
 });
