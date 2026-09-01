@@ -13,11 +13,9 @@ import {
   validateExecutionLedger,
   validateRecordAgainstSpec
 } from './experiment-ledger-validator.mjs';
-import {
-  currentLifecycleQualificationProvenance,
-  currentLifecycleQualificationSha256
-} from './formal-lifecycle-qualification-provenance.mjs';
+import { currentLifecycleQualificationProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
+import { verifiedCleanupSupport } from './formal-test-fixtures.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -91,25 +89,7 @@ function blockedRecord(spec) {
   };
 }
 
-const verifiedTemporalSupport = {
-  'Temporal TypeScript': {
-    preRunCleanup: true,
-    postRunCleanup: true,
-    status: 'RUNTIME_VERIFIED',
-    verificationEvidence: {
-      executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
-      repositoryRevision: REPOSITORY_REVISION,
-      experimentId: 'temporal-typescript-t5-001',
-      mutantId: 'T5',
-      repetition: 1,
-      recordSha256: 'd'.repeat(64),
-      validatorSha256: 'e'.repeat(64),
-      harnessSha256: 'b'.repeat(64),
-      lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
-      verifiedAt: '2026-09-01T00:00:00.000Z'
-    }
-  }
-};
+const verifiedTemporalSupport = verifiedCleanupSupport(['Temporal TypeScript'], REPOSITORY_REVISION);
 
 test('empty ledger is a valid structural, historical and current-compatible prefix', async () => {
   const protocol = await json('experiment-protocol.v1.json');
@@ -244,6 +224,18 @@ test('hypothetical support without lifecycle qualification hash cannot open appe
   const [first] = buildExecutionPlan(protocol, suite);
   const support = structuredClone(verifiedTemporalSupport);
   delete support['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
+  assert.throws(
+    () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
+    /formal cleanup support is not runtime-verified/
+  );
+});
+
+test('hypothetical support without native runtime identity hash cannot open append admission', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [first] = buildExecutionPlan(protocol, suite);
+  const support = structuredClone(verifiedTemporalSupport);
+  delete support['Temporal TypeScript'].verificationEvidence.runtimeIdentitySha256;
   assert.throws(
     () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
     /formal cleanup support is not runtime-verified/
