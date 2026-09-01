@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, access } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, rm, access, readFile } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,10 @@ import path from 'node:path';
 export const TEMPORAL_FORMAL_PROFILE = Object.freeze({
   sdkVersion: '1.23.0',
   cliVersion: '1.8.1',
-  serverVersion: '1.31.2'
+  serverVersion: '1.31.2',
+  platform: 'linux',
+  arch: 'x64',
+  cliSha256: 'b94417b9a8760b30217f4b881dabce4b16a76a38b5e99e2eca3ce358b8030f06'
 });
 
 export const TEMPORAL_FORMAL_ENV_NAMES = Object.freeze([
@@ -32,6 +36,11 @@ async function pathExists(file) {
   } catch {
     return false;
   }
+}
+
+async function sha256File(file) {
+  const content = await readFile(file);
+  return createHash('sha256').update(content).digest('hex');
 }
 
 async function allocateLoopbackPort() {
@@ -110,6 +119,8 @@ function defaultOperations() {
   return {
     createWorkspace: (prefix) => mkdtemp(path.join(tmpdir(), prefix)),
     pathExists,
+    sha256File,
+    platformIdentity: () => ({ platform: process.platform, arch: process.arch }),
     allocatePort: allocateLoopbackPort,
     runCommand,
     startServer,
@@ -182,7 +193,8 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
     address: null,
     isolationEnv: null,
     spec: null,
-    cli: env.NAIA_TEMPORAL_CLI || 'temporal'
+    cli: env.NAIA_TEMPORAL_CLI ?? null,
+    cliSha256: null
   };
 
   async function preRunCleanupHook(spec) {
@@ -200,6 +212,37 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
         });
       }
 
+      const platformIdentity = ops.platformIdentity();
+      if (platformIdentity.platform !== TEMPORAL_FORMAL_PROFILE.platform || platformIdentity.arch !== TEMPORAL_FORMAL_PROFILE.arch) {
+        return receiptBase({
+          workerCleanup: true,
+          oracleCleanup: true,
+          reason: 'TEMPORAL_FORMAL_PLATFORM_PROFILE_MISMATCH',
+          expectedPlatform: { platform: TEMPORAL_FORMAL_PROFILE.platform, arch: TEMPORAL_FORMAL_PROFILE.arch },
+          observedPlatform: platformIdentity
+        });
+      }
+      if (!state.cli) {
+        return receiptBase({
+          workerCleanup: true,
+          oracleCleanup: true,
+          reason: 'TEMPORAL_FORMAL_CLI_PATH_REQUIRED',
+          requiredEnv: 'NAIA_TEMPORAL_CLI'
+        });
+      }
+
+      state.cliSha256 = await ops.sha256File(state.cli);
+      if (state.cliSha256 !== TEMPORAL_FORMAL_PROFILE.cliSha256) {
+        return receiptBase({
+          workerCleanup: true,
+          oracleCleanup: true,
+          reason: 'TEMPORAL_FORMAL_CLI_DIGEST_MISMATCH',
+          cli: state.cli,
+          expectedSha256: TEMPORAL_FORMAL_PROFILE.cliSha256,
+          observedSha256: state.cliSha256
+        });
+      }
+
       const version = await ops.runCommand(state.cli, ['--version'], { cwd: repositoryRoot, env });
       const versionText = `${version.stdout ?? ''}\n${version.stderr ?? ''}`;
       if (version.code !== 0 || version.spawnError || !temporalVersionMatchesFrozenProfile(versionText)) {
@@ -208,6 +251,7 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
           oracleCleanup: true,
           reason: 'TEMPORAL_FORMAL_RUNTIME_VERSION_UNVERIFIED',
           cli: state.cli,
+          cliSha256: state.cliSha256,
           versionResult: version,
           expectedProfile: TEMPORAL_FORMAL_PROFILE
         });
@@ -265,8 +309,10 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
         sqlitePath: state.sqlitePath,
         sqliteExistedBeforeStart,
         cli: state.cli,
+        cliSha256: state.cliSha256,
         versionOutput: versionText.trim(),
         expectedProfile: TEMPORAL_FORMAL_PROFILE,
+        observedPlatform: platformIdentity,
         address: state.address,
         serverPid: state.server?.pid ?? null,
         taskQueues: state.isolationEnv
