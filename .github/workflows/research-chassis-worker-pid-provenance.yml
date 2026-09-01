@@ -103,6 +103,7 @@ on:
       - 'research/chassis/harness/formal-test-fixtures.mjs'
       - 'research/chassis/harness/experiment-ledger-validator.mjs'
       - 'research/chassis/harness/experiment-ledger-validator.test.mjs'
+      - 'research/chassis/harness/formal-ledger-runtime-identity-continuity.test.mjs'
       - 'research/chassis/harness/experiment-ledger-status.mjs'
       - 'research/chassis/harness/formal-ledger-admission.test.mjs'
       - 'research/chassis/harness/formal-ledger-revision-consistency.test.mjs'
@@ -164,6 +165,7 @@ jobs:
             research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-restate-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
+            research/chassis/harness/formal-ledger-runtime-identity-continuity.test.mjs \
             research/chassis/harness/formal-ledger-revision-consistency.test.mjs \
             research/chassis/harness/formal-ledger-environment-consistency.test.mjs \
             research/chassis/harness/experiment-ledger-validator.test.mjs \
