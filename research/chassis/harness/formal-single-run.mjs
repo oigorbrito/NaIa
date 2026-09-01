@@ -5,7 +5,7 @@ import { executeCandidateExperiment, loadExperimentContext } from './candidate-e
 import { candidateByName } from './candidate-setup.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
-import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle.mjs';
+import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle-router.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
