@@ -1,0 +1,49 @@
+name: Research Chassis Temporal Lock Commit
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-temporal-lock-commit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  commit-lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      EXPECTED_LOCK_SHA256: '70577d13ae243d0f5b0f7f1c7933655af7ac8a238c0b2238c474bb055641235f'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/qualified-chassis-gate-v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Regenerate and verify pre-outcome lock exactly
+        working-directory: research/chassis/adapters/temporal-ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          ACTUAL=$(sha256sum package-lock.json | awk '{print $1}')
+          printf 'expected=%s\nactual=%s\n' "$EXPECTED_LOCK_SHA256" "$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED_LOCK_SHA256"
+
+      - name: Commit exact verified lock without triggering qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add research/chassis/adapters/temporal-ts/package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'test(chassis): freeze Temporal dependency graph [skip ci]'
+          git push origin HEAD:research/qualified-chassis-gate-v1
