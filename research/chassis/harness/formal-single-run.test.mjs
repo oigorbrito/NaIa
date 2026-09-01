@@ -10,6 +10,7 @@ import { FORMAL_HARNESS_FILES } from './harness-provenance.mjs';
 const candidates = ['Temporal TypeScript', 'DBOS TypeScript', 'Restate', 'Trigger.dev'];
 const criticalMutants = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16'];
 const repositoryRevisionPolicy = 'single-verified-git-revision-per-formal-ledger';
+const environmentIdentityPolicy = 'single-common-runtime-and-candidate-profile-per-formal-ledger';
 
 async function writeJson(root, relativePath, value) {
   const file = path.join(root, relativePath);
@@ -32,18 +33,31 @@ async function syntheticBlockedRepository() {
     schemaVersion: 1,
     status: 'SPECIFIED_NOT_EXECUTED',
     methodology: {
-      preExecutionAmendments: [{
-        id: 'A001',
-        date: '2026-09-01',
-        status: 'FROZEN_BEFORE_FORMAL_EXECUTION',
-        policy: repositoryRevisionPolicy,
-        reason: 'synthetic fixture preserves the same pre-execution repository revision comparability rule',
-        outcomeDriven: false,
-        changesSemanticVerdicts: false,
-        changesRepetitionThreshold: false,
-        lifecycleQualificationMayPrecedeBenchmarkRevision: true,
-        constraint: 'all records admitted to one synthetic formal ledger share one verified Git revision'
-      }]
+      preExecutionAmendments: [
+        {
+          id: 'A001',
+          date: '2026-09-01',
+          status: 'FROZEN_BEFORE_FORMAL_EXECUTION',
+          policy: repositoryRevisionPolicy,
+          reason: 'synthetic fixture preserves the same pre-execution repository revision comparability rule',
+          outcomeDriven: false,
+          changesSemanticVerdicts: false,
+          changesRepetitionThreshold: false,
+          lifecycleQualificationMayPrecedeBenchmarkRevision: true,
+          constraint: 'all records admitted to one synthetic formal ledger share one verified Git revision'
+        },
+        {
+          id: 'A002',
+          date: '2026-09-01',
+          status: 'FROZEN_BEFORE_FORMAL_EXECUTION',
+          policy: environmentIdentityPolicy,
+          reason: 'synthetic fixture preserves the same pre-execution formal environment comparability rule',
+          outcomeDriven: false,
+          changesSemanticVerdicts: false,
+          changesRepetitionThreshold: false,
+          constraint: 'READY synthetic formal records share one common runtime identity and one candidate profile identity per candidate while dynamic paths ports and process identities are excluded'
+        }
+      ]
     },
     decisionState: { benchmarkToBeat: 'NOT_SELECTED', chassisWinner: 'NOT_SELECTED' },
     candidates,
@@ -59,7 +73,8 @@ async function syntheticBlockedRepository() {
     executionOrder: {
       policy: 'round-robin-by-repetition',
       sequence: 'synthetic test sequence',
-      repositoryRevisionPolicy
+      repositoryRevisionPolicy,
+      environmentIdentityPolicy
     }
   };
   const faultSuite = {
