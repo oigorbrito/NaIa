@@ -1,9 +1,11 @@
 const EXPECTED_DECISION = 'NOT_SELECTED';
 const EXPECTED_REVISION_POLICY = 'single-verified-git-revision-per-formal-ledger';
 const EXPECTED_ENVIRONMENT_POLICY = 'single-common-runtime-and-candidate-profile-per-formal-ledger';
+const EXPECTED_EVALUATOR_POLICY = 'candidate-agnostic-evaluator-authority';
 const EXPECTED_AMENDMENT_DATE = '2026-09-01';
 const EXPECTED_A001_CONSTRAINT = 'The T5/r1 lifecycle qualification support may originate from an earlier verified revision only while its candidate lifecycle-qualification hash remains current; every record admitted to one formal benchmark ledger must otherwise share one verified Git repository revision.';
 const EXPECTED_A002_CONSTRAINT = 'Every READY record in one formal ledger must share one canonical common execution environment identity for OS, architecture, Node runtime and recorded package-manager identity; within each candidate, every READY record must also share one canonical candidate profile derived from candidate/source identity, adapter SHA-256, manifest and exact installed dependency versions, declared mode/authority boundary, lifecycle-qualification SHA-256 and stable observed native runtime identity. Dynamic workspace paths, ports, task queues, process IDs, container IDs and database URLs are excluded from identity.';
+const EXPECTED_A003_CONSTRAINT = 'Formal semantic acceptance for every benchmark-critical mutant must be computed by candidate-agnostic evaluator code from raw observations; candidate adapters and execution runners may translate native evidence but must not define or override success semantics. Fault injection is classified separately, and an absent intended fault remains INCONCLUSIVE. For T7 and T8, the frozen executable acceptance contract requires exactly one external apply, one stable semantic operation identity, reachable durable authority, objective_completed terminal recovery and COMPLETED final status; T7 additionally requires zero response losses, while T8 additionally requires that the measurement cutoff was not reached after the one required response-loss fault. RECONCILIATION_REQUIRED is observable evidence but is not T7/T8 PASS under this V1 contract.';
 const EXPECTED_REQUIRED_RECORD_FIELDS = Object.freeze([
   'experimentId',
   'candidate',
@@ -71,6 +73,9 @@ function validatePreExecutionAmendments(protocol, errors) {
   if (protocol?.executionOrder?.environmentIdentityPolicy !== EXPECTED_ENVIRONMENT_POLICY) {
     errors.push(`executionOrder.environmentIdentityPolicy must equal ${EXPECTED_ENVIRONMENT_POLICY}`);
   }
+  if (protocol?.executionOrder?.evaluatorAuthorityPolicy !== EXPECTED_EVALUATOR_POLICY) {
+    errors.push(`executionOrder.evaluatorAuthorityPolicy must equal ${EXPECTED_EVALUATOR_POLICY}`);
+  }
 
   const revision = amendmentById(protocol, 'A001', errors);
   validateCommonAmendment(revision, 'A001', EXPECTED_REVISION_POLICY, EXPECTED_A001_CONSTRAINT, errors);
@@ -80,6 +85,9 @@ function validatePreExecutionAmendments(protocol, errors) {
 
   const environment = amendmentById(protocol, 'A002', errors);
   validateCommonAmendment(environment, 'A002', EXPECTED_ENVIRONMENT_POLICY, EXPECTED_A002_CONSTRAINT, errors);
+
+  const evaluator = amendmentById(protocol, 'A003', errors);
+  validateCommonAmendment(evaluator, 'A003', EXPECTED_EVALUATOR_POLICY, EXPECTED_A003_CONSTRAINT, errors);
 }
 
 function validateRequiredRecordFields(protocol, errors) {
