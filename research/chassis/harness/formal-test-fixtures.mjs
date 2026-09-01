@@ -1,4 +1,5 @@
 import { candidateProfileRecordFields } from './formal-candidate-profile-binding.mjs';
+import { deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import {
   currentLifecycleQualificationProvenance,
   currentLifecycleQualificationSha256
@@ -23,26 +24,36 @@ export function lifecycleQualificationRecord(candidate) {
 }
 
 export function verifiedCleanupSupport(candidates = ['Temporal TypeScript'], revision = TEST_REPOSITORY_REVISION) {
-  return Object.fromEntries(candidates.map((candidate, index) => [
-    candidate,
-    {
-      preRunCleanup: true,
-      postRunCleanup: true,
-      status: 'RUNTIME_VERIFIED',
-      verificationEvidence: {
-        executionRef: `github-actions:run=fixture;job=${candidateSlug(candidate)};sha=${revision}`,
-        repositoryRevision: revision,
-        experimentId: `${candidateSlug(candidate)}-t5-001`,
-        mutantId: 'T5',
-        repetition: 1,
-        recordSha256: String(index + 1).repeat(64).slice(0, 64),
-        validatorSha256: String(index + 2).repeat(64).slice(0, 64),
-        harnessSha256: String(index + 3).repeat(64).slice(0, 64),
-        lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate),
-        verifiedAt: '2026-09-01T00:00:00.000Z'
+  return Object.fromEntries(candidates.map((candidate, index) => {
+    const qualificationRecord = readyFormalRecord({
+      candidate,
+      mutantId: 'T5',
+      repetition: 1,
+      repositoryRevision: revision
+    });
+    const runtimeIdentitySha256 = deriveFormalEnvironmentIdentity(qualificationRecord).runtimeIdentitySha256;
+    return [
+      candidate,
+      {
+        preRunCleanup: true,
+        postRunCleanup: true,
+        status: 'RUNTIME_VERIFIED',
+        verificationEvidence: {
+          executionRef: `github-actions:run=fixture;job=${candidateSlug(candidate)};sha=${revision}`,
+          repositoryRevision: revision,
+          experimentId: `${candidateSlug(candidate)}-t5-001`,
+          mutantId: 'T5',
+          repetition: 1,
+          recordSha256: String(index + 1).repeat(64).slice(0, 64),
+          validatorSha256: String(index + 2).repeat(64).slice(0, 64),
+          harnessSha256: String(index + 3).repeat(64).slice(0, 64),
+          lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate),
+          runtimeIdentitySha256,
+          verifiedAt: '2026-09-01T00:00:00.000Z'
+        }
       }
-    }
-  ]));
+    ];
+  }));
 }
 
 function temporalReceipt(overrides = {}) {
