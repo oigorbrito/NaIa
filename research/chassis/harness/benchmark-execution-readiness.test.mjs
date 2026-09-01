@@ -29,10 +29,6 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
   assert.deepEqual(result.unsupportedMutants, []);
   assert.deepEqual(result.unsupportedCandidateMutants, [
     {
-      candidate: 'Restate', mutantId: 'T11', mode: 'local-process',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
-    },
-    {
       candidate: 'Trigger.dev', mutantId: 'T5', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     },
@@ -42,7 +38,7 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T11', mode: 'managed-controller',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
+      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T12', mode: 'managed-controller',
@@ -102,7 +98,7 @@ test('assertBenchmarkExecutionReady fails closed with explicit remaining candida
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /Restate\/T11: formal executor not implemented for candidate\/mode/
+    /Trigger\.dev\/T5: formal executor not implemented for candidate\/mode/
   );
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
