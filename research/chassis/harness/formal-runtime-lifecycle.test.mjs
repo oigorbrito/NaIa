@@ -83,6 +83,17 @@ const spec = Object.freeze({
   randomSeed: 1070001
 });
 
+function injectedT7Run({ explicitWorkerPid = true } = {}) {
+  return {
+    fault: { intended: 'T7', injected: true },
+    rawObservations: {
+      ...(explicitWorkerPid ? { workerProcessPids: [9001] } : {}),
+      runnerProcess: { pid: 9099, exitCode: 0, timedOut: false },
+      recoveryWorker: { pid: 9001 }
+    }
+  };
+}
+
 test('Temporal isolation environment derives experiment-unique task queues from preregistered identity', () => {
   const first = buildTemporalIsolationEnvironment(spec, '127.0.0.1:27123');
   const second = buildTemporalIsolationEnvironment({ ...spec, repetition: 2, experimentId: 'temporal-typescript-t7-002', randomSeed: 1070002 }, '127.0.0.1:27124');
@@ -100,7 +111,7 @@ test('Temporal frozen runtime identity rejects CLI or embedded server drift', ()
   assert.equal(temporalVersionMatchesFrozenProfile('Temporal CLI 1.8.1 (Server 1.32.0)'), false);
 });
 
-test('Temporal lifecycle emits a complete pre-run receipt and cleans only experiment-owned resources', async () => {
+test('Temporal lifecycle emits a complete pre-run receipt and binds explicit worker PID cleanup', async () => {
   const env = { NAIA_TEMPORAL_CLI: '/pinned/temporal' };
   const operations = fakeTemporalOperations();
   const lifecycle = createFormalRuntimeLifecycle({
@@ -121,22 +132,38 @@ test('Temporal lifecycle emits a complete pre-run receipt and cleans only experi
   assert.equal(env.TEMPORAL_ADDRESS, '127.0.0.1:27123');
   assert.match(env.NAIA_TEMPORAL_TASK_QUEUE, /temporal-typescript-t7-001/);
 
-  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, {
-    rawObservations: {
-      runnerProcess: { exitCode: 0, timedOut: false },
-      recoveryWorker: { pid: 9001 }
-    }
-  });
+  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, injectedT7Run());
 
   assert.equal(cleanup.status, 'PASS');
   assert.equal(cleanup.workerCleanup, true);
+  assert.equal(cleanup.workerPidProvenanceRequired, true);
+  assert.equal(cleanup.workerPidProvenanceObserved, true);
+  assert.deepEqual(cleanup.workerProcessPids, [9001]);
   assert.equal(cleanup.durableStateCleanup, true);
   assert.equal(cleanup.oracleCleanup, true);
   assert.equal(cleanup.temporaryResourcesCleanup, true);
-  assert.deepEqual(cleanup.observedWorkerPids, [9001]);
+  assert.deepEqual(cleanup.observedWorkerPids.sort((a, b) => a - b), [9001, 9099]);
   assert.equal(cleanup.temporalServerPid, 4242);
   assert.ok(operations.calls.includes('stopServer'));
   assert.ok(operations.calls.includes('removeWorkspace'));
+});
+
+test('Temporal lifecycle fails cleanup when critical injected run exposes only generic/driver PID evidence', async () => {
+  const lifecycle = createFormalRuntimeLifecycle({
+    candidateName: 'Temporal TypeScript',
+    repositoryRoot: '/virtual/repository',
+    env: { NAIA_TEMPORAL_CLI: '/pinned/temporal' },
+    timeoutMs: 1000,
+    operations: fakeTemporalOperations()
+  });
+  const receipt = await lifecycle.preRunCleanupHook(spec);
+  assert.equal(receipt.status, 'PASS');
+
+  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, injectedT7Run({ explicitWorkerPid: false }));
+  assert.equal(cleanup.workerPidProvenanceRequired, true);
+  assert.equal(cleanup.workerPidProvenanceObserved, false);
+  assert.equal(cleanup.workerCleanup, false);
+  assert.equal(cleanup.status, 'FAIL');
 });
 
 test('Temporal lifecycle fails closed when the binary digest is not the frozen Linux amd64 asset', async () => {
@@ -187,6 +214,7 @@ test('Temporal lifecycle fails closed when the runtime version is not the frozen
 
   const cleanup = await lifecycle.cleanupHook(spec, { status: 'BLOCKED_SETUP' }, { rawObservations: {} });
   assert.equal(cleanup.status, 'NOT_APPLICABLE');
+  assert.equal(cleanup.workerPidProvenanceRequired, false);
   assert.equal(cleanup.durableStateCleanup, true);
 });
 
