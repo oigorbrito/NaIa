@@ -41,7 +41,27 @@
             "runtime": {"type": "string"},
             "packageManager": {"type": ["string", "null"]},
             "infrastructure": {"type": "object"},
-            "requiredEnvNames": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+            "requiredEnvNames": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+            "formalPromotionPolicy": {
+              "type": "object",
+              "required": ["path", "schemaVersion", "status", "sha256"],
+              "properties": {
+                "path": {"const": "research/chassis/formal-promotion-policy.v1.json"},
+                "schemaVersion": {"const": 1},
+                "status": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+              },
+              "additionalProperties": false
+            },
+            "formalRuntimeLifecycle": {
+              "type": ["object", "null"],
+              "properties": {
+                "candidate": {"type": "string", "minLength": 1},
+                "status": {"type": "string", "minLength": 1}
+              },
+              "required": ["candidate", "status"],
+              "additionalProperties": true
+            }
           },
           "additionalProperties": true
         },
@@ -73,7 +93,17 @@
           },
           "additionalProperties": true
         },
-        "rawObservations": {"type": "object"},
+        "rawObservations": {
+          "type": "object",
+          "properties": {
+            "workerProcessPids": {
+              "type": "array",
+              "items": {"type": "integer", "minimum": 1},
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "acceptanceChecks": {
           "type": "object",
           "additionalProperties": {"type": "boolean"}
@@ -95,7 +125,17 @@
         "workerCleanup": {"type": "boolean"},
         "durableStateCleanup": {"type": "boolean"},
         "oracleCleanup": {"type": "boolean"},
-        "temporaryResourcesCleanup": {"type": "boolean"}
+        "temporaryResourcesCleanup": {"type": "boolean"},
+        "observedWorkerPids": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 1},
+          "uniqueItems": true
+        },
+        "liveObservedWorkerPids": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 1},
+          "uniqueItems": true
+        }
       },
       "additionalProperties": true
     },
