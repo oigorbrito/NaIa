@@ -8,6 +8,7 @@ import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './form
 import { lifecycleQualificationRecordProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle-router.mjs';
+import { inspectRepositoryProvenance } from './repository-provenance.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -21,6 +22,21 @@ function requireValue(args, name) {
   return value;
 }
 
+async function resolveRepositoryProvenance(repositoryRoot, inspector) {
+  try {
+    return await inspector(repositoryRoot);
+  } catch (error) {
+    return {
+      source: 'git',
+      status: 'UNVERIFIED',
+      revision: null,
+      trackedWorktreeClean: null,
+      reason: 'REPOSITORY_PROVENANCE_INSPECTOR_ERROR',
+      diagnostics: { error: String(error) }
+    };
+  }
+}
+
 export async function runFormalSingle({
   repositoryRoot,
   candidateName,
@@ -30,7 +46,8 @@ export async function runFormalSingle({
   env = process.env,
   timeoutMs = 15000,
   lifecycleFactory = createFormalRuntimeLifecycle,
-  runHookFactory = createCommonRunnerRunHook
+  runHookFactory = createCommonRunnerRunHook,
+  repositoryProvenanceInspector = inspectRepositoryProvenance
 }) {
   if (!Number.isInteger(repetition) || repetition < 1) throw new Error('repetition must be a positive integer');
 
@@ -40,6 +57,7 @@ export async function runFormalSingle({
     throw new Error(`FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:${candidateName}/${mutantId}`);
   }
 
+  const repositoryProvenance = await resolveRepositoryProvenance(repositoryRoot, repositoryProvenanceInspector);
   const runtimeEnv = { ...env };
   const lifecycle = lifecycleFactory({
     candidateName,
@@ -62,9 +80,11 @@ export async function runFormalSingle({
     runHook,
     preRunCleanupHook: lifecycle?.preRunCleanupHook,
     cleanupHook: lifecycle?.cleanupHook,
+    repositoryProvenance,
     environment: {
       packageManager: runtimeEnv.npm_config_user_agent ?? null,
       requiredEnvNames: declaredEnvNames,
+      repositoryProvenance,
       formalPromotionPolicy: formalPromotionPolicyProvenance(),
       formalLifecycleQualification: lifecycleQualification,
       formalRuntimeLifecycle: lifecycle
