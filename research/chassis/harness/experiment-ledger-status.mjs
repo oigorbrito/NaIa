@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assessStoredFormalLedgerCurrentCompatibility,
+  assessStoredFormalLedgerRepositoryRevisionConsistency,
   auditStoredFormalLedger,
   validateExecutionLedger
 } from './experiment-ledger-validator.mjs';
@@ -33,16 +34,18 @@ export async function ledgerStatus({ repositoryRoot, ledgerPath = null }) {
   const structural = validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
   const formalAudit = auditStoredFormalLedger(records);
   const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records);
+  const repositoryRevisionConsistency = assessStoredFormalLedgerRepositoryRevisionConsistency(records);
   const historicallyValid = structural.valid && formalAudit.valid;
-  const validForAppend = historicallyValid && currentCompatibility.compatible;
+  const validForAppend = historicallyValid && currentCompatibility.compatible && repositoryRevisionConsistency.consistent;
   return {
     ...structural,
     valid: validForAppend,
-    complete: structural.complete && historicallyValid,
+    complete: structural.complete && historicallyValid && repositoryRevisionConsistency.consistent,
     historicallyValid,
     validForAppend,
     formalAudit,
-    currentCompatibility
+    currentCompatibility,
+    repositoryRevisionConsistency
   };
 }
 
