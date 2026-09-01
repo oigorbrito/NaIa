@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
+import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 function record({
   lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
@@ -9,7 +10,8 @@ function record({
   withWorkerPid = true,
   driverOnly = false,
   omitWorkerFromCleanup = false,
-  liveWorker = false
+  liveWorker = false,
+  tamperPromotionPolicy = false
 } = {}) {
   const workerPid = 7701;
   const driverPid = 7799;
@@ -25,6 +27,8 @@ function record({
       : driverOnly
         ? [driverPid]
         : [];
+  const promotionPolicy = formalPromotionPolicyProvenance();
+  if (tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
   return {
     schemaVersion: 1,
     experimentId: 'temporal-typescript-t5-001',
@@ -43,6 +47,7 @@ function record({
         os: 'linux',
         arch: 'x64',
         runtime: 'node v22.16.0',
+        formalPromotionPolicy: promotionPolicy,
         formalRuntimeLifecycle: {
           candidate: 'Temporal TypeScript',
           status: lifecycleStatus
@@ -154,6 +159,15 @@ test('formal ledger admission requires PASS cleanup for READY formal execution',
   assert.match(result.errors.join('\n'), /cleanup.status=PASS/);
 });
 
+test('formal ledger admission rejects record bound to a different promotion policy hash', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', tamperPromotionPolicy: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
+});
+
 test('formal ledger admission rejects injected critical execution with zero explicit worker process PIDs', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', withWorkerPid: false }),
@@ -190,7 +204,7 @@ test('formal ledger admission rejects explicit worker PID reported alive after c
   assert.match(result.errors.join('\n'), /still alive: 7701/);
 });
 
-test('formal ledger admission opens only when lifecycle, explicit worker PID binding and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle, policy hash, explicit worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -205,7 +219,7 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after lifecycle, explicit worker PID binding and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after lifecycle, policy hash, explicit worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
