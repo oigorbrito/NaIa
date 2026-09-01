@@ -30,6 +30,7 @@ const T11_DRIVERS = Object.freeze({
 
 async function spawnAndWait(command, args, options, timeoutMs) {
   const child = spawn(command, args, options);
+  const pid = child.pid ?? null;
   let stdout = '';
   let stderr = '';
   let timedOut = false;
@@ -43,7 +44,7 @@ async function spawnAndWait(command, args, options, timeoutMs) {
     child.once('exit', resolve);
   });
   clearTimeout(timer);
-  return { exitCode, stdout, stderr, timedOut };
+  return { pid, exitCode, stdout, stderr, timedOut };
 }
 
 export function runtimePrerequisiteFailure(processResult) {
