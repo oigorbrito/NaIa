@@ -1,4 +1,5 @@
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { assessFormalEnvironmentConsistency } from './formal-environment-identity.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
@@ -48,6 +49,11 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
   const harnessSha256s = benchmarkHarnessSha256s(records);
   if (harnessSha256s.length > 1) {
     errors.push(`${candidate ?? 'unknown candidate'}: formal benchmark records span multiple harness identities: ${harnessSha256s.join(', ')}`);
+  }
+
+  const environmentConsistency = assessFormalEnvironmentConsistency(records);
+  for (const error of environmentConsistency.errors) {
+    errors.push(`${candidate ?? 'unknown candidate'}: formal environment identity: ${error}`);
   }
 
   const mutants = new Map((faultSuite?.mutants ?? []).map((mutant) => [mutant.id, mutant]));
@@ -116,5 +122,5 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
     }
   }
 
-  return { eligible: errors.length === 0, candidate, errors };
+  return { eligible: errors.length === 0, candidate, environmentConsistency, errors };
 }
