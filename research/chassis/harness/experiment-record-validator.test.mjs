@@ -15,6 +15,7 @@ const verifiedSupport = {
       repetition: 1,
       recordSha256: 'e'.repeat(64),
       validatorSha256: 'f'.repeat(64),
+      harnessSha256: 'b'.repeat(64),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }
@@ -220,6 +221,14 @@ test('benchmark eligibility rejects worker PID reported alive after cleanup', ()
   );
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /still alive/);
+});
+
+test('benchmark eligibility remains closed when support evidence omits harness hash', () => {
+  const withoutHarness = structuredClone(verifiedSupport);
+  delete withoutHarness['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  const result = benchmarkEligible(completeRecords(1), suite(1), withoutHarness);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
