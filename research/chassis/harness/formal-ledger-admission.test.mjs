@@ -3,7 +3,12 @@ import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
 
-function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupStatus = 'PASS', withPid = true } = {}) {
+function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupStatus = 'PASS', withWorkerPid = true, driverOnly = false } = {}) {
+  const rawObservations = driverOnly
+    ? { runnerProcess: { pid: 7799 } }
+    : withWorkerPid
+      ? { workerProcessPids: [7701], workerA: { pid: 7701 }, runnerProcess: { pid: 7799 } }
+      : {};
   return {
     schemaVersion: 1,
     experimentId: 'temporal-typescript-t5-001',
@@ -51,7 +56,7 @@ function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupS
         signal: null,
         durableAuthorityAlive: true
       },
-      rawObservations: withPid ? { workerA: { pid: 7701 } } : {},
+      rawObservations,
       acceptanceChecks: { ownershipFenced: true }
     },
     cleanup: {
@@ -131,16 +136,25 @@ test('formal ledger admission requires PASS cleanup for READY formal execution',
   assert.match(result.errors.join('\n'), /cleanup.status=PASS/);
 });
 
-test('formal ledger admission rejects injected critical execution with zero observed process PIDs', () => {
+test('formal ledger admission rejects injected critical execution with zero explicit worker process PIDs', () => {
   const result = formalLedgerAdmission(
-    record({ lifecycleStatus: 'RUNTIME_VERIFIED', withPid: false }),
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', withWorkerPid: false }),
     verifiedSupport
   );
   assert.equal(result.valid, false);
-  assert.match(result.errors.join('\n'), /lacks observed process PID provenance/);
+  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
-test('formal ledger admission opens only when lifecycle provenance, PID provenance and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission rejects driver PID as a substitute for worker PID provenance', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', driverOnly: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
+});
+
+test('formal ledger admission opens only when lifecycle, explicit worker PID provenance and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -155,21 +169,21 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility rejects runtime-verified record with missing process PID provenance', () => {
+test('benchmark eligibility rejects runtime-verified record with missing explicit worker PID provenance', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
   };
   const result = benchmarkEligible(
-    [record({ lifecycleStatus: 'RUNTIME_VERIFIED', withPid: false })],
+    [record({ lifecycleStatus: 'RUNTIME_VERIFIED', withWorkerPid: false })],
     faultSuite,
     verifiedSupport
   );
   assert.equal(result.eligible, false);
-  assert.match(result.errors.join('\n'), /lacks observed process PID provenance/);
+  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after lifecycle provenance, PID provenance and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after lifecycle, explicit worker PID provenance and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
