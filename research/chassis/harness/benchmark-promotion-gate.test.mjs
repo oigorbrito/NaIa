@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { assessCandidatePromotion } from './benchmark-promotion-gate.mjs';
+import { assessCandidatePromotion, FORMAL_PROMOTION_POLICY } from './benchmark-promotion-gate.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -121,6 +121,12 @@ function completeCandidate(candidate, verdictByMutant = {}) {
   return records;
 }
 
+test('frozen promotion policy starts with no critical FAIL or PARTIAL exceptions', () => {
+  assert.equal(FORMAL_PROMOTION_POLICY.status, 'FROZEN_BEFORE_FORMAL_EXECUTION');
+  assert.deepEqual(FORMAL_PROMOTION_POLICY.acceptedCriticalFailures, {});
+  assert.deepEqual(FORMAL_PROMOTION_POLICY.partialPolicies, {});
+});
+
 test('promotion stays closed without repository runtime-verified cleanup support', async () => {
   const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite());
   assert.equal(result.comparable, false);
@@ -133,6 +139,7 @@ test('complete all-PASS critical evidence is promotion-qualified only with candi
   const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
   assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, true, result.errors.join('\n'));
+  assert.equal(result.promotionPolicyStatus, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.deepEqual(result.exceptions, []);
 });
 
@@ -144,7 +151,7 @@ test('cleanup verification evidence from another candidate cannot open promotion
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('critical FAIL evidence is comparable but not promotion-qualified without explicit policy', async () => {
+test('critical FAIL evidence remains comparable but is not promotion-qualified without a preregistered exception', async () => {
   const cleanupSupport = verifiedCleanupSupport();
   const result = assessCandidatePromotion(
     completeCandidate('Temporal TypeScript', { T7: 'FAIL' }),
@@ -153,18 +160,18 @@ test('critical FAIL evidence is comparable but not promotion-qualified without e
   );
   assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, false);
-  assert.match(result.errors.join('\n'), /T7: critical FAIL requires explicit enforced acceptance\/exclusion policy/);
+  assert.match(result.errors.join('\n'), /T7: critical FAIL has no preregistered promotion exception/);
 });
 
-test('critical FAIL can pass promotion only with explicit enforced constraint and justification', async () => {
+test('runtime acceptedFailures map cannot waive a critical FAIL after outcomes are observed', async () => {
   const suite = await faultSuite();
   const records = completeCandidate('Temporal TypeScript', { T7: 'FAIL' });
   const acceptedFailures = {
     'Temporal TypeScript': {
       T7: {
         enforced: true,
-        constraint: 'forbid direct non-reconciled category-C external effects',
-        justification: 'configuration excludes the demonstrated unsafe path'
+        constraint: 'forbid unsafe path',
+        justification: 'post-result caller supplied policy'
       }
     }
   };
@@ -173,21 +180,29 @@ test('critical FAIL can pass promotion only with explicit enforced constraint an
     cleanupSupport: verifiedCleanupSupport()
   });
   assert.equal(result.comparable, true, result.errors.join('\n'));
-  assert.equal(result.qualified, true, result.errors.join('\n'));
-  assert.ok(result.exceptions.some((entry) => entry.mutantId === 'T7' && entry.verdict === 'FAIL'));
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /runtime promotion policy overrides are non-authoritative/);
+  assert.match(result.errors.join('\n'), /T7: critical FAIL has no preregistered promotion exception/);
 });
 
-test('policy object without enforced=true cannot waive a critical FAIL', async () => {
+test('runtime enforcedPolicies map cannot create a PARTIAL exception after outcomes are observed', async () => {
   const suite = await faultSuite();
-  const records = completeCandidate('Temporal TypeScript', { T7: 'FAIL' });
-  const acceptedFailures = {
+  const records = completeCandidate('Temporal TypeScript', { T8: 'PARTIAL' });
+  const enforcedPolicies = {
     'Temporal TypeScript': {
-      T7: { enforced: false, constraint: 'documentation only', justification: 'not mechanically enforced' }
+      T8: {
+        enforced: true,
+        constraint: 'force reconciliation',
+        justification: 'post-result caller supplied policy'
+      }
     }
   };
   const result = assessCandidatePromotion(records, suite, {
-    acceptedFailures,
+    enforcedPolicies,
     cleanupSupport: verifiedCleanupSupport()
   });
+  assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /runtime promotion policy overrides are non-authoritative/);
+  assert.match(result.errors.join('\n'), /T8: PARTIAL lacks a preregistered enforced promotion policy/);
 });
