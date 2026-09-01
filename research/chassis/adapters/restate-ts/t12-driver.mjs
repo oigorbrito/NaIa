@@ -144,7 +144,7 @@ export async function runRestateT12({
   try {
     serviceA = spawnService('A', portA, env);
     await waitForEvent(serviceA, (event) => event.event === 't12_service_ready', timeoutMs, 'service ready');
-    const registrationA = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portA}` });
+    const registrationA = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portA}`, use_http_11: true });
     deploymentA = deploymentId(registrationA);
     if (!deploymentA) throw new Error('Restate T12 deployment A registration did not expose deployment identity');
 
@@ -162,7 +162,7 @@ export async function runRestateT12({
 
     serviceB = spawnService('B', portB, env);
     await waitForEvent(serviceB, (event) => event.event === 't12_service_ready', timeoutMs, 'service ready');
-    const registrationB = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portB}` });
+    const registrationB = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portB}`, use_http_11: true });
     deploymentB = deploymentId(registrationB);
     if (!deploymentB) throw new Error('Restate T12 deployment B registration did not expose deployment identity');
     if (deploymentA === deploymentB) throw new Error('Restate T12 requires distinct deployment identities');
