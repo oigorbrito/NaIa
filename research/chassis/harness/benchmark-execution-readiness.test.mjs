@@ -33,10 +33,6 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
     },
     {
-      candidate: 'Restate', mutantId: 'T12', mode: 'local-process',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
-    },
-    {
       candidate: 'Trigger.dev', mutantId: 'T5', mode: 'managed-controller',
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     },
@@ -50,7 +46,7 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T12', mode: 'managed-controller',
-      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript']
+      supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     },
     {
       candidate: 'Trigger.dev', mutantId: 'T16', mode: 'managed-controller',

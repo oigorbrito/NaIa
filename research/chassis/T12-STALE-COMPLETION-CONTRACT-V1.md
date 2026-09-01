@@ -1,6 +1,6 @@
 # T12 Stale Completion After New Owner Contract V1
 
-Status: CONTROL_SPECIFIED / CANDIDATE_EXECUTORS_NOT_IMPLEMENTED
+Status: CONTROL_SPECIFIED / TEMPORAL_DBOS_RESTATE_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T12 tests `stale_completion_after_new_owner`: after a newer candidate-native authority has completed or otherwise become authoritative, an older attempt must not overwrite that result when its delayed completion arrives later.
 
@@ -70,6 +70,14 @@ T12 PASS requires all of the following:
 - cleanup passes the formal cleanup gate.
 
 If the old completion cannot be preserved, a newer authority cannot be induced, the stale completion cannot be submitted, or final authority cannot be independently inspected, the record is BLOCKED or INCONCLUSIVE under the existing runtime rules. It must not become PASS.
+
+## Candidate-specific admitted observations
+
+Temporal may use candidate-native activity task tokens/attempt identity and native stale-token rejection, provided the new authority has already committed before the old token is submitted.
+
+DBOS may use candidate-native executor/recovery ownership and workflow status, provided the older execution is demonstrably held through the newer authoritative completion and the old write is actually challenged afterward.
+
+Restate may use two distinct deployment identities for the same durable invocation, with candidate-native `pause` plus `resume?deployment=latest` to establish the newer authority. Deployment B must complete first and its result must be independently observed before A is released. A counts as a stale completion attempt only if the correlated old service-protocol HTTP response reaches transport `finish` after B is authoritative. The driver must then re-read the workflow output and prove it still originates from B. If A's old request was already closed and cannot cross the normal completion boundary, `staleCompletion.attempted` remains false and the run is not T12-complete. Upstream fencing-token evidence supports the test design but is not candidate runtime evidence.
 
 ## Prohibited adaptations
 

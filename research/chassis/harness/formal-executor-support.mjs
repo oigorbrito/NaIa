@@ -21,7 +21,7 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
   }),
   T12: Object.freeze({
     modes: Object.freeze(['local-process']),
-    candidates: Object.freeze(['Temporal TypeScript', 'DBOS TypeScript']),
+    candidates: Object.freeze(['Temporal TypeScript', 'DBOS TypeScript', 'Restate']),
     fault: 'late-stale-completion-after-new-authority-commit'
   }),
   T16: Object.freeze({

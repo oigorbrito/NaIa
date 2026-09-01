@@ -18,6 +18,13 @@ const T12_DRIVERS = Object.freeze({
     blocker: 'TEMPORAL_T12_RUNTIME_PREREQUISITE_UNAVAILABLE',
     timeoutReason: 'TEMPORAL_T12_DRIVER_TIMEOUT',
     invalidReason: 'TEMPORAL_T12_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  },
+  Restate: {
+    relativePath: ['research', 'chassis', 'adapters', 'restate-ts', 't12-driver.mjs'],
+    tempPrefix: 'naia-restate-t12-',
+    blocker: 'RESTATE_T12_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'RESTATE_T12_DRIVER_TIMEOUT',
+    invalidReason: 'RESTATE_T12_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
   }
 });
 
