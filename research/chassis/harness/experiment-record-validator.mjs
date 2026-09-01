@@ -1,4 +1,5 @@
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
 const ALLOWED_VERDICTS = new Set(['PASS', 'FAIL', 'BLOCKED', 'INCONCLUSIVE', 'PARTIAL']);
@@ -142,6 +143,9 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
       if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
+      }
+      if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
+        errors.push(`${mutantId}: repetition ${record.repetition} lacks current frozen formal promotion policy hash provenance`);
       }
       if (record?.setup?.status === 'READY') {
         if (!preRunCleanupReceiptValid(record?.setup?.preRunCleanupReceipt)) {
