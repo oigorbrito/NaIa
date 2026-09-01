@@ -21,6 +21,7 @@ import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
+const REPOSITORY_REVISION = '1'.repeat(40);
 
 async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
@@ -53,6 +54,10 @@ function blockedRecord(spec) {
       dependencyIdentity: null,
       environment: {
         os: 'fixture-os', arch: 'fixture-arch', runtime: 'node v22.0.0',
+        repositoryProvenance: {
+          source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
+          trackedWorktreeClean: true, reason: null
+        },
         formalPromotionPolicy: formalPromotionPolicyProvenance(),
         formalLifecycleQualification: qualificationRecord(spec.candidate),
         formalRuntimeLifecycle: { candidate: spec.candidate, status: 'RUNTIME_VERIFIED' }
@@ -92,7 +97,8 @@ const verifiedTemporalSupport = {
     postRunCleanup: true,
     status: 'RUNTIME_VERIFIED',
     verificationEvidence: {
-      executionRef: 'test:temporal-runtime-receipt',
+      executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
+      repositoryRevision: REPOSITORY_REVISION,
       experimentId: 'temporal-typescript-t5-001',
       mutantId: 'T5',
       repetition: 1,
@@ -139,6 +145,17 @@ test('record identity is bound to preregistered experimentId and random seed', a
   const validation = validateRecordAgainstSpec(tampered, spec);
   assert.equal(validation.valid, false);
   assert.match(validation.errors.join('\n'), /randomSeed mismatch/);
+});
+
+test('historical audit rejects malformed Git repository provenance', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [spec] = buildExecutionPlan(protocol, suite);
+  const malformed = blockedRecord(spec);
+  malformed.setup.environment.repositoryProvenance.revision = 'not-a-revision';
+  const historical = auditStoredFormalRecord(malformed);
+  assert.equal(historical.valid, false);
+  assert.match(historical.errors.join('\n'), /lacks structurally valid Git repository provenance/);
 });
 
 test('historical audit preserves a well-formed old promotion policy hash while current compatibility rejects it', async () => {
@@ -227,6 +244,18 @@ test('hypothetical support without lifecycle qualification hash cannot open appe
   const [first] = buildExecutionPlan(protocol, suite);
   const support = structuredClone(verifiedTemporalSupport);
   delete support['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
+  assert.throws(
+    () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
+    /formal cleanup support is not runtime-verified/
+  );
+});
+
+test('hypothetical support with mismatched Git execution revision cannot open append admission', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [first] = buildExecutionPlan(protocol, suite);
+  const support = structuredClone(verifiedTemporalSupport);
+  support['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
   assert.throws(
     () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
     /formal cleanup support is not runtime-verified/
