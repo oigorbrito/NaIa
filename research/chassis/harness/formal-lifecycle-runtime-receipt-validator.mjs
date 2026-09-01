@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
+import { deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { explicitWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 import { repositoryProvenanceReady } from './repository-provenance.mjs';
@@ -49,6 +50,7 @@ export function validateRuntimeLifecycleReceipt(record) {
   const environment = record?.setup?.environment ?? {};
   const lifecycle = environment.formalRuntimeLifecycle ?? null;
   const lifecycleQualification = environment.formalLifecycleQualification ?? null;
+  const formalEnvironmentIdentity = deriveFormalEnvironmentIdentity(record);
   const workerProcessPids = explicitWorkerProcessPids(record?.run);
   const observedWorkerPids = cleanup?.observedWorkerPids ?? [];
   const liveObservedWorkerPids = cleanup?.liveObservedWorkerPids ?? [];
@@ -62,6 +64,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     setupReady: record?.setup?.status === 'READY',
     cleanupVerifiedBeforeRun: record?.setup?.cleanupVerifiedBeforeRun === true,
     repositoryRevisionVerified: repositoryProvenanceReady(environment.repositoryProvenance),
+    formalEnvironmentIdentityValid: formalEnvironmentIdentity.applicable === true && formalEnvironmentIdentity.valid === true,
     lifecycleDeclared: lifecycle?.candidate === record?.candidate,
     lifecycleStateIsPrePromotionOrVerified: ['IMPLEMENTED_NOT_RUNTIME_VERIFIED', 'RUNTIME_VERIFIED'].includes(lifecycle?.status),
     lifecycleQualificationBundleCurrent: lifecycleQualificationRecordProvenanceValid(lifecycleQualification, record?.candidate),
@@ -86,6 +89,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     mutantId: record?.mutantId ?? null,
     repetition: record?.repetition ?? null,
     repositoryRevision: environment.repositoryProvenance?.revision ?? null,
+    formalEnvironmentIdentity,
     candidateVerdict: record?.verdict ?? null,
     candidateVerdictIgnoredForLifecycleVerification: true,
     workerProcessPids,
