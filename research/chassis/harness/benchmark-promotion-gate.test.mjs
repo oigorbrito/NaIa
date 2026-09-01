@@ -55,7 +55,40 @@ function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId 
   };
 }
 
-function record(candidate, mutantId, repetition, verdict = 'PASS') {
+function temporalDependencyIdentity() {
+  return {
+    manifestPath: '/fixture/research/chassis/adapters/temporal-ts/package.json',
+    manifestSha256: '9'.repeat(64),
+    packages: [{
+      package: '@temporalio/worker',
+      expectedVersion: '1.23.0',
+      declaredVersion: '1.23.0',
+      installedVersion: '1.23.0',
+      installedPackageJson: '/fixture/node_modules/@temporalio/worker/package.json'
+    }]
+  };
+}
+
+function temporalReceipt() {
+  return {
+    status: 'PASS',
+    workerCleanup: true,
+    durableStateCleanup: true,
+    oracleCleanup: true,
+    temporaryResourcesCleanup: true,
+    cliSha256: '8'.repeat(64),
+    versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
+    expectedProfile: {
+      sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
+    },
+    observedPlatform: { platform: 'linux', arch: 'x64' },
+    workspace: '/tmp/dynamic',
+    address: '127.0.0.1:7233',
+    serverPid: 321
+  };
+}
+
+function record(candidate, mutantId, repetition, verdict = 'PASS', overrides = {}) {
   const pass = verdict === 'PASS';
   const fail = verdict === 'FAIL';
   const workerPid = 500000 + critical.indexOf(mutantId) * 1000 + repetition;
@@ -77,15 +110,16 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
     randomSeed: repetition,
     setup: {
       status: 'READY',
-      candidateVersion: 'fixture',
-      candidateSourceRef: 'fixture',
+      candidateVersion: '1.23.0',
+      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
       adapterSha256: 'a'.repeat(64),
       harnessSha256: 'f'.repeat(64),
-      dependencyIdentity: null,
+      dependencyIdentity: temporalDependencyIdentity(),
       environment: {
-        os: 'fixture-os',
-        arch: 'fixture-arch',
-        runtime: 'node v22.16.0',
+        os: overrides.os ?? 'linux 6.11.0',
+        arch: 'x64',
+        runtime: overrides.runtime ?? 'node v22.16.0',
+        packageManager: null,
         repositoryProvenance: {
           source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
           trackedWorktreeClean: true, reason: null
@@ -94,15 +128,12 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
         formalLifecycleQualification: qualificationRecord(candidate),
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
       },
-      parameters: {},
+      parameters: {
+        mode: 'local-process',
+        workerAuthorityBoundary: 'Temporal worker process'
+      },
       cleanupVerifiedBeforeRun: true,
-      preRunCleanupReceipt: {
-        status: 'PASS',
-        workerCleanup: true,
-        durableStateCleanup: true,
-        oracleCleanup: true,
-        temporaryResourcesCleanup: true
-      }
+      preRunCleanupReceipt: { ...temporalReceipt(), ...(overrides.receipt ?? {}) }
     },
     run: {
       startedAt: '2026-09-01T00:00:00.000Z',
@@ -159,13 +190,32 @@ test('promotion stays closed without repository runtime-verified cleanup support
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('complete all-PASS critical evidence is promotion-qualified only with candidate-bound Git-revision verified cleanup support', async () => {
+test('complete all-PASS critical evidence is promotion-qualified only with candidate-bound Git-revision verified cleanup support and stable environment identity', async () => {
   const cleanupSupport = verifiedCleanupSupport();
   const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
   assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, true, result.errors.join('\n'));
+  assert.equal(result.environmentConsistency.consistent, true);
   assert.equal(result.promotionPolicyStatus, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.deepEqual(result.exceptions, []);
+});
+
+test('candidate promotion rejects mixed Node runtime identities before selection', async () => {
+  const records = completeCandidate('Temporal TypeScript');
+  records[1].setup.environment.runtime = 'node v24.0.0';
+  const result = assessCandidatePromotion(records, await faultSuite(), { cleanupSupport: verifiedCleanupSupport() });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /multiple common execution environment identities/);
+});
+
+test('candidate promotion rejects native runtime profile drift before selection', async () => {
+  const records = completeCandidate('Temporal TypeScript');
+  records[1].setup.preRunCleanupReceipt.versionOutput = 'Temporal CLI 1.8.1 Server 1.31.3';
+  const result = assessCandidatePromotion(records, await faultSuite(), { cleanupSupport: verifiedCleanupSupport() });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /multiple candidate execution profile identities/);
 });
 
 test('cleanup support without harness hash cannot open promotion', async () => {
