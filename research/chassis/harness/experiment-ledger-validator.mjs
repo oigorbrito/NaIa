@@ -135,6 +135,26 @@ export function assessStoredFormalLedgerCurrentCompatibility(records) {
   return { compatible: errors.length === 0, recordCount: records.length, errors };
 }
 
+export function assessStoredFormalLedgerRepositoryRevisionConsistency(records) {
+  if (!Array.isArray(records)) {
+    return { consistent: false, recordCount: 0, repositoryRevision: null, repositoryRevisions: [], errors: ['records must be an array'] };
+  }
+  const repositoryRevisions = [...new Set(records
+    .map((record) => record?.setup?.environment?.repositoryProvenance)
+    .filter((value) => repositoryProvenanceReady(value))
+    .map((value) => String(value.revision).toLowerCase()))].sort();
+  const consistent = repositoryRevisions.length <= 1;
+  return {
+    consistent,
+    recordCount: records.length,
+    repositoryRevision: repositoryRevisions.length === 1 ? repositoryRevisions[0] : null,
+    repositoryRevisions,
+    errors: consistent
+      ? []
+      : [`formal ledger prefix spans multiple Git repository revisions: ${repositoryRevisions.join(', ')}`]
+  };
+}
+
 export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   const candidate = record?.candidate;
@@ -212,6 +232,11 @@ export function appendRecordToLedger(
     throw new Error(`existing formal ledger is incompatible with current frozen qualification/promotion state: ${currentCompatibility.errors.join('; ')}`);
   }
 
+  const currentRevisionConsistency = assessStoredFormalLedgerRepositoryRevisionConsistency(records);
+  if (!currentRevisionConsistency.consistent) {
+    throw new Error(`existing formal ledger cannot continue across repository revisions: ${currentRevisionConsistency.errors.join('; ')}`);
+  }
+
   if (!current.nextExpectedExperiment) throw new Error('preregistered ledger is already complete');
 
   const validation = validateRecordAgainstSpec(record, current.nextExpectedExperiment);
@@ -234,10 +259,16 @@ export function appendRecordToLedger(
     throw new Error(`appended formal ledger is incompatible with current frozen qualification/promotion state: ${nextCompatibility.errors.join('; ')}`);
   }
 
+  const nextRevisionConsistency = assessStoredFormalLedgerRepositoryRevisionConsistency(next);
+  if (!nextRevisionConsistency.consistent) {
+    throw new Error(`appended formal ledger would mix repository revisions: ${nextRevisionConsistency.errors.join('; ')}`);
+  }
+
   return {
     records: next,
     validation: nextValidation,
     formalAudit: nextHistoricalAudit,
-    currentCompatibility: nextCompatibility
+    currentCompatibility: nextCompatibility,
+    repositoryRevisionConsistency: nextRevisionConsistency
   };
 }
