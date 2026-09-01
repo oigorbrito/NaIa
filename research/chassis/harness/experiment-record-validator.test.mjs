@@ -21,7 +21,13 @@ const verifiedSupport = {
 
 function record(overrides = {}) {
   const mutantId = overrides.mutantId ?? 'T7';
-  const rawObservations = overrides.withPid === false ? {} : { workerProcess: { pid: overrides.pid ?? 8801 } };
+  const rawObservations = overrides.withWorkerPid === false
+    ? (overrides.driverOnly ? { runnerProcess: { pid: 8899 } } : {})
+    : {
+        workerProcessPids: [overrides.pid ?? 8801],
+        workerProcess: { pid: overrides.pid ?? 8801 },
+        runnerProcess: { pid: 8899 }
+      };
   if (mutantId === 'T16') {
     rawObservations.semanticMutation = { dimension: 'runtimeVersion', before: 'v1', after: 'v2' };
   }
@@ -124,14 +130,24 @@ test('benchmark eligibility rejects duplicate repetitions presented as replicati
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
 });
 
-test('benchmark eligibility rejects injected critical record without observed PID provenance', () => {
+test('benchmark eligibility rejects injected critical record without explicit worker PID provenance', () => {
   const result = benchmarkEligible(
-    [record({ mutantId: 'T7', withPid: false })],
+    [record({ mutantId: 'T7', withWorkerPid: false })],
     suite(1, ['T7']),
     verifiedSupport
   );
   assert.equal(result.eligible, false);
-  assert.match(result.errors.join('\n'), /lacks observed process PID provenance/);
+  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
+});
+
+test('benchmark eligibility rejects driver PID as a substitute for explicit worker PID provenance', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T11', withWorkerPid: false, driverOnly: true })],
+    suite(1, ['T11']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
@@ -143,7 +159,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and PID provenance', () => {
+test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and explicit worker PID provenance', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
