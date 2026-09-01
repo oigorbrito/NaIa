@@ -13,6 +13,7 @@ import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
 const critical = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16'];
+const REPOSITORY_REVISION = '1'.repeat(40);
 
 async function faultSuite() {
   return JSON.parse(await readFile(path.join(chassisRoot, 'fault-suite.v1.json'), 'utf8'));
@@ -39,7 +40,8 @@ function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId 
       postRunCleanup: true,
       status: 'RUNTIME_VERIFIED',
       verificationEvidence: {
-        executionRef: `test-fixture:${candidateSlug(candidate)}:runtime-receipt`,
+        executionRef: `github-actions:run=fixture;job=${candidateSlug(candidate)};sha=${REPOSITORY_REVISION}`,
+        repositoryRevision: REPOSITORY_REVISION,
         experimentId: experimentId ?? `${candidateSlug(candidate)}-t5-001`,
         mutantId: 'T5',
         repetition: 1,
@@ -84,6 +86,10 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
         os: 'fixture-os',
         arch: 'fixture-arch',
         runtime: 'node v22.16.0',
+        repositoryProvenance: {
+          source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
+          trackedWorktreeClean: true, reason: null
+        },
         formalPromotionPolicy: formalPromotionPolicyProvenance(),
         formalLifecycleQualification: qualificationRecord(candidate),
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
@@ -153,7 +159,7 @@ test('promotion stays closed without repository runtime-verified cleanup support
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('complete all-PASS critical evidence is promotion-qualified only with candidate-bound verified cleanup support', async () => {
+test('complete all-PASS critical evidence is promotion-qualified only with candidate-bound Git-revision verified cleanup support', async () => {
   const cleanupSupport = verifiedCleanupSupport();
   const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
   assert.equal(result.comparable, true, result.errors.join('\n'));
@@ -178,6 +184,35 @@ test('cleanup support without lifecycle qualification hash cannot open promotion
   assert.equal(result.comparable, false);
   assert.equal(result.qualified, false);
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('cleanup support without repository revision cannot open promotion', async () => {
+  const cleanupSupport = verifiedCleanupSupport();
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.repositoryRevision;
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('cleanup support execution ref bound to another Git revision cannot open promotion', async () => {
+  const cleanupSupport = verifiedCleanupSupport();
+  cleanupSupport['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('tampering Git repository provenance closes candidate comparability', async () => {
+  const records = completeCandidate('Temporal TypeScript');
+  records[0].setup.environment.repositoryProvenance.status = 'UNVERIFIED';
+  records[0].setup.environment.repositoryProvenance.trackedWorktreeClean = false;
+  records[0].setup.environment.repositoryProvenance.reason = 'TRACKED_WORKTREE_DIRTY';
+  const result = assessCandidatePromotion(records, await faultSuite(), { cleanupSupport: verifiedCleanupSupport() });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /lacks verified clean Git repository revision provenance/);
 });
 
 test('tampering formal promotion policy provenance closes candidate comparability', async () => {
