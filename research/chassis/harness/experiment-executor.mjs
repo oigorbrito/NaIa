@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { platform, arch, release } from 'node:os';
 import { deriveSeed, validateExperimentProtocol } from './experiment-protocol-validator.mjs';
-import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 
 function sha256(value) {
   return createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
