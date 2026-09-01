@@ -13,6 +13,7 @@ const COMMON_FILES = Object.freeze([
   'research/chassis/harness/experiment-executor.mjs',
   'research/chassis/harness/experiment-protocol-validator.mjs',
   'research/chassis/harness/experiment-record-schema-validator.mjs',
+  'research/chassis/harness/formal-environment-identity.mjs',
   'research/chassis/harness/formal-executor-support.mjs',
   'research/chassis/harness/formal-lifecycle-promotion-review.mjs',
   'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs',
