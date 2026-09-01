@@ -16,7 +16,7 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
   }),
   T11: Object.freeze({
     modes: Object.freeze(['local-process']),
-    candidates: Object.freeze(['Temporal TypeScript', 'DBOS TypeScript']),
+    candidates: Object.freeze(['Temporal TypeScript', 'DBOS TypeScript', 'Restate']),
     fault: 'durable-cancel-worker-sigkill-recovery-challenge'
   }),
   T12: Object.freeze({
