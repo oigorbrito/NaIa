@@ -31,6 +31,7 @@ function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId 
         repetition: 1,
         recordSha256: 'd'.repeat(64),
         validatorSha256: 'e'.repeat(64),
+        harnessSha256: 'f'.repeat(64),
         verifiedAt: '2026-09-01T00:00:00.000Z'
       }
     }
@@ -62,7 +63,7 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
       candidateVersion: 'fixture',
       candidateSourceRef: 'fixture',
       adapterSha256: 'a'.repeat(64),
-      harnessSha256: 'b'.repeat(64),
+      harnessSha256: 'f'.repeat(64),
       dependencyIdentity: null,
       environment: {
         os: 'fixture-os',
@@ -143,6 +144,15 @@ test('complete all-PASS critical evidence is promotion-qualified only with candi
   assert.equal(result.qualified, true, result.errors.join('\n'));
   assert.equal(result.promotionPolicyStatus, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.deepEqual(result.exceptions, []);
+});
+
+test('cleanup support without harness hash cannot open promotion', async () => {
+  const cleanupSupport = verifiedCleanupSupport();
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
 test('tampering formal promotion policy provenance closes candidate comparability', async () => {
