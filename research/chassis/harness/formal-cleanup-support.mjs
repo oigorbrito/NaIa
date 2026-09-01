@@ -9,7 +9,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-runtime-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until the lifecycle tests and at least one isolated T5/r1 runtime receipt execute successfully and the receipt hashes are recorded.'
+    note: 'Do not set cleanup support true until the lifecycle tests and at least one isolated T5/r1 runtime receipt execute successfully and record/validator/harness hashes are recorded.'
   }),
   'DBOS TypeScript': Object.freeze({
     preRunCleanup: false,
@@ -17,7 +17,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-dbos-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until the lifecycle tests and at least one isolated T5/r1 runtime receipt execute successfully and the receipt hashes are recorded.'
+    note: 'Do not set cleanup support true until the lifecycle tests and at least one isolated T5/r1 runtime receipt execute successfully and record/validator/harness hashes are recorded.'
   }),
   Restate: Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null }),
   'Trigger.dev': Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null })
@@ -47,6 +47,7 @@ export function runtimeVerificationEvidenceValid(evidence, candidateName = null)
     evidence.repetition === 1 &&
     sha256(evidence.recordSha256) &&
     sha256(evidence.validatorSha256) &&
+    sha256(evidence.harnessSha256) &&
     nonEmpty(evidence.verifiedAt)
   );
 }
