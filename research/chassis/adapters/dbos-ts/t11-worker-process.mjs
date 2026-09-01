@@ -1,5 +1,5 @@
 import readline from 'node:readline';
-import { DBOS, DBOSAwaitedWorkflowCancelledError } from '@dbos-inc/dbos-sdk';
+import { DBOS } from '@dbos-inc/dbos-sdk';
 import { configureT11Runtime, releaseT11Gate, resetT11Gate, t11CancelCrashRetryWorkflow } from './t11-workflow.mjs';
 
 const workerId = process.env.NAIA_T11_WORKER_ID;
@@ -48,7 +48,9 @@ async function handleCommand(command) {
         const result = await handle.getResult();
         emit('recovery_attach_result', { objectiveId: command.objectiveId, result });
       } catch (error) {
-        const cancelled = error instanceof DBOSAwaitedWorkflowCancelledError || error?.name === 'DBOSAwaitedWorkflowCancelledError';
+        // DBOS serializes/revives workflow errors across the durable boundary; the
+        // public native error name is the stable evidence we preserve here.
+        const cancelled = error?.name === 'DBOSAwaitedWorkflowCancelledError';
         emit(cancelled ? 'recovery_blocked_by_cancellation' : 'recovery_attach_error', {
           objectiveId: command.objectiveId,
           cancelled,
