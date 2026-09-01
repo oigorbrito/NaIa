@@ -1,6 +1,6 @@
 # T11 Cancel / Crash / Retry Contract V1
 
-Status: CONTROL_SPECIFIED / CANDIDATE_EXECUTORS_NOT_IMPLEMENTED
+Status: CONTROL_SPECIFIED / TEMPORAL_DBOS_RESTATE_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T11 tests `cancel_crash_retry_race` against the preregistered invariant `cancellation_blocks_future_unauthorized_progress`.
 
@@ -81,6 +81,14 @@ T11 PASS requires all of the following:
 - normal formal cleanup gate passes.
 
 If the cancellation authority boundary cannot be observed, the crash cannot be injected at the declared worker boundary, or recovery cannot be exercised, the record is `BLOCKED` or `INCONCLUSIVE` under existing rules. These conditions are not candidate FAIL by themselves.
+
+## Candidate-specific admitted observations
+
+Temporal may use durable Workflow history events such as `WorkflowExecutionCancelRequested` and `WorkflowExecutionCanceled`, provided the cancel-request event is observed before the worker crash and a distinct recovery Worker is shown handling the post-crash cancellation path.
+
+DBOS may use candidate-native persisted workflow cancellation state and restart under the same stable executor/workflow identity, provided the old process is killed only after durable cancellation is proven and the restarted process is given an explicit recovery opportunity.
+
+Restate may use its documented cancellation path, where cancellation is surfaced to handler code as a cancellation-specific `CancelledError` (a `TerminalError` subclass) at the next awaited Restate context action. For T11, a successful Admin API `PATCH /invocations/{id}/cancel` acknowledgement alone is insufficient because Restate documents cancellation as non-blocking. The driver must additionally observe the SDK-native cancellation in the old service process and the corresponding persisted cancellation output (`409`) before killing that process. Recovery is then challenged against the same workflow/invocation identity from a distinct registered deployment/process. If native terminal state rejects resume before the protected operation is reached, that is admissible `blockedBeforeProtectedOperation` evidence only when the terminal workflow output remains durable after the restart and the neutral oracle records zero accepted operations.
 
 ## Prohibited adaptations
 
