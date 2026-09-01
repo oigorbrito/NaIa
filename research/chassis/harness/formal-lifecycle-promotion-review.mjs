@@ -3,6 +3,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeHarnessProvenance } from './harness-provenance.mjs';
+import {
+  computeLifecycleQualificationProvenance,
+  lifecycleQualificationRecordProvenanceValid
+} from './formal-lifecycle-qualification-provenance.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
 
 function sha256(text) {
@@ -22,6 +26,7 @@ export function reviewLifecyclePromotion({
   validationText,
   executionRef,
   currentHarnessSha256,
+  currentLifecycleQualificationSha256,
   verifiedAt = new Date().toISOString()
 }) {
   const record = JSON.parse(recordText);
@@ -29,6 +34,7 @@ export function reviewLifecyclePromotion({
   const recomputedValidation = validateRuntimeLifecycleReceipt(record);
   const normalizedExecutionRef = String(executionRef ?? '').trim();
   const normalizedHarnessSha256 = String(currentHarnessSha256 ?? '').trim().toLowerCase();
+  const normalizedLifecycleQualificationSha256 = String(currentLifecycleQualificationSha256 ?? '').trim().toLowerCase();
 
   const checks = {
     executionRefPresent: nonEmpty(normalizedExecutionRef),
@@ -36,6 +42,12 @@ export function reviewLifecyclePromotion({
     recordHarnessMatchesCurrent:
       sha256Value(record?.setup?.harnessSha256) &&
       String(record.setup.harnessSha256).toLowerCase() === normalizedHarnessSha256,
+    currentLifecycleQualificationSha256Valid: sha256Value(normalizedLifecycleQualificationSha256),
+    recordLifecycleQualificationMatchesCurrent: lifecycleQualificationRecordProvenanceValid(
+      record?.setup?.environment?.formalLifecycleQualification,
+      record?.candidate,
+      normalizedLifecycleQualificationSha256
+    ),
     suppliedValidationEligible: suppliedValidation?.eligibleForLifecycleStatusPromotion === true,
     recomputedValidationEligible: recomputedValidation.eligibleForLifecycleStatusPromotion === true,
     candidateMatches: suppliedValidation?.candidate === record?.candidate && recomputedValidation.candidate === record?.candidate,
@@ -55,6 +67,7 @@ export function reviewLifecyclePromotion({
         recordSha256: sha256(recordText),
         validatorSha256: sha256(validationText),
         harnessSha256: normalizedHarnessSha256,
+        lifecycleQualificationSha256: normalizedLifecycleQualificationSha256,
         verifiedAt
       }
     : null;
@@ -92,12 +105,15 @@ export async function reviewLifecyclePromotionAgainstRepository({
   verifiedAt = new Date().toISOString()
 }) {
   if (!repositoryRoot) throw new Error('repositoryRoot is required');
-  const provenance = await computeHarnessProvenance(repositoryRoot);
+  const record = JSON.parse(recordText);
+  const harnessProvenance = await computeHarnessProvenance(repositoryRoot);
+  const lifecycleQualification = computeLifecycleQualificationProvenance(repositoryRoot, record?.candidate);
   return reviewLifecyclePromotion({
     recordText,
     validationText,
     executionRef,
-    currentHarnessSha256: provenance.aggregateSha256,
+    currentHarnessSha256: harnessProvenance.aggregateSha256,
+    currentLifecycleQualificationSha256: lifecycleQualification?.aggregateSha256 ?? null,
     verifiedAt
   });
 }
