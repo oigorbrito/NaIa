@@ -51,6 +51,13 @@ export function repositoryProvenanceReady(value) {
   return repositoryProvenanceStructurallyValid(value) && value.status === 'VERIFIED';
 }
 
+export function verifiedRepositoryRevisions(records) {
+  return [...new Set((records ?? [])
+    .map((record) => record?.setup?.environment?.repositoryProvenance)
+    .filter((value) => repositoryProvenanceReady(value))
+    .map((value) => String(value.revision).toLowerCase()))].sort();
+}
+
 export async function inspectRepositoryProvenance(repositoryRoot, { runGit = defaultRunGit } = {}) {
   if (!repositoryRoot) throw new Error('repositoryRoot is required');
 
