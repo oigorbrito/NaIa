@@ -89,7 +89,19 @@ const spec = Object.freeze({
   randomSeed: 2050001
 });
 
-test('DBOS lifecycle creates an isolated digest-pinned database and proves cleanup of owned resources', async () => {
+function injectedT5Run({ explicitWorkerPids = true } = {}) {
+  return {
+    fault: { intended: 'T5', injected: true },
+    rawObservations: {
+      ...(explicitWorkerPids ? { workerProcessPids: [9101, 9102] } : {}),
+      runnerProcess: { pid: 9199, exitCode: 0, timedOut: false },
+      workerA: { pid: 9101 },
+      workerB: { pid: 9102 }
+    }
+  };
+}
+
+test('DBOS lifecycle creates an isolated digest-pinned database and binds cleanup to explicit worker PIDs', async () => {
   const env = {};
   const operations = fakeDbosOperations();
   const lifecycle = createDbosFormalLifecycle({
@@ -107,20 +119,17 @@ test('DBOS lifecycle creates an isolated digest-pinned database and proves clean
   assert.match(receipt.containerName, /dbos-typescript-t5-001/);
   assert.equal(env.DBOS_SYSTEM_DATABASE_URL, 'postgresql://postgres:postgres@127.0.0.1:25432/naia_chassis');
 
-  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, {
-    rawObservations: {
-      runnerProcess: { exitCode: 0, timedOut: false },
-      workerA: { pid: 9101 },
-      workerB: { pid: 9102 }
-    }
-  });
+  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, injectedT5Run());
 
   assert.equal(cleanup.status, 'PASS');
   assert.equal(cleanup.workerCleanup, true);
+  assert.equal(cleanup.workerPidProvenanceRequired, true);
+  assert.equal(cleanup.workerPidProvenanceObserved, true);
+  assert.deepEqual(cleanup.workerProcessPids, [9101, 9102]);
   assert.equal(cleanup.durableStateCleanup, true);
   assert.equal(cleanup.oracleCleanup, true);
   assert.equal(cleanup.temporaryResourcesCleanup, true);
-  assert.deepEqual(cleanup.observedWorkerPids.sort((a, b) => a - b), [9101, 9102]);
+  assert.deepEqual(cleanup.observedWorkerPids.sort((a, b) => a - b), [9101, 9102, 9199]);
   assert.deepEqual(cleanup.liveObservedWorkerPids, []);
   assert.equal(cleanup.cleanupContainerAllowed, true);
   assert.equal(cleanup.databaseDrop, true);
@@ -129,6 +138,23 @@ test('DBOS lifecycle creates an isolated digest-pinned database and proves clean
   assert.equal(cleanup.workspaceCleanup, true);
   assert.ok(operations.calls.some((call) => call.includes('DROP DATABASE IF EXISTS naia_chassis')));
   assert.ok(operations.calls.some((call) => call.startsWith('rm -f ')));
+});
+
+test('DBOS lifecycle fails cleanup when injected critical run exposes only nested/driver PIDs without explicit worker provenance', async () => {
+  const lifecycle = createDbosFormalLifecycle({
+    repositoryRoot: '/virtual/repository',
+    env: {},
+    timeoutMs: 1000,
+    operations: fakeDbosOperations()
+  });
+  const receipt = await lifecycle.preRunCleanupHook(spec);
+  assert.equal(receipt.status, 'PASS');
+
+  const cleanup = await lifecycle.cleanupHook(spec, { status: 'READY' }, injectedT5Run({ explicitWorkerPids: false }));
+  assert.equal(cleanup.workerPidProvenanceRequired, true);
+  assert.equal(cleanup.workerPidProvenanceObserved, false);
+  assert.equal(cleanup.workerCleanup, false);
+  assert.equal(cleanup.status, 'FAIL');
 });
 
 test('DBOS lifecycle preserves a preexisting experiment-name container and fails closed before ownership', async () => {
@@ -148,6 +174,7 @@ test('DBOS lifecycle preserves a preexisting experiment-name container and fails
 
   const cleanup = await lifecycle.cleanupHook(spec, { status: 'BLOCKED_SETUP' }, { rawObservations: {} });
   assert.equal(cleanup.cleanupContainerAllowed, false);
+  assert.equal(cleanup.workerPidProvenanceRequired, false);
   assert.equal(operations.calls.some((call) => call.startsWith('rm -f ')), false);
 });
 
