@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   assessStoredFormalLedgerCurrentCompatibility,
+  assessStoredFormalLedgerHarnessConsistency,
   auditStoredFormalLedger,
   validateExecutionLedger
 } from './experiment-ledger-validator.mjs';
@@ -109,12 +110,14 @@ export function assessBenchmarkPromotion({
   const historicalAudit = auditStoredFormalLedger(ledger);
   const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(ledger);
   const repositoryRevisionConsistency = assessBenchmarkRepositoryRevisionConsistency(ledger);
+  const harnessConsistency = assessStoredFormalLedgerHarnessConsistency(ledger);
   if (
     !ledgerValidation.valid ||
     !ledgerValidation.complete ||
     !historicalAudit.valid ||
     !currentCompatibility.compatible ||
-    !repositoryRevisionConsistency.consistent
+    !repositoryRevisionConsistency.consistent ||
+    !harnessConsistency.consistent
   ) {
     return {
       readyForSelection: false,
@@ -122,6 +125,7 @@ export function assessBenchmarkPromotion({
       formalAudit: historicalAudit,
       currentCompatibility,
       repositoryRevisionConsistency,
+      harnessConsistency,
       candidates: [],
       qualifiedCandidates: [],
       promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
@@ -137,6 +141,9 @@ export function assessBenchmarkPromotion({
           : null,
         !repositoryRevisionConsistency.consistent
           ? 'benchmark ledger mixes Git repository revisions and is not comparable'
+          : null,
+        !harnessConsistency.consistent
+          ? 'benchmark ledger mixes formal harness identities and is not comparable'
           : null
       ].filter(Boolean)
     };
@@ -159,6 +166,7 @@ export function assessBenchmarkPromotion({
     formalAudit: historicalAudit,
     currentCompatibility,
     repositoryRevisionConsistency,
+    harnessConsistency,
     candidates: candidateResults,
     qualifiedCandidates,
     promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
