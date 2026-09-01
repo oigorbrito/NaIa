@@ -18,9 +18,15 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/external-oracle.mjs',
   'research/chassis/harness/fault-barrier.mjs',
   'research/chassis/harness/formal-cleanup-support.mjs',
+  'research/chassis/harness/formal-dbos-lifecycle.mjs',
   'research/chassis/harness/formal-executor-support.mjs',
+  'research/chassis/harness/formal-lifecycle-promotion-review.mjs',
+  'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs',
+  'research/chassis/harness/formal-promotion-policy.mjs',
   'research/chassis/harness/formal-runtime-lifecycle.mjs',
+  'research/chassis/harness/formal-runtime-lifecycle-router.mjs',
   'research/chassis/harness/formal-single-run.mjs',
+  'research/chassis/harness/formal-worker-pid-provenance.mjs',
   'research/chassis/harness/harness-provenance.mjs',
   'research/chassis/harness/t5-evaluator.mjs',
   'research/chassis/harness/t5-record-bridge.mjs',
@@ -83,7 +89,8 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/experiment-record.schema.v1.json',
   'research/chassis/fault-suite.v1.json',
   'research/chassis/adapter-capabilities.v1.json',
-  'research/chassis/critical-mutant-plan.v1.json'
+  'research/chassis/critical-mutant-plan.v1.json',
+  'research/chassis/formal-promotion-policy.v1.json'
 ]);
 
 function sha256(buffer) {
