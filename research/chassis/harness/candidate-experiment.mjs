@@ -3,6 +3,13 @@ import path from 'node:path';
 import { candidateByName, inspectCandidateSetup } from './candidate-setup.mjs';
 import { buildExecutionPlan, executeExperiment } from './experiment-executor.mjs';
 
+const CLEANUP_DIMENSIONS = Object.freeze([
+  'workerCleanup',
+  'durableStateCleanup',
+  'oracleCleanup',
+  'temporaryResourcesCleanup'
+]);
+
 async function readJson(file) {
   return JSON.parse(await readFile(file, 'utf8'));
 }
@@ -22,6 +29,29 @@ export function selectExperiment(plan, { candidate, mutantId, repetition }) {
   const spec = plan.find((entry) => entry.candidate === candidate && entry.mutantId === mutantId && entry.repetition === repetition);
   if (!spec) throw new Error(`experiment not found in preregistered plan: ${candidate}/${mutantId}/${repetition}`);
   return spec;
+}
+
+export function preRunCleanupReceiptValid(receipt) {
+  return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt[key] === true);
+}
+
+export function applyPreRunCleanupGate(setup, receipt) {
+  if (!setup || setup.status !== 'READY') return setup;
+  const verified = preRunCleanupReceiptValid(receipt);
+  if (verified) {
+    return {
+      ...setup,
+      cleanupVerifiedBeforeRun: true,
+      diagnostics: { ...(setup.diagnostics ?? {}), preRunCleanupReceipt: receipt }
+    };
+  }
+  return {
+    ...setup,
+    status: 'BLOCKED_SETUP',
+    blocker: 'PRE_RUN_CLEANUP_NOT_VERIFIED',
+    cleanupVerifiedBeforeRun: false,
+    diagnostics: { ...(setup.diagnostics ?? {}), preRunCleanupReceipt: receipt ?? null }
+  };
 }
 
 export function defaultCleanupResult(setup) {
@@ -44,7 +74,18 @@ export function defaultCleanupResult(setup) {
   };
 }
 
-export async function executeCandidateExperiment({ repositoryRoot, candidateName, mutantId, repetition, runHook, cleanupHook, artifactHook, environment, env = process.env }) {
+export async function executeCandidateExperiment({
+  repositoryRoot,
+  candidateName,
+  mutantId,
+  repetition,
+  runHook,
+  preRunCleanupHook,
+  cleanupHook,
+  artifactHook,
+  environment,
+  env = process.env
+}) {
   const context = await loadExperimentContext(repositoryRoot);
   const candidate = candidateByName(context.capabilities, candidateName);
   const spec = selectExperiment(context.plan, { candidate: candidateName, mutantId, repetition });
@@ -52,7 +93,27 @@ export async function executeCandidateExperiment({ repositoryRoot, candidateName
 
   return executeExperiment(spec, {
     environment,
-    setup: async () => inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true }),
+    setup: async () => {
+      const inspected = await inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true });
+      if (inspected.status !== 'READY') return inspected;
+      let receipt = null;
+      if (typeof preRunCleanupHook === 'function') {
+        try {
+          receipt = await preRunCleanupHook(spec, inspected, candidate, context);
+        } catch (error) {
+          receipt = {
+            status: 'FAIL',
+            workerCleanup: false,
+            durableStateCleanup: false,
+            oracleCleanup: false,
+            temporaryResourcesCleanup: false,
+            reason: 'PRE_RUN_CLEANUP_HOOK_ERROR',
+            error: String(error)
+          };
+        }
+      }
+      return applyPreRunCleanupGate(inspected, receipt);
+    },
     run: async (selectedSpec, setup) => {
       if (typeof runHook !== 'function') {
         return {

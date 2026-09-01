@@ -115,8 +115,17 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
       blockerRegisterRef: candidate.blocker ?? null,
       harnessProvenanceMode: formalProvenance ? 'FORMAL_BUNDLE' : 'SINGLE_FILE'
     },
-    cleanupVerifiedBeforeRun: ready,
-    diagnostics: { adapterPresent, manifestPresent, harnessPresent, harnessProvenance, packageChecks, missingEnv, blockers }
+    cleanupVerifiedBeforeRun: false,
+    diagnostics: {
+      adapterPresent,
+      manifestPresent,
+      harnessPresent,
+      harnessProvenance,
+      packageChecks,
+      missingEnv,
+      blockers,
+      cleanupVerification: 'NOT_EVALUATED_BY_SETUP_INSPECTION'
+    }
   };
 }
 

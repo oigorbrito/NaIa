@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -32,7 +32,7 @@ async function withFixture(options, fn) {
   try { return await fn(value); } finally { await rm(value.root, { recursive: true, force: true }); }
 }
 
-test('setup is READY only when exact dependency is actually installed', async () => {
+test('setup inspection is READY only when exact dependency is installed but does not fabricate cleanup evidence', async () => {
   await withFixture({}, async ({ root, candidate, harnessPath }) => {
     const result = await inspectCandidateSetup({ candidate, repositoryRoot: root, harnessPath, env: {} });
     assert.equal(result.status, 'READY');
@@ -41,6 +41,8 @@ test('setup is READY only when exact dependency is actually installed', async ()
     assert.equal(result.diagnostics.packageChecks[0].installedExact, true);
     assert.match(result.adapterSha256, /^[a-f0-9]{64}$/);
     assert.match(result.harnessSha256, /^[a-f0-9]{64}$/);
+    assert.equal(result.cleanupVerifiedBeforeRun, false);
+    assert.equal(result.diagnostics.cleanupVerification, 'NOT_EVALUATED_BY_SETUP_INSPECTION');
   });
 });
 
