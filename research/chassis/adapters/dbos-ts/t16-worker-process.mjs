@@ -52,6 +52,17 @@ async function handleCommand(command) {
       emit('workflow_status', { objectiveId: command.objectiveId, status: status ?? null });
       return;
     }
+    case 'promote-version': {
+      if (!command.applicationVersion) throw new Error('promote-version requires applicationVersion');
+      await DBOS.setLatestApplicationVersion(command.applicationVersion);
+      const latest = await DBOS.getLatestApplicationVersion();
+      emit('application_version_promoted', {
+        objectiveId: command.objectiveId ?? null,
+        promotedVersion: command.applicationVersion,
+        latestVersion: latest?.versionName ?? null
+      });
+      return;
+    }
     case 'release':
       releaseT16Gate();
       emit('release_ack', { objectiveId: command.objectiveId });
