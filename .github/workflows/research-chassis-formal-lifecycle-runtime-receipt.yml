@@ -30,6 +30,7 @@ on:
       - 'research/chassis/harness/experiment-record-validator.mjs'
       - 'research/chassis/harness/experiment-record-validator.test.mjs'
       - 'research/chassis/harness/formal-cleanup-support.mjs'
+      - 'research/chassis/harness/formal-cleanup-support.test.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
       - 'research/chassis/harness/formal-executor-support.mjs'
@@ -145,6 +146,7 @@ jobs:
           node --test \
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
+            research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
@@ -267,6 +269,7 @@ jobs:
           node --test \
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
+            research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-dbos-lifecycle.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
