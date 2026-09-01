@@ -77,20 +77,20 @@ jobs:
           docker run -d --name "$PG_CONTAINER" \
             -e POSTGRES_USER=postgres \
             -e POSTGRES_PASSWORD=postgres \
-            -e POSTGRES_DB=postgres \
+            -e POSTGRES_DB=naia_chassis \
             -p 5432:5432 \
             "$POSTGRES_IMAGE" | tee "$QUAL_DIR/evidence/postgres-container-id.txt"
           for i in $(seq 1 120); do
-            if docker exec "$PG_CONTAINER" pg_isready -U postgres -d postgres > "$QUAL_DIR/evidence/postgres-ready.txt" 2>&1; then break; fi
+            if docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d naia_chassis > "$QUAL_DIR/evidence/postgres-ready.txt" 2>&1; then
+              docker exec "$PG_CONTAINER" psql -h 127.0.0.1 -U postgres -d naia_chassis -Atc 'SELECT current_database(); SELECT version();' \
+                > "$QUAL_DIR/evidence/postgres-database-ready.txt" 2>&1 && break
+            fi
             if [ "$i" -eq 120 ]; then
               docker logs "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres.log" 2>&1 || true
               exit 3
             fi
             sleep 0.5
           done
-          docker exec "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE naia_chassis;' \
-            > "$QUAL_DIR/evidence/postgres-create-db.txt" 2>&1
-          docker exec "$PG_CONTAINER" psql -U postgres -d postgres -Atc 'SELECT version();' > "$QUAL_DIR/evidence/postgres-version.txt"
 
       - name: Install frozen DBOS dependency graph
         id: npm_install
@@ -194,7 +194,7 @@ jobs:
           DB_CLEAN=true
           CONTAINER_CLEAN=true
           if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
-            docker exec "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS naia_chassis WITH (FORCE);' \
+            docker exec "$PG_CONTAINER" psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS naia_chassis WITH (FORCE);' \
               > "$QUAL_DIR/evidence/postgres-drop-db.txt" 2>&1 || DB_CLEAN=false
             docker logs "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres.log" 2>&1 || true
             docker rm -f "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres-remove.txt" 2>&1 || CONTAINER_CLEAN=false
