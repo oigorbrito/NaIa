@@ -228,9 +228,10 @@ export async function runRestateT12({
     schedule.push('stale-completion-attempted-after-new-commit');
 
     staleTransportDisposition = await responseDisposition(serviceA, acquiredA.requestId, timeoutMs);
-    const staleTransportFinished = staleTransportDisposition.event === 't12_http_response_finished';
+    const staleAttemptActuallyObserved = staleAttemptEvent !== null;
     finalAfterStale = await client.workflowOutput();
-    const finalStillB = finalAfterStale?.completedByVariant === 'B' && finalAfterStale?.objectiveId === objectiveId;
+    const finalAfterStaleValue = finalAfterStale?.ready === true ? finalAfterStale.result : finalAfterStale;
+    const finalStillB = finalAfterStaleValue?.completedByVariant === 'B' && finalAfterStaleValue?.objectiveId === objectiveId;
     schedule.push('final-authority-inspected-after-stale');
 
     const expectedSchedule = [
@@ -247,16 +248,16 @@ export async function runRestateT12({
       oldAuthorityIdentity,
       newAuthorityIdentity,
       authorityAdvanced: deploymentA !== deploymentB && acquiredB.variant === 'B',
-      oldCompletionHeldUntilNewCommit: acquiredA.variant === 'A' && newCommitted && staleAttemptEvent !== null,
+      oldCompletionHeldUntilNewCommit: acquiredA.variant === 'A' && newCommitted && staleAttemptActuallyObserved,
       newAuthorityCompletion: {
         attempted: newAttemptEvent !== null,
         acceptedOrAuthoritative: newCommitted
       },
       staleCompletion: {
-        attempted: staleTransportFinished,
-        attemptedAfterNewCommit: staleTransportFinished && newCommitted,
-        rejectedOrNonAuthoritative: staleTransportFinished && finalStillB,
-        becameAuthoritative: staleTransportFinished && finalAfterStale?.completedByVariant === 'A'
+        attempted: staleAttemptActuallyObserved,
+        attemptedAfterNewCommit: staleAttemptActuallyObserved && newCommitted,
+        rejectedOrNonAuthoritative: staleAttemptActuallyObserved && finalStillB,
+        becameAuthoritative: staleAttemptActuallyObserved && finalAfterStaleValue?.completedByVariant === 'A'
       },
       finalAuthorityIdentity: finalStillB ? newAuthorityIdentity : null,
       finalResultOrigin: finalStillB ? 'new-authority' : 'old-authority',
@@ -277,6 +278,7 @@ export async function runRestateT12({
         staleAttemptEvent,
         staleTransportDisposition,
         finalAfterStale,
+        finalAfterStaleValue,
         serviceA: { pid: serviceA.pid, events: serviceA.events, stderr: serviceA.stderr },
         serviceB: { pid: serviceB.pid, events: serviceB.events, stderr: serviceB.stderr }
       }
