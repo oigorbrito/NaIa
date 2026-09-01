@@ -9,7 +9,7 @@ function baseCleanup(candidate) {
     durableStateCleanup: true,
     oracleCleanup: true,
     temporaryResourcesCleanup: true,
-    observedWorkerPids: [4101, 4102],
+    observedWorkerPids: [4101, 4102, 4199],
     liveObservedWorkerPids: [],
     workspaceCleanup: true
   };
@@ -79,7 +79,10 @@ function makeRecord(candidate, overrides = {}) {
         signal: 'SIGKILL',
         durableAuthorityAlive: true
       },
-      rawObservations: { runnerProcess: { exitCode: 0, timedOut: false } },
+      rawObservations: {
+        workerProcessPids: [4101, 4102],
+        runnerProcess: { pid: 4199, exitCode: 0, timedOut: false }
+      },
       acceptanceChecks: { semanticAuthorityCheck: false }
     },
     cleanup: baseCleanup(candidate),
@@ -91,7 +94,14 @@ function makeRecord(candidate, overrides = {}) {
     ...record,
     ...overrides,
     setup: { ...record.setup, ...(overrides.setup ?? {}) },
-    run: { ...record.run, ...(overrides.run ?? {}) },
+    run: {
+      ...record.run,
+      ...(overrides.run ?? {}),
+      rawObservations: {
+        ...record.run.rawObservations,
+        ...(overrides.run?.rawObservations ?? {})
+      }
+    },
     cleanup: { ...record.cleanup, ...(overrides.cleanup ?? {}) }
   };
 }
@@ -101,6 +111,7 @@ test('Temporal T5 runtime receipt can qualify lifecycle even when candidate sema
   assert.equal(result.valid, true);
   assert.equal(result.candidateVerdict, 'FAIL');
   assert.equal(result.candidateVerdictIgnoredForLifecycleVerification, true);
+  assert.deepEqual(result.workerProcessPids, [4101, 4102]);
   assert.equal(result.eligibleForLifecycleStatusPromotion, true);
   assert.equal(result.benchmarkPromotionAllowed, false);
   assert.equal(result.ledgerAppendAllowed, false);
@@ -114,7 +125,23 @@ test('DBOS T5 runtime receipt can qualify lifecycle independently of candidate s
   assert.equal(result.checks.postgresContainerCleanup, true);
 });
 
-test('runtime lifecycle receipt rejects vacuous worker cleanup without observed worker PIDs', () => {
+test('runtime lifecycle receipt rejects driver-only PID provenance', () => {
+  const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
+    run: { rawObservations: { workerProcessPids: [] } }
+  }));
+  assert.equal(result.eligibleForLifecycleStatusPromotion, false);
+  assert.equal(result.checks.explicitWorkerProcessPidsPresent, false);
+});
+
+test('runtime lifecycle receipt rejects vacuous cleanup observation without explicit worker PIDs', () => {
+  const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
+    cleanup: { observedWorkerPids: [4199] }
+  }));
+  assert.equal(result.eligibleForLifecycleStatusPromotion, false);
+  assert.equal(result.checks.explicitWorkerPidsIncludedInCleanupObservation, false);
+});
+
+test('runtime lifecycle receipt rejects missing cleanup PID observation entirely', () => {
   const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
     cleanup: { observedWorkerPids: [] }
   }));
