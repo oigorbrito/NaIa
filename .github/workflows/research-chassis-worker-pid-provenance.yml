@@ -69,6 +69,7 @@ on:
       - 'research/chassis/harness/experiment-ledger-validator.test.mjs'
       - 'research/chassis/harness/experiment-ledger-status.mjs'
       - 'research/chassis/harness/formal-ledger-admission.test.mjs'
+      - 'research/chassis/harness/formal-ledger-revision-consistency.test.mjs'
       - 'research/chassis/harness/experiment-record-validator.mjs'
       - 'research/chassis/harness/experiment-record-validator.test.mjs'
   workflow_dispatch:
@@ -112,6 +113,7 @@ jobs:
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
             research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
+            research/chassis/harness/formal-ledger-revision-consistency.test.mjs \
             research/chassis/harness/experiment-ledger-validator.test.mjs \
             research/chassis/harness/experiment-record-validator.test.mjs \
             research/chassis/harness/benchmark-execution-readiness.test.mjs \
