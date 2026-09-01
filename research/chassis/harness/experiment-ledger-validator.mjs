@@ -1,6 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
@@ -47,6 +48,10 @@ export function auditStoredFormalRecord(record) {
   const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
   if (!lifecycle || lifecycle.candidate !== record?.candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
     errors.push(`${candidate}: stored formal record lacks immutable RUNTIME_VERIFIED lifecycle provenance`);
+  }
+
+  if (!lifecycleQualificationRecordProvenanceValid(record?.setup?.environment?.formalLifecycleQualification, record?.candidate)) {
+    errors.push(`${candidate}: stored formal record lacks current candidate lifecycle qualification bundle provenance`);
   }
 
   if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
