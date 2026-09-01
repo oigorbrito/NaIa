@@ -2,179 +2,74 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateExperimentRecord, benchmarkEligible } from './experiment-record-validator.mjs';
 import {
-  currentLifecycleQualificationProvenance,
-  currentLifecycleQualificationSha256
-} from './formal-lifecycle-qualification-provenance.mjs';
-import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
+  completeCandidateRecords,
+  faultSuite as makeSuite,
+  readyFormalRecord,
+  verifiedCleanupSupport
+} from './formal-test-fixtures.mjs';
 
 const REPOSITORY_REVISION = '1'.repeat(40);
-
-function lifecycleQualification(candidate = 'Temporal TypeScript') {
-  const value = currentLifecycleQualificationProvenance(candidate);
-  return value ? {
-    profile: value.profile,
-    candidate: value.candidate,
-    sha256: value.aggregateSha256,
-    fileCount: value.fileCount
-  } : null;
-}
-
-const verifiedSupport = {
-  'Temporal TypeScript': {
-    preRunCleanup: true,
-    postRunCleanup: true,
-    status: 'RUNTIME_VERIFIED',
-    verificationEvidence: {
-      executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
-      repositoryRevision: REPOSITORY_REVISION,
-      experimentId: 'temporal-typescript-t5-001',
-      mutantId: 'T5',
-      repetition: 1,
-      recordSha256: 'e'.repeat(64),
-      validatorSha256: 'f'.repeat(64),
-      harnessSha256: 'b'.repeat(64),
-      lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
-      verifiedAt: '2026-09-01T00:00:00.000Z'
-    }
-  }
-};
-
-function passPreRunReceipt(overrides = {}) {
-  return {
-    status: 'PASS',
-    workerCleanup: true,
-    durableStateCleanup: true,
-    oracleCleanup: true,
-    temporaryResourcesCleanup: true,
-    cliSha256: '9'.repeat(64),
-    versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
-    expectedProfile: {
-      sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
-    },
-    observedPlatform: { platform: 'linux', arch: 'x64' },
-    workspace: '/tmp/fixture',
-    address: '127.0.0.1:7233',
-    serverPid: 321,
-    taskQueues: { NAIA_TEMPORAL_TASK_QUEUE: 'dynamic-fixture-queue' },
-    ...overrides
-  };
-}
-
-function dependencyIdentity(overrides = {}) {
-  return {
-    manifestPath: '/fixture/research/chassis/adapters/temporal-ts/package.json',
-    manifestSha256: '8'.repeat(64),
-    packages: [{
-      package: '@temporalio/worker',
-      expectedVersion: '1.23.0',
-      declaredVersion: '1.23.0',
-      installedVersion: overrides.installedVersion ?? '1.23.0',
-      installedPackageJson: '/fixture/node_modules/@temporalio/worker/package.json'
-    }]
-  };
-}
+const verifiedSupport = verifiedCleanupSupport(['Temporal TypeScript'], REPOSITORY_REVISION);
 
 function record(overrides = {}) {
   const mutantId = overrides.mutantId ?? 'T7';
-  const candidate = overrides.candidate ?? 'Temporal TypeScript';
+  const repetition = overrides.repetition ?? 1;
   const workerPid = overrides.pid ?? 8801;
-  const driverPid = 8899;
-  const withWorkerPid = overrides.withWorkerPid !== false;
-  const rawObservations = withWorkerPid
-    ? {
-        workerProcessPids: [workerPid],
-        workerProcess: { pid: workerPid },
-        runnerProcess: { pid: driverPid }
-      }
-    : overrides.driverOnly
-      ? { runnerProcess: { pid: driverPid } }
-      : {};
-  if (mutantId === 'T16') {
-    rawObservations.semanticMutation = { dimension: 'runtimeVersion', before: 'v1', after: 'v2' };
-  }
-  const observedWorkerPids = overrides.omitWorkerFromCleanup
-    ? [driverPid]
-    : withWorkerPid
-      ? [workerPid, driverPid]
-      : overrides.driverOnly
-        ? [driverPid]
-        : [];
-  const promotionPolicy = formalPromotionPolicyProvenance();
-  if (overrides.tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
-  const qualification = lifecycleQualification(candidate);
-  if (overrides.tamperLifecycleQualification && qualification) qualification.sha256 = '0'.repeat(64);
-  const repositoryProvenance = overrides.unverifiedRepository
-    ? {
-        source: 'git', status: 'UNVERIFIED', revision: REPOSITORY_REVISION,
-        trackedWorktreeClean: false, reason: 'TRACKED_WORKTREE_DIRTY'
-      }
-    : {
-        source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
-        trackedWorktreeClean: true, reason: null
-      };
-
-  return {
-    schemaVersion: 1,
-    experimentId: overrides.experimentId ?? 'exp-1',
-    candidate,
+  const value = readyFormalRecord({
+    candidate: 'Temporal TypeScript',
     mutantId,
-    repetition: overrides.repetition ?? 1,
-    randomSeed: overrides.randomSeed ?? 1001,
-    setup: {
-      status: 'READY',
-      candidateVersion: '1.23.0',
-      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
-      adapterSha256: 'a'.repeat(64),
-      harnessSha256: overrides.harnessSha256 ?? 'b'.repeat(64),
-      dependencyIdentity: dependencyIdentity({ installedVersion: overrides.installedVersion }),
-      environment: {
-        os: overrides.os ?? 'linux 6.11.0',
-        arch: overrides.arch ?? 'x64',
-        runtime: overrides.runtime ?? 'node v22.16.0',
-        packageManager: null,
-        repositoryProvenance,
-        formalPromotionPolicy: promotionPolicy,
-        formalLifecycleQualification: qualification,
-        formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
-      },
-      parameters: {
-        mode: 'local-process',
-        workerAuthorityBoundary: 'Temporal worker process'
-      },
-      cleanupVerifiedBeforeRun: true,
-      preRunCleanupReceipt: overrides.missingPreRunReceipt ? null : passPreRunReceipt(overrides.receiptOverrides)
-    },
-    run: {
-      startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
-      fault: { intended: 'process termination after effect', injected: true, targetKind: 'worker-process', targetIdentity: 1234, signal: 'SIGKILL', durableAuthorityAlive: true },
-      rawObservations,
-      acceptanceChecks: { noDuplicate: true, recoveryObserved: true }
-    },
-    cleanup: {
-      status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
-      observedWorkerPids,
+    repetition,
+    repositoryRevision: REPOSITORY_REVISION,
+    harnessSha256: overrides.harnessSha256 ?? 'b'.repeat(64),
+    runtime: overrides.runtime ?? 'node v22.16.0',
+    workerPid,
+    receiptOverrides: overrides.receiptOverrides ?? {},
+    dependencyIdentityOverrides: overrides.installedVersion
+      ? {
+          ...readyFormalRecord({ candidate: 'Temporal TypeScript' }).setup.dependencyIdentity,
+          packages: readyFormalRecord({ candidate: 'Temporal TypeScript' }).setup.dependencyIdentity.packages.map((entry) => ({
+            ...entry,
+            installedVersion: overrides.installedVersion
+          }))
+        }
+      : null,
+    setupOverrides: overrides.missingPreRunReceipt ? { preRunCleanupReceipt: null } : {},
+    cleanupOverrides: {
       liveObservedWorkerPids: overrides.liveWorker ? [workerPid] : []
-    },
-    artifacts: [{ name: 'raw.json', sha256: 'd'.repeat(64) }], verdict: 'PASS'
-  };
+    }
+  });
+
+  value.experimentId = overrides.experimentId ?? 'exp-1';
+  value.randomSeed = overrides.randomSeed ?? 1001;
+
+  if (overrides.unverifiedRepository) {
+    value.setup.environment.repositoryProvenance = {
+      source: 'git', status: 'UNVERIFIED', revision: REPOSITORY_REVISION,
+      trackedWorktreeClean: false, reason: 'TRACKED_WORKTREE_DIRTY'
+    };
+  }
+  if (overrides.tamperPromotionPolicy) value.setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
+  if (overrides.tamperLifecycleQualification) value.setup.environment.formalLifecycleQualification.sha256 = '0'.repeat(64);
+
+  const driverPid = 8899;
+  if (overrides.withWorkerPid === false) {
+    value.run.rawObservations = overrides.driverOnly ? { runnerProcess: { pid: driverPid } } : {};
+    value.cleanup.observedWorkerPids = overrides.driverOnly ? [driverPid] : [];
+  } else {
+    value.run.rawObservations.runnerProcess = { pid: driverPid };
+    value.cleanup.observedWorkerPids = [workerPid, driverPid];
+  }
+  if (overrides.omitWorkerFromCleanup) value.cleanup.observedWorkerPids = [driverPid];
+
+  return value;
 }
 
 function suite(minRepetitions = 100, required = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16']) {
-  return {
-    mutants: required.map((id) => ({ id, critical: true, minRepetitions })),
-    benchmarkEligibility: { forbidBlockedOrInconclusive: required }
-  };
+  return makeSuite(required, minRepetitions);
 }
 
 function completeRecords(minRepetitions = 100) {
-  const required = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16'];
-  return required.flatMap((mutantId) => Array.from({ length: minRepetitions }, (_, index) => record({
-    experimentId: `${mutantId}-${index + 1}`,
-    mutantId,
-    repetition: index + 1,
-    randomSeed: 100000 + index + 1,
-    pid: 9000 + index + 1
-  })));
+  return completeCandidateRecords('Temporal TypeScript', minRepetitions);
 }
 
 test('accepts an executed critical PASS with provenance', () => {
@@ -183,27 +78,34 @@ test('accepts an executed critical PASS with provenance', () => {
 });
 
 test('setup blocker cannot be candidate FAIL', () => {
-  const value = record(); value.setup.status = 'BLOCKED_SETUP'; value.setup.cleanupVerifiedBeforeRun = false; value.verdict = 'FAIL';
+  const value = record();
+  value.setup.status = 'BLOCKED_SETUP';
+  value.setup.cleanupVerifiedBeforeRun = false;
+  value.verdict = 'FAIL';
   const result = validateExperimentRecord(value);
   assert.equal(result.valid, false);
   assert.match(result.errors.join('\n'), /BLOCKED_SETUP must yield BLOCKED/);
 });
 
 test('missing fault injection cannot become PASS', () => {
-  const value = record(); value.run.fault.injected = false;
+  const value = record();
+  value.run.fault.injected = false;
   const result = validateExperimentRecord(value);
   assert.equal(result.valid, false);
   assert.match(result.errors.join('\n'), /INCONCLUSIVE/);
 });
 
 test('FAIL requires an observed failed acceptance check', () => {
-  const value = record(); value.verdict = 'FAIL'; value.run.acceptanceChecks.noDuplicate = false;
+  const value = record();
+  value.verdict = 'FAIL';
+  value.run.acceptanceChecks = { noDuplicate: false };
   const result = validateExperimentRecord(value);
   assert.equal(result.valid, true, result.errors.join('\n'));
 });
 
 test('random seed must be a reproducible non-negative integer when supplied', () => {
-  const value = record(); value.randomSeed = -1;
+  const value = record();
+  value.randomSeed = -1;
   const result = validateExperimentRecord(value);
   assert.equal(result.valid, false);
   assert.match(result.errors.join('\n'), /randomSeed/);
@@ -216,8 +118,7 @@ test('benchmark eligibility rejects missing required mutant records', () => {
 });
 
 test('benchmark eligibility enforces declared minimum unique repetitions', () => {
-  const records = completeRecords(99);
-  const result = benchmarkEligible(records, suite(100), verifiedSupport);
+  const result = benchmarkEligible(completeRecords(99), suite(100), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /requires at least 100 unique repetitions, found 99/);
   assert.match(result.errors.join('\n'), /missing required repetition 100/);
@@ -232,44 +133,28 @@ test('benchmark eligibility rejects duplicate repetitions presented as replicati
 });
 
 test('benchmark eligibility rejects record without verified clean Git repository revision provenance', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', unverifiedRepository: true })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', unverifiedRepository: true })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks verified clean Git repository revision provenance/);
 });
 
 test('benchmark eligibility rejects record bound to a different promotion policy hash', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', tamperPromotionPolicy: true })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', tamperPromotionPolicy: true })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks current frozen formal promotion policy hash provenance/);
 });
 
 test('benchmark eligibility rejects record bound to a stale lifecycle qualification bundle', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', tamperLifecycleQualification: true })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', tamperLifecycleQualification: true })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks current candidate lifecycle qualification bundle provenance/);
 });
 
 test('benchmark eligibility rejects READY record without complete pre-run cleanup receipt', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', missingPreRunReceipt: true })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', missingPreRunReceipt: true })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks complete PASS pre-run cleanup receipt/);
-  assert.match(result.errors.join('\n'), /formal environment identity/);
+  assert.match(result.errors.join('\n'), /formal environment identity|native runtime identity/);
 });
 
 test('benchmark eligibility rejects mixed Node runtime identity even with one Git revision and one harness', () => {
@@ -283,53 +168,43 @@ test('benchmark eligibility rejects mixed Node runtime identity even with one Gi
 });
 
 test('benchmark eligibility rejects candidate dependency drift before treating it as replication', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', installedVersion: '1.24.0' })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', installedVersion: '1.24.0' })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /expected, declared and installed versions must match exactly/);
 });
 
 test('benchmark eligibility rejects injected critical record without explicit worker PID provenance', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T7', withWorkerPid: false })],
-    suite(1, ['T7']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T7', withWorkerPid: false })], suite(1, ['T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
 test('benchmark eligibility rejects driver PID as a substitute for explicit worker PID provenance', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T11', withWorkerPid: false, driverOnly: true })],
-    suite(1, ['T11']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T11', withWorkerPid: false, driverOnly: true })], suite(1, ['T11']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
 test('benchmark eligibility rejects worker PID omitted from cleanup observation', () => {
-  const result = benchmarkEligible(
-    [record({ mutantId: 'T12', omitWorkerFromCleanup: true })],
-    suite(1, ['T12']),
-    verifiedSupport
-  );
+  const result = benchmarkEligible([record({ mutantId: 'T12', omitWorkerFromCleanup: true })], suite(1, ['T12']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /cleanup evidence omitted explicit worker process PIDs/);
 });
 
 test('benchmark eligibility rejects worker PID reported alive after cleanup', () => {
+  const result = benchmarkEligible([record({ mutantId: 'T16', liveWorker: true })], suite(1, ['T16']), verifiedSupport);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /still alive/);
+});
+
+test('benchmark eligibility rejects a READY record whose native runtime differs from the lifecycle qualification runtime', () => {
   const result = benchmarkEligible(
-    [record({ mutantId: 'T16', liveWorker: true })],
-    suite(1, ['T16']),
+    [record({ mutantId: 'T7', receiptOverrides: { cliSha256: '7'.repeat(64) } })],
+    suite(1, ['T7']),
     verifiedSupport
   );
   assert.equal(result.eligible, false);
-  assert.match(result.errors.join('\n'), /still alive/);
+  assert.match(result.errors.join('\n'), /native runtime identity differs from lifecycle qualification runtime identity/);
 });
 
 test('benchmark eligibility remains closed when support evidence omits harness hash', () => {
@@ -344,6 +219,14 @@ test('benchmark eligibility remains closed when support evidence omits lifecycle
   const withoutQualification = structuredClone(verifiedSupport);
   delete withoutQualification['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
   const result = benchmarkEligible(completeRecords(1), suite(1), withoutQualification);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('benchmark eligibility remains closed when support evidence omits native runtime identity hash', () => {
+  const withoutRuntimeIdentity = structuredClone(verifiedSupport);
+  delete withoutRuntimeIdentity['Temporal TypeScript'].verificationEvidence.runtimeIdentitySha256;
+  const result = benchmarkEligible(completeRecords(1), suite(1), withoutRuntimeIdentity);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
@@ -373,7 +256,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, verified Git revision, stable formal environment, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, verified Git revision, stable formal environment, qualified native runtime identity, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
