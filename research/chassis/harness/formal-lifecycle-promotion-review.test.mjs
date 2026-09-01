@@ -39,12 +39,16 @@ function temporalRecord() {
         intended: 'T5', injected: true, targetKind: 'concurrent-worker-ownership-race',
         targetIdentity: 'worker-A', signal: null, durableAuthorityAlive: true
       },
-      rawObservations: {},
+      rawObservations: {
+        workerProcessPids: [4101, 4102],
+        t5Evidence: { rawNativeEvidence: { workerA: { pid: 4101 }, workerB: { pid: 4102 } } },
+        runnerProcess: { pid: 4199, exitCode: 0 }
+      },
       acceptanceChecks: { semanticAuthorityCheck: false }
     },
     cleanup: {
       status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
-      observedWorkerPids: [4101, 4102], liveObservedWorkerPids: [], temporalServerCleanup: true, sqliteCleanup: true, workspaceCleanup: true
+      observedWorkerPids: [4101, 4102, 4199], liveObservedWorkerPids: [], temporalServerCleanup: true, sqliteCleanup: true, workspaceCleanup: true
     },
     artifacts: [{ name: 'observations.json', path: null, sha256: 'c'.repeat(64) }],
     verdict: 'FAIL',
@@ -63,7 +67,7 @@ function texts() {
   };
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt into evidence-backed support proposal only', () => {
+test('promotion review converts a valid T5/r1 lifecycle receipt with explicit worker PID provenance into support proposal only', () => {
   const { recordText, validationText } = texts();
   const result = reviewLifecyclePromotion({
     recordText,
@@ -106,6 +110,19 @@ test('promotion review rejects missing immutable execution reference', () => {
 test('promotion review recomputes lifecycle receipt validity instead of trusting an eligible flag', () => {
   const { record, validation } = texts();
   record.cleanup.liveObservedWorkerPids = [4102];
+  const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
+  const result = reviewLifecyclePromotion({
+    recordText: `${JSON.stringify(record, null, 2)}\n`,
+    validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
+    executionRef: 'github-actions:run=123;job=temporal;sha=abc'
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.recomputedValidationEligible, false);
+});
+
+test('promotion review rejects driver-only provenance even if supplied validation claims eligibility', () => {
+  const { record, validation } = texts();
+  record.run.rawObservations.workerProcessPids = [];
   const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
   const result = reviewLifecyclePromotion({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
