@@ -217,7 +217,14 @@ export async function runRestateT11({
     const protectedEventOnB = serviceB.events.find((event) =>
       event.event === 't11_protected_operation_attempt' && event.objectiveId === objectiveId) ?? null;
     const oracleEntry = oracle.snapshot(operationId);
-    const blockedByNativeCancellation = resumeResponse.ok === false && terminalBeforeCrash.status === 409 && nativeCancel?.error?.name === 'CancelledError';
+    const resumeCompletedRejection =
+      resumeResponse.status === 409 &&
+      /completed/i.test(resumeResponse.text ?? '') &&
+      /cannot be resumed|can be resumed only/i.test(resumeResponse.text ?? '');
+    const blockedByNativeCancellation =
+      resumeCompletedRejection &&
+      terminalBeforeCrash.status === 409 &&
+      nativeCancel?.error?.name === 'CancelledError';
     schedule.push('post-cancel-progress-challenged');
 
     const terminalAfterRecovery = await waitForTerminalWorkflowOutput(ingressUrl, objectiveId, timeoutMs);
@@ -255,7 +262,8 @@ export async function runRestateT11({
       recovery: {
         attempted: true,
         workerIdentity: recoveryWorkerIdentity,
-        resumeResponse
+        resumeResponse,
+        resumeCompletedRejection
       },
       postCancelProtectedOperation: {
         attempted: Boolean(protectedEventOnB) || acceptedCountAfterCancel > 0,
@@ -281,6 +289,7 @@ export async function runRestateT11({
         terminalBeforeCrash,
         crashExit,
         resumeResponse,
+        resumeCompletedRejection,
         terminalAfterRecovery,
         oracleBeforeRecovery: oracleEntry,
         oracleAfterRecovery,
