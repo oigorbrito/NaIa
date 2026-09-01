@@ -19,14 +19,19 @@ on:
       - 'research/chassis/harness/t11-record-bridge.mjs'
       - 'research/chassis/harness/t12-record-bridge.mjs'
       - 'research/chassis/harness/t16-record-bridge.mjs'
+      - 'research/chassis/harness/formal-cleanup-support.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-promotion-review.mjs'
       - 'research/chassis/harness/formal-lifecycle-promotion-review.test.mjs'
       - 'research/chassis/harness/experiment-ledger-validator.mjs'
+      - 'research/chassis/harness/experiment-ledger-validator.test.mjs'
+      - 'research/chassis/harness/experiment-ledger-status.mjs'
       - 'research/chassis/harness/formal-ledger-admission.test.mjs'
       - 'research/chassis/harness/experiment-record-validator.mjs'
       - 'research/chassis/harness/experiment-record-validator.test.mjs'
+      - 'research/chassis/harness/benchmark-promotion-gate.mjs'
+      - 'research/chassis/harness/benchmark-promotion-gate.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -43,14 +48,17 @@ jobs:
         with:
           node-version: '22.16.0'
 
-      - name: Verify explicit worker process PID provenance gates
+      - name: Verify explicit worker process PID provenance and formal promotion gates
         shell: bash
         run: |
           set -euo pipefail
           echo 'scope=CHASSIS_ONLY'
           echo 'harness=LOCAL TEST HARNESS'
           echo 'repository=OWN REPOSITORY'
+          echo 'fault_injection=CONTROLLED FAULT INJECTION'
           echo 'third_party_target=NO THIRD-PARTY TARGET'
+          echo 'credential_bypass=NO CREDENTIAL BYPASS'
+          echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
           node --test \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
@@ -60,4 +68,6 @@ jobs:
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
             research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
-            research/chassis/harness/experiment-record-validator.test.mjs
+            research/chassis/harness/experiment-ledger-validator.test.mjs \
+            research/chassis/harness/experiment-record-validator.test.mjs \
+            research/chassis/harness/benchmark-promotion-gate.test.mjs
