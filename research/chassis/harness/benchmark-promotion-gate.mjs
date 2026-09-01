@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { auditStoredFormalLedger, validateExecutionLedger } from './experiment-ledger-validator.mjs';
+import {
+  assessStoredFormalLedgerCurrentCompatibility,
+  auditStoredFormalLedger,
+  validateExecutionLedger
+} from './experiment-ledger-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT } from './formal-cleanup-support.mjs';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 
@@ -90,12 +94,14 @@ export function assessBenchmarkPromotion({
   cleanupSupport = FORMAL_CLEANUP_SUPPORT
 }) {
   const ledgerValidation = validateExecutionLedger(ledger, protocol, faultSuite, { allowPrefix: false });
-  const formalAudit = auditStoredFormalLedger(ledger);
-  if (!ledgerValidation.valid || !ledgerValidation.complete || !formalAudit.valid) {
+  const historicalAudit = auditStoredFormalLedger(ledger);
+  const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(ledger);
+  if (!ledgerValidation.valid || !ledgerValidation.complete || !historicalAudit.valid || !currentCompatibility.compatible) {
     return {
       readyForSelection: false,
       ledger: ledgerValidation,
-      formalAudit,
+      formalAudit: historicalAudit,
+      currentCompatibility,
       candidates: [],
       qualifiedCandidates: [],
       promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
@@ -103,8 +109,11 @@ export function assessBenchmarkPromotion({
         !ledgerValidation.valid || !ledgerValidation.complete
           ? 'benchmark ledger is not a complete valid preregistered execution'
           : null,
-        !formalAudit.valid
-          ? 'benchmark ledger immutable formal provenance audit failed'
+        !historicalAudit.valid
+          ? 'benchmark ledger historical formal provenance audit failed'
+          : null,
+        !currentCompatibility.compatible
+          ? 'benchmark ledger is incompatible with current frozen qualification/promotion state'
           : null
       ].filter(Boolean)
     };
@@ -124,7 +133,8 @@ export function assessBenchmarkPromotion({
   return {
     readyForSelection: qualifiedCandidates.length > 0,
     ledger: ledgerValidation,
-    formalAudit,
+    formalAudit: historicalAudit,
+    currentCompatibility,
     candidates: candidateResults,
     qualifiedCandidates,
     promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
