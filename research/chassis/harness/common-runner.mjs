@@ -5,6 +5,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { createExternalEffectOracle } from './external-oracle.mjs';
 import { runUntilKillpoint } from './crash-controller.mjs';
+import { evaluateT7T8Semantics } from './t7-t8-evaluator.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -32,7 +33,7 @@ async function runUntilTerminal({ command, args, cwd, env, timeoutMs }) {
   rl.on('line', (line) => {
     const parsed = parseLine(line);
     events.push(parsed);
-    if (!terminalEvent && ['objective_completed', 'fatal_error'].includes(parsed.event)) {
+    if (!terminalEvent && ['objective_completed', 'fatal_error', 'reconciliation_required'].includes(parsed.event)) {
       terminalEvent = parsed;
       terminationIssued = true;
       child.kill('SIGTERM');
@@ -238,10 +239,10 @@ async function main() {
       ? prerequisiteFailure(initial, resume, statusResult)
       : null;
     const requiredFaultInjected = mutant === 'T8'
-      ? checks.responseLossInjected
+      ? totalResponseLossCount === 1
       : mutant === 'T15'
         ? checks.responseLossInjected && checks.nonIdempotentProviderInjected
-        : checks.crashInjected;
+        : Boolean(initial.killIssued && !initial.timedOut);
     const faultNotInjected = !prerequisiteError && !requiredFaultInjected
       ? mutant === 'T8'
         ? 'RESPONSE_LOSS_NOT_OBSERVED'
@@ -251,48 +252,46 @@ async function main() {
       : null;
     const workerT7Unavailable = mutant === 'T7' && mode === 'managed-controller';
     const managedComposite = mutant === 'COMPOSITE' && mode === 'managed-controller';
+
+    const criticalEvaluation = ['T7', 'T8'].includes(mutant)
+      ? evaluateT7T8Semantics(mutant, {
+          totalApplyCount,
+          totalResponseLossCount,
+          relatedOperationCount: related.length,
+          durableAuthorityReachable: statusResult?.timedOut !== true && statusResult?.code === 0 && Boolean(status),
+          terminalEvent: (mutant === 'T7' ? resume?.terminalEvent?.event : initial?.terminalEvent?.event) ?? null,
+          finalStatus: status?.state ?? null,
+          measurementCutoffReached: initial?.timedOut === true
+        })
+      : null;
+    const evaluatorIncomplete = criticalEvaluation && !criticalEvaluation.valid
+      ? 'NEUTRAL_EVALUATOR_OBSERVATION_INCOMPLETE'
+      : null;
     const inconclusiveReason = workerT7Unavailable || managedComposite
       ? 'WORKER_SIGKILL_HOOK_REQUIRED_FOR_T7'
-      : faultNotInjected;
+      : faultNotInjected ?? evaluatorIncomplete;
 
-    const measuredPass = mutant === 'T7'
-      ? [
-          checks.crashInjected,
-          checks.resumedToCompletion,
-          checks.expectedOperationApplied,
-          checks.noIdentityDrift,
-          checks.noDuplicateExternalEffect,
-          checks.noUnexpectedResponseLoss,
-          checks.finalStatusCompleted
-        ].every(Boolean)
-      : mutant === 'T8'
+    const measuredPass = criticalEvaluation
+      ? criticalEvaluation.passed
+      : mutant === 'T15'
         ? [
             checks.responseLossInjected,
+            checks.nonIdempotentProviderInjected,
             checks.resumedToCompletion,
             checks.expectedOperationApplied,
             checks.noIdentityDrift,
             checks.noDuplicateExternalEffect,
             checks.finalStatusCompleted
           ].every(Boolean)
-        : mutant === 'T15'
-          ? [
-              checks.responseLossInjected,
-              checks.nonIdempotentProviderInjected,
-              checks.resumedToCompletion,
-              checks.expectedOperationApplied,
-              checks.noIdentityDrift,
-              checks.noDuplicateExternalEffect,
-              checks.finalStatusCompleted
-            ].every(Boolean)
-          : [
-              checks.crashInjected,
-              checks.resumedToCompletion,
-              checks.expectedOperationApplied,
-              checks.noIdentityDrift,
-              checks.noDuplicateExternalEffect,
-              checks.oneResponseLossObserved,
-              checks.finalStatusCompleted
-            ].every(Boolean);
+        : [
+            checks.crashInjected,
+            checks.resumedToCompletion,
+            checks.expectedOperationApplied,
+            checks.noIdentityDrift,
+            checks.noDuplicateExternalEffect,
+            checks.oneResponseLossObserved,
+            checks.finalStatusCompleted
+          ].every(Boolean);
 
     const verdict = prerequisiteError
       ? 'BLOCKED'
@@ -339,6 +338,7 @@ async function main() {
       resume,
       status: { process: statusResult, parsed: status },
       checks,
+      neutralCriticalEvaluation: criticalEvaluation,
       mutants,
       verdict,
       blocker: prerequisiteError
