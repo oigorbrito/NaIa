@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import {
   appendRecordToLedger,
+  assessStoredFormalLedgerHarnessConsistency,
   assessStoredFormalLedgerRepositoryRevisionConsistency
 } from './experiment-ledger-validator.mjs';
 import {
@@ -18,6 +19,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
 const REVISION_A = '1'.repeat(40);
 const REVISION_B = '2'.repeat(40);
+const HARNESS_A = 'e'.repeat(64);
+const HARNESS_B = '9'.repeat(64);
 
 async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
@@ -54,7 +57,7 @@ function supportEntry(candidate, supportRevision) {
   };
 }
 
-function blockedRecord(spec, repositoryRevision) {
+function blockedRecord(spec, repositoryRevision, harnessSha256 = HARNESS_A) {
   return {
     schemaVersion: 1,
     experimentId: spec.experimentId,
@@ -67,7 +70,7 @@ function blockedRecord(spec, repositoryRevision) {
       candidateVersion: 'fixture-version',
       candidateSourceRef: 'fixture-source',
       adapterSha256: 'd'.repeat(64),
-      harnessSha256: 'e'.repeat(64),
+      harnessSha256,
       dependencyIdentity: null,
       environment: {
         os: 'linux',
@@ -126,6 +129,23 @@ test('formal ledger revision consistency treats one verified revision as a conti
   assert.match(mixed.errors.join('\n'), /formal ledger prefix spans multiple Git repository revisions/);
 });
 
+test('formal ledger harness consistency treats one SHA as a continuable prefix and mixed harness identities as a separate-series boundary', () => {
+  const one = assessStoredFormalLedgerHarnessConsistency([
+    { setup: { harnessSha256: HARNESS_A } },
+    { setup: { harnessSha256: HARNESS_A } }
+  ]);
+  assert.equal(one.consistent, true);
+  assert.equal(one.harnessSha256, HARNESS_A);
+
+  const mixed = assessStoredFormalLedgerHarnessConsistency([
+    { setup: { harnessSha256: HARNESS_A } },
+    { setup: { harnessSha256: HARNESS_B } }
+  ]);
+  assert.equal(mixed.consistent, false);
+  assert.deepEqual(mixed.harnessSha256s, [HARNESS_B, HARNESS_A].sort());
+  assert.match(mixed.errors.join('\n'), /formal ledger prefix spans multiple harness identities/);
+});
+
 test('formal append rejects the next preregistered record when it would cross the frozen repository revision', async () => {
   const [protocol, faultSuite] = await Promise.all([
     json('experiment-protocol.v1.json'),
@@ -161,5 +181,38 @@ test('formal append rejects the next preregistered record when it would cross th
       { cleanupSupport }
     ),
     /appended formal ledger would mix repository revisions/
+  );
+});
+
+test('formal append rejects the next preregistered record when it would cross the frozen harness identity even under the same Git revision claim', async () => {
+  const [protocol, faultSuite] = await Promise.all([
+    json('experiment-protocol.v1.json'),
+    json('fault-suite.v1.json')
+  ]);
+  const plan = buildExecutionPlan(protocol, faultSuite);
+  const cleanupSupport = {
+    'Temporal TypeScript': supportEntry('Temporal TypeScript', '3'.repeat(40)),
+    'DBOS TypeScript': supportEntry('DBOS TypeScript', '4'.repeat(40))
+  };
+
+  const first = appendRecordToLedger(
+    [],
+    blockedRecord(plan[0], REVISION_A, HARNESS_A),
+    protocol,
+    faultSuite,
+    { cleanupSupport }
+  );
+  assert.equal(first.harnessConsistency.consistent, true);
+  assert.equal(first.harnessConsistency.harnessSha256, HARNESS_A);
+
+  assert.throws(
+    () => appendRecordToLedger(
+      first.records,
+      blockedRecord(plan[1], REVISION_A, HARNESS_B),
+      protocol,
+      faultSuite,
+      { cleanupSupport }
+    ),
+    /appended formal ledger would mix harness identities/
   );
 });
