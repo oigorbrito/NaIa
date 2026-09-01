@@ -111,9 +111,10 @@ function review(args) {
   });
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness, candidate bundle, environment identity and Git revision into support proposal only', () => {
+test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness, candidate bundle, native runtime identity, environment identity and Git revision into support proposal only', () => {
   const { recordText, validationText, validation } = texts();
   assert.equal(validation.checks.formalEnvironmentIdentityValid, true, validation.formalEnvironmentIdentity.errors.join('\n'));
+  assert.equal(validation.checks.formalRuntimeIdentitySha256Present, true);
   const result = review({
     recordText,
     validationText,
@@ -128,6 +129,8 @@ test('promotion review converts a valid T5/r1 lifecycle receipt with matching ha
   assert.equal(result.checks.recordHarnessMatchesCurrent, true);
   assert.equal(result.checks.currentLifecycleQualificationSha256Valid, true);
   assert.equal(result.checks.recordLifecycleQualificationMatchesCurrent, true);
+  assert.equal(result.checks.runtimeIdentitySha256Valid, true);
+  assert.equal(result.checks.suppliedRuntimeIdentityMatchesRecomputed, true);
   assert.equal(result.candidateSemanticVerdict, 'FAIL');
   assert.equal(result.candidateSemanticVerdictDoesNotControlLifecyclePromotion, true);
   assert.equal(result.proposedSupport.preRunCleanup, true);
@@ -136,6 +139,7 @@ test('promotion review converts a valid T5/r1 lifecycle receipt with matching ha
   assert.equal(result.proposedSupport.verificationEvidence.repositoryRevision, REPOSITORY_REVISION);
   assert.equal(result.proposedSupport.verificationEvidence.harnessSha256, HARNESS_SHA);
   assert.equal(result.proposedSupport.verificationEvidence.lifecycleQualificationSha256, QUALIFICATION.aggregateSha256);
+  assert.equal(result.proposedSupport.verificationEvidence.runtimeIdentitySha256, validation.runtimeIdentitySha256);
   assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence, 'Temporal TypeScript'), true);
   assert.equal(result.benchmarkPromotionAllowed, false);
   assert.equal(result.ledgerAppendAllowed, false);
@@ -218,6 +222,19 @@ test('promotion review rejects a supplied validator result whose candidate ident
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.candidateMatches, false);
+  assert.equal(result.proposedSupport, null);
+});
+
+test('promotion review rejects a supplied validator artifact whose native runtime identity hash was altered', () => {
+  const { recordText, validation } = texts();
+  const tampered = { ...validation, runtimeIdentitySha256: 'f'.repeat(64) };
+  const result = review({
+    recordText,
+    validationText: `${JSON.stringify(tampered, null, 2)}\n`,
+    executionRef: EXECUTION_REF
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.suppliedRuntimeIdentityMatchesRecomputed, false);
   assert.equal(result.proposedSupport, null);
 });
 
