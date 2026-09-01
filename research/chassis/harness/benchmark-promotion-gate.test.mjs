@@ -13,12 +13,45 @@ async function faultSuite() {
   return JSON.parse(await readFile(path.join(chassisRoot, 'fault-suite.v1.json'), 'utf8'));
 }
 
+function candidateSlug(candidate) {
+  return candidate.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+}
+
+function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId = null) {
+  return {
+    [candidate]: {
+      preRunCleanup: true,
+      postRunCleanup: true,
+      status: 'RUNTIME_VERIFIED',
+      verificationEvidence: {
+        executionRef: `test-fixture:${candidateSlug(candidate)}:runtime-receipt`,
+        experimentId: experimentId ?? `${candidateSlug(candidate)}-t5-001`,
+        mutantId: 'T5',
+        repetition: 1,
+        recordSha256: 'd'.repeat(64),
+        validatorSha256: 'e'.repeat(64),
+        verifiedAt: '2026-09-01T00:00:00.000Z'
+      }
+    }
+  };
+}
+
 function record(candidate, mutantId, repetition, verdict = 'PASS') {
   const pass = verdict === 'PASS';
   const fail = verdict === 'FAIL';
+  const workerPid = 500000 + critical.indexOf(mutantId) * 1000 + repetition;
+  const slug = candidateSlug(candidate);
+  const rawObservations = {
+    workerProcessPids: [workerPid],
+    workerA: { pid: workerPid }
+  };
+  if (mutantId === 'T16' && pass) {
+    rawObservations.semanticMutation = { dimension: 'config', before: 'a', after: 'b' };
+  }
+
   return {
     schemaVersion: 1,
-    experimentId: `${candidate}-${mutantId}-${repetition}`,
+    experimentId: `${slug}-${mutantId.toLowerCase()}-${String(repetition).padStart(3, '0')}`,
     candidate,
     mutantId,
     repetition,
@@ -30,13 +63,25 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
       adapterSha256: 'a'.repeat(64),
       harnessSha256: 'b'.repeat(64),
       dependencyIdentity: null,
-      environment: { os: 'fixture-os', arch: 'fixture-arch', runtime: 'node v22.0.0' },
+      environment: {
+        os: 'fixture-os',
+        arch: 'fixture-arch',
+        runtime: 'node v22.16.0',
+        formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
+      },
       parameters: {},
-      cleanupVerifiedBeforeRun: true
+      cleanupVerifiedBeforeRun: true,
+      preRunCleanupReceipt: {
+        status: 'PASS',
+        workerCleanup: true,
+        durableStateCleanup: true,
+        oracleCleanup: true,
+        temporaryResourcesCleanup: true
+      }
     },
     run: {
-      startedAt: '2026-08-31T00:00:00.000Z',
-      finishedAt: '2026-08-31T00:00:01.000Z',
+      startedAt: '2026-09-01T00:00:00.000Z',
+      finishedAt: '2026-09-01T00:00:01.000Z',
       blocked: false,
       blocker: null,
       workload: {},
@@ -44,11 +89,11 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
         intended: mutantId,
         injected: true,
         targetKind: 'worker-process',
-        targetIdentity: 1,
+        targetIdentity: workerPid,
         signal: mutantId === 'T7' ? 'SIGKILL' : null,
-        durableAuthorityAlive: pass ? true : null
+        durableAuthorityAlive: true
       },
-      rawObservations: mutantId === 'T16' && pass ? { semanticMutation: { dimension: 'config', before: 'a', after: 'b' } } : {},
+      rawObservations,
       acceptanceChecks: pass ? { invariant: true } : fail ? { invariant: false } : { invariant: true }
     },
     cleanup: {
@@ -56,7 +101,9 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
       workerCleanup: true,
       durableStateCleanup: true,
       oracleCleanup: true,
-      temporaryResourcesCleanup: true
+      temporaryResourcesCleanup: true,
+      observedWorkerPids: [workerPid],
+      liveObservedWorkerPids: []
     },
     artifacts: [{ name: 'fixture.json', path: null, sha256: 'c'.repeat(64) }],
     verdict,
@@ -74,16 +121,37 @@ function completeCandidate(candidate, verdictByMutant = {}) {
   return records;
 }
 
-test('complete all-PASS critical evidence is promotion-qualified', async () => {
+test('promotion stays closed without repository runtime-verified cleanup support', async () => {
   const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite());
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('complete all-PASS critical evidence is promotion-qualified only with candidate-bound verified cleanup support', async () => {
+  const cleanupSupport = verifiedCleanupSupport();
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
   assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, true, result.errors.join('\n'));
   assert.deepEqual(result.exceptions, []);
 });
 
+test('cleanup verification evidence from another candidate cannot open promotion', async () => {
+  const cleanupSupport = verifiedCleanupSupport('Temporal TypeScript', 'dbos-typescript-t5-001');
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
 test('critical FAIL evidence is comparable but not promotion-qualified without explicit policy', async () => {
-  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript', { T7: 'FAIL' }), await faultSuite());
-  assert.equal(result.comparable, true);
+  const cleanupSupport = verifiedCleanupSupport();
+  const result = assessCandidatePromotion(
+    completeCandidate('Temporal TypeScript', { T7: 'FAIL' }),
+    await faultSuite(),
+    { cleanupSupport }
+  );
+  assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, false);
   assert.match(result.errors.join('\n'), /T7: critical FAIL requires explicit enforced acceptance\/exclusion policy/);
 });
@@ -100,7 +168,10 @@ test('critical FAIL can pass promotion only with explicit enforced constraint an
       }
     }
   };
-  const result = assessCandidatePromotion(records, suite, { acceptedFailures });
+  const result = assessCandidatePromotion(records, suite, {
+    acceptedFailures,
+    cleanupSupport: verifiedCleanupSupport()
+  });
   assert.equal(result.comparable, true, result.errors.join('\n'));
   assert.equal(result.qualified, true, result.errors.join('\n'));
   assert.ok(result.exceptions.some((entry) => entry.mutantId === 'T7' && entry.verdict === 'FAIL'));
@@ -114,6 +185,9 @@ test('policy object without enforced=true cannot waive a critical FAIL', async (
       T7: { enforced: false, constraint: 'documentation only', justification: 'not mechanically enforced' }
     }
   };
-  const result = assessCandidatePromotion(records, suite, { acceptedFailures });
+  const result = assessCandidatePromotion(records, suite, {
+    acceptedFailures,
+    cleanupSupport: verifiedCleanupSupport()
+  });
   assert.equal(result.qualified, false);
 });
