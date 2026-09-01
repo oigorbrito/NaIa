@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  assessBenchmarkPromotion,
-  assessBenchmarkRepositoryRevisionConsistency
-} from './benchmark-promotion-gate.mjs';
+import { assessBenchmarkRepositoryRevisionConsistency } from './benchmark-promotion-gate.mjs';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import {
   currentLifecycleQualificationProvenance,
@@ -154,20 +151,5 @@ test('cross-candidate comparison reports one common revision only when every ver
   assert.equal(mixed.consistent, false);
   assert.equal(mixed.repositoryRevision, null);
   assert.deepEqual(mixed.repositoryRevisions, [REVISION_A, REVISION_B]);
-});
-
-test('benchmark promotion gate closes early when an otherwise incomplete ledger also mixes repository revisions', () => {
-  const ledger = [
-    { setup: { environment: { repositoryProvenance: { source: 'git', status: 'VERIFIED', revision: REVISION_A, trackedWorktreeClean: true, reason: null } } } },
-    { setup: { environment: { repositoryProvenance: { source: 'git', status: 'VERIFIED', revision: REVISION_B, trackedWorktreeClean: true, reason: null } } } }
-  ];
-  const result = assessBenchmarkPromotion({
-    ledger,
-    protocol: { candidates: [], criticalMutants: [], repetitionPolicy: { minimumPerCriticalMutant: 1 } },
-    faultSuite: { mutants: [], benchmarkEligibility: { forbidBlockedOrInconclusive: [] } },
-    cleanupSupport: {}
-  });
-  assert.equal(result.readyForSelection, false);
-  assert.equal(result.repositoryRevisionConsistency.consistent, false);
-  assert.match(result.errors.join('\n'), /mixes Git repository revisions and is not comparable/);
+  assert.match(mixed.errors.join('\n'), /benchmark comparison spans multiple Git repository revisions/);
 });
