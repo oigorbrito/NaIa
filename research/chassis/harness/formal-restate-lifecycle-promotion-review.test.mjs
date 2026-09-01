@@ -50,9 +50,9 @@ test('Restate lifecycle promotion review proposes support only when receipt, har
   assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence, 'Restate'), true);
 });
 
-test('Restate promotion review rejects a record from another observed server binary', () => {
+test('Restate promotion review rejects a record whose native runtime version no longer matches frozen 1.7.8', () => {
   const { record, validation } = texts();
-  record.setup.preRunCleanupReceipt.formalRuntimeIdentity.serverSha256 = 'f'.repeat(64);
+  record.setup.preRunCleanupReceipt.formalRuntimeIdentity.versionOutput = 'restate-server 1.8.0';
   const result = reviewLifecyclePromotion({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
     validationText: `${JSON.stringify({ ...validation, eligibleForLifecycleStatusPromotion: true }, null, 2)}\n`,
@@ -62,7 +62,7 @@ test('Restate promotion review rejects a record from another observed server bin
   });
 
   assert.equal(result.eligibleForSupportPromotion, false);
-  assert.equal(result.checks.recomputedValidationEligible, true);
+  assert.equal(result.checks.recomputedValidationEligible, false);
   assert.equal(result.proposedSupport, null);
 });
 
