@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "status": "PILOT_NOT_FORMAL_LEDGER",
+  "candidate": "DBOS TypeScript",
+  "candidateVersion": "4.27.6",
+  "nodeVersion": "22.16.0",
+  "postgresImage": "postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297",
+  "dependencyGraph": {
+    "lockfile": "research/chassis/adapters/dbos-ts/package-lock.json",
+    "source": "preserved package-lock.runtime.json from first valid pilot cell",
+    "requireRuntimeLockMatch": true
+  },
+  "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+  "repetitions": [1, 2, 3],
+  "classificationPolicy": {
+    "infrastructure": "BLOCKED_*",
+    "missingOrInvalidFault": "INCONCLUSIVE_*",
+    "candidatePass": "QUALIFICATION_PASS",
+    "candidateFail": "QUALIFICATION_FAIL"
+  },
+  "formalLedger": false,
+  "benchmarkPromotionAllowed": false
+}
