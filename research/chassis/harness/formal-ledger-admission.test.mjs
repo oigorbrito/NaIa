@@ -3,6 +3,7 @@ import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
 import { candidateProfileRecordFields } from './formal-candidate-profile-binding.mjs';
+import { deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import {
   currentLifecycleQualificationProvenance,
   currentLifecycleQualificationSha256
@@ -31,6 +32,7 @@ function record({
   tamperPromotionPolicy = false,
   tamperLifecycleQualification = false,
   tamperCandidateProfile = false,
+  tamperRuntimeIdentity = false,
   repositoryVerified = true,
   missingDependencyIdentity = false
 } = {}) {
@@ -107,7 +109,7 @@ function record({
         durableStateCleanup: true,
         oracleCleanup: true,
         temporaryResourcesCleanup: true,
-        cliSha256: '6'.repeat(64),
+        cliSha256: tamperRuntimeIdentity ? '7'.repeat(64) : '6'.repeat(64),
         versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
         expectedProfile: {
           sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
@@ -150,6 +152,10 @@ function record({
   };
 }
 
+const QUALIFIED_RUNTIME_IDENTITY_SHA256 = deriveFormalEnvironmentIdentity(
+  record({ lifecycleStatus: 'RUNTIME_VERIFIED' })
+).runtimeIdentitySha256;
+
 const verificationEvidence = {
   executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
   repositoryRevision: REPOSITORY_REVISION,
@@ -160,6 +166,7 @@ const verificationEvidence = {
   validatorSha256: 'e'.repeat(64),
   harnessSha256: 'b'.repeat(64),
   lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
+  runtimeIdentitySha256: QUALIFIED_RUNTIME_IDENTITY_SHA256,
   verifiedAt: '2026-09-01T00:00:02.000Z'
 };
 
@@ -245,6 +252,15 @@ test('formal ledger admission rejects a READY record that is internally consiste
   assert.match(result.errors.join('\n'), /candidateSourceRef differs/);
 });
 
+test('formal ledger admission rejects READY runtime identity drift from the lifecycle qualification runtime', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', tamperRuntimeIdentity: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /native runtime identity differs from lifecycle qualification runtime identity/);
+});
+
 test('formal ledger admission requires PASS cleanup for READY formal execution', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', cleanupStatus: 'NOT_APPLICABLE' }),
@@ -308,7 +324,7 @@ test('formal ledger admission rejects explicit worker PID reported alive after c
   assert.match(result.errors.join('\n'), /still alive: 7701/);
 });
 
-test('formal ledger admission opens only when lifecycle, Git revision, candidate profile, environment identity, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle, Git revision, candidate profile, environment identity, qualified native runtime identity, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -323,7 +339,19 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after Git revision, candidate profile, environment identity, lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
+test('benchmark eligibility rejects READY runtime identity drift from the lifecycle qualification runtime', () => {
+  const faultSuite = {
+    mutants: [{ id: 'T5', minRepetitions: 1 }],
+    benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
+  };
+  const result = benchmarkEligible([
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', tamperRuntimeIdentity: true })
+  ], faultSuite, verifiedSupport);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /native runtime identity differs from lifecycle qualification runtime identity/);
+});
+
+test('benchmark eligibility accepts the same valid critical record only after Git revision, candidate profile, environment identity, qualified native runtime identity, lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
