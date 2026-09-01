@@ -31,11 +31,18 @@ function sha256(value) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
 }
 
-export function runtimeVerificationEvidenceValid(evidence) {
+export function expectedLifecycleExperimentId(candidateName) {
+  if (!nonEmpty(candidateName)) return null;
+  return `${candidateName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-t5-001`;
+}
+
+export function runtimeVerificationEvidenceValid(evidence, candidateName = null) {
+  const expectedExperimentId = candidateName ? expectedLifecycleExperimentId(candidateName) : null;
   return Boolean(
     evidence &&
     nonEmpty(evidence.executionRef) &&
     nonEmpty(evidence.experimentId) &&
+    (!expectedExperimentId || evidence.experimentId === expectedExperimentId) &&
     evidence.mutantId === 'T5' &&
     evidence.repetition === 1 &&
     sha256(evidence.recordSha256) &&
@@ -53,5 +60,5 @@ export function formalCleanupSupportsCandidate(cleanupSupport, candidateName) {
   const entry = cleanupSupport?.[candidateName] ?? {};
   return missingFormalCleanupPhases(cleanupSupport, candidateName).length === 0 &&
     entry.status === 'RUNTIME_VERIFIED' &&
-    runtimeVerificationEvidenceValid(entry.verificationEvidence);
+    runtimeVerificationEvidenceValid(entry.verificationEvidence, candidateName);
 }
