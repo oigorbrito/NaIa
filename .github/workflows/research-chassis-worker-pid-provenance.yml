@@ -8,6 +8,10 @@ on:
       - '.github/workflows/research-chassis-worker-pid-provenance.yml'
       - 'research/chassis/harness/formal-worker-pid-provenance.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.test.mjs'
+      - 'research/chassis/harness/formal-runtime-lifecycle.mjs'
+      - 'research/chassis/harness/formal-runtime-lifecycle.test.mjs'
+      - 'research/chassis/harness/formal-dbos-lifecycle.mjs'
+      - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
@@ -49,6 +53,8 @@ jobs:
           echo 'third_party_target=NO THIRD-PARTY TARGET'
           node --test \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
+            research/chassis/harness/formal-runtime-lifecycle.test.mjs \
+            research/chassis/harness/formal-dbos-lifecycle.test.mjs \
             research/chassis/harness/common-runner-record-bridge.test.mjs \
             research/chassis/harness/t5-record-bridge.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
