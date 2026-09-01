@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  executionRefRepositoryRevision,
+  gitRevisionValid,
   inspectRepositoryProvenance,
   repositoryProvenanceReady,
   repositoryProvenanceStructurallyValid
@@ -16,6 +18,23 @@ function fakeGit(sequence) {
   let index = 0;
   return async () => sequence[index++];
 }
+
+test('Git revision validator accepts full 40 and 64 hex identities only', () => {
+  assert.equal(gitRevisionValid('a'.repeat(40)), true);
+  assert.equal(gitRevisionValid('B'.repeat(64)), true);
+  assert.equal(gitRevisionValid('a'.repeat(39)), false);
+  assert.equal(gitRevisionValid('g'.repeat(40)), false);
+});
+
+test('execution reference extracts the exact Git revision and rejects abbreviated or malformed sha fields', () => {
+  assert.equal(
+    executionRefRepositoryRevision(`github-actions:run=123;job=temporal;sha=${REVISION}`),
+    REVISION
+  );
+  assert.equal(executionRefRepositoryRevision('github-actions:run=123;job=temporal;sha=abc123'), null);
+  assert.equal(executionRefRepositoryRevision(`github-actions:run=123;sha=${REVISION}extra`), null);
+  assert.equal(executionRefRepositoryRevision(''), null);
+});
 
 test('clean tracked Git revision is VERIFIED and reproducibly anchored', async () => {
   const value = await inspectRepositoryProvenance('/fixture', {
