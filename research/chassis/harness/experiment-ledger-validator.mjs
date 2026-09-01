@@ -1,6 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { assessCandidateProfileBinding } from './formal-candidate-profile-binding.mjs';
 import { assessFormalEnvironmentConsistency, deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import {
   lifecycleQualificationRecordProvenanceStructurallyValid,
@@ -123,6 +124,13 @@ export function assessStoredFormalRecordCurrentCompatibility(record) {
 
   if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
     errors.push(`${candidate}: stored formal record promotion policy differs from current frozen promotion policy`);
+  }
+
+  if (record?.setup?.status === 'READY') {
+    const candidateBinding = assessCandidateProfileBinding(record);
+    for (const error of candidateBinding.errors) {
+      errors.push(`${candidate}: READY stored formal record candidate profile differs from current frozen candidate profile: ${error}`);
+    }
   }
 
   return { compatible: errors.length === 0, errors };
