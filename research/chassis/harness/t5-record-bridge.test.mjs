@@ -18,6 +18,19 @@ test('T5 bridge marks fenced two-worker ownership race as injected with all chec
   assert.equal(Object.values(run.acceptanceChecks).every(Boolean), true);
 });
 
+test('T5 bridge exports only native worker PIDs into explicit provenance', () => {
+  const evidence = controlResultToT5Evidence(executeDeterministicT5Control({ unsafe: false }));
+  evidence.rawNativeEvidence = {
+    objectiveId: 'objective-1',
+    workerA: { pid: 5101 },
+    workerB: { pid: 5102 },
+    coordinator: { pid: 5199 }
+  };
+  const run = t5EvidenceToRunResult(evidence, spec, setup);
+  assert.deepEqual(run.rawObservations.workerProcessPids, [5101, 5102]);
+  assert.equal(run.rawObservations.workerProcessPids.includes(5199), false);
+});
+
 test('T5 bridge exposes transient stale authority as failed acceptance while fault remains injected', () => {
   const evidence = controlResultToT5Evidence(executeDeterministicT5Control({ unsafe: true }));
   const run = t5EvidenceToRunResult(evidence, spec, setup);
