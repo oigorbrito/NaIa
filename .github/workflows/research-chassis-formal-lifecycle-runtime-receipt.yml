@@ -27,6 +27,8 @@ on:
       - 'research/chassis/harness/experiment-executor.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.mjs'
       - 'research/chassis/harness/experiment-record-schema-validator.mjs'
+      - 'research/chassis/harness/formal-environment-identity.mjs'
+      - 'research/chassis/harness/formal-environment-identity.test.mjs'
       - 'research/chassis/harness/experiment-record-validator.mjs'
       - 'research/chassis/harness/experiment-record-validator.test.mjs'
       - 'research/chassis/harness/formal-cleanup-support.mjs'
@@ -145,6 +147,7 @@ jobs:
 
           node --test \
             research/chassis/harness/repository-provenance.test.mjs \
+            research/chassis/harness/formal-environment-identity.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
@@ -268,6 +271,7 @@ jobs:
 
           node --test \
             research/chassis/harness/repository-provenance.test.mjs \
+            research/chassis/harness/formal-environment-identity.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
