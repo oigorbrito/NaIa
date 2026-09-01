@@ -68,7 +68,7 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
     candidate: candidate.candidate,
     mode: candidate.mode,
     missingPhases: ['preRunCleanup', 'postRunCleanup'],
-    status: candidate.candidate === 'Temporal TypeScript' || candidate.candidate === 'DBOS TypeScript'
+    status: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate'].includes(candidate.candidate)
       ? 'IMPLEMENTED_NOT_RUNTIME_VERIFIED'
       : 'NOT_IMPLEMENTED',
     evidenceBacked: false
@@ -81,7 +81,8 @@ test('readiness algorithm opens when every declared candidate has executor suppo
     criticalMutants: ['T5', 'T7'],
     candidates: [
       { candidate: 'Temporal TypeScript', mode: 'local-process' },
-      { candidate: 'DBOS TypeScript', mode: 'local-process' }
+      { candidate: 'DBOS TypeScript', mode: 'local-process' },
+      { candidate: 'Restate', mode: 'local-process' }
     ]
   };
   const completeSupport = {
@@ -112,10 +113,10 @@ test('cleanup support without harness hash evidence cannot open readiness', () =
 
 test('cleanup support without current lifecycle qualification hash cannot open readiness', () => {
   const protocol = { criticalMutants: ['T5'] };
-  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Restate', mode: 'local-process' }] };
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
-  cleanupSupport['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256 = '0'.repeat(64);
+  cleanupSupport.Restate.verificationEvidence.lifecycleQualificationSha256 = '0'.repeat(64);
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
@@ -134,10 +135,10 @@ test('cleanup support without repository revision cannot open readiness', () => 
 
 test('cleanup support whose execution ref points to another Git revision cannot open readiness', () => {
   const protocol = { criticalMutants: ['T5'] };
-  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Restate', mode: 'local-process' }] };
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
-  cleanupSupport['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
+  cleanupSupport.Restate.verificationEvidence.executionRef = `github-actions:run=fixture;job=restate;sha=${'2'.repeat(40)}`;
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
@@ -145,10 +146,10 @@ test('cleanup support whose execution ref points to another Git revision cannot 
 
 test('boolean-only cleanup support without receipt evidence cannot open readiness', () => {
   const protocol = { criticalMutants: ['T5'] };
-  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Restate', mode: 'local-process' }] };
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = {
-    'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
+    Restate: { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
   };
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
@@ -183,6 +184,6 @@ test('assertBenchmarkExecutionReady fails closed with explicit remaining candida
   );
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
-    /Temporal TypeScript: formal cleanup not runtime-verified with evidence/
+    /Restate: formal cleanup not runtime-verified with evidence/
   );
 });
