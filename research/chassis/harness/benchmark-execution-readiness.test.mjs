@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { assessBenchmarkExecutionReadiness, assertBenchmarkExecutionReady } from './benchmark-execution-readiness.mjs';
+import { currentLifecycleQualificationSha256 } from './formal-lifecycle-qualification-provenance.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -25,6 +26,7 @@ function completeCleanupSupport(candidates) {
       recordSha256: String(index + 1).padStart(64, 'a').slice(-64),
       validatorSha256: String(index + 1).padStart(64, 'b').slice(-64),
       harnessSha256: String(index + 1).padStart(64, 'c').slice(-64),
+      lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate.candidate),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }]));
@@ -71,14 +73,19 @@ test('current gate records executor gaps and keeps formal cleanup unavailable un
   })));
 });
 
-test('readiness opens only when every critical mutant and cleanup phase has evidence-backed support for every candidate', async () => {
-  const protocol = await json('experiment-protocol.v1.json');
-  const plan = await json('critical-mutant-plan.v1.json');
-  const completeSupport = Object.fromEntries(protocol.criticalMutants.map((mutantId) => [mutantId, {
-    modes: ['local-process', 'managed-controller'],
-    candidates: null,
-    fault: `fixture-${mutantId}`
-  }]));
+test('readiness algorithm opens when every declared candidate has executor support and current evidence-backed cleanup support', () => {
+  const protocol = { criticalMutants: ['T5', 'T7'] };
+  const plan = {
+    criticalMutants: ['T5', 'T7'],
+    candidates: [
+      { candidate: 'Temporal TypeScript', mode: 'local-process' },
+      { candidate: 'DBOS TypeScript', mode: 'local-process' }
+    ]
+  };
+  const completeSupport = {
+    T5: { modes: ['local-process'], candidates: null, fault: 'fixture-T5' },
+    T7: { modes: ['local-process'], candidates: null, fault: 'fixture-T7' }
+  };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
 
   const result = assessBenchmarkExecutionReadiness(protocol, plan, completeSupport, cleanupSupport);
@@ -96,6 +103,17 @@ test('cleanup support without harness hash evidence cannot open readiness', () =
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
   delete cleanupSupport['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
+  assert.equal(result.ready, false);
+  assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
+});
+
+test('cleanup support without current lifecycle qualification hash cannot open readiness', () => {
+  const protocol = { criticalMutants: ['T5'] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const support = { T5: { modes: ['local-process'], candidates: null } };
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  cleanupSupport['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256 = '0'.repeat(64);
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
