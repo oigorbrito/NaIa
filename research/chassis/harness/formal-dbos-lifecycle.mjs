@@ -3,6 +3,7 @@ import { mkdtemp, rm, access } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { assessWorkerPidCleanup } from './formal-worker-pid-provenance.mjs';
 
 export const DBOS_FORMAL_PROFILE = Object.freeze({
   sdkVersion: '4.27.6',
@@ -111,17 +112,6 @@ function safeIdentity(value) {
   return String(value).replace(/[^a-zA-Z0-9_.-]+/g, '-').slice(0, 120);
 }
 
-function collectObservedPids(value, output = new Set()) {
-  if (!value || typeof value !== 'object') return output;
-  if (Number.isInteger(value.pid) && value.pid > 0 && value.pid !== process.pid) output.add(value.pid);
-  if (Array.isArray(value)) {
-    for (const item of value) collectObservedPids(item, output);
-    return output;
-  }
-  for (const nested of Object.values(value)) collectObservedPids(nested, output);
-  return output;
-}
-
 function runnerBoundarySettled(run) {
   const observation = run?.rawObservations ?? {};
   return Boolean(observation.runnerProcess || observation.process);
@@ -200,9 +190,6 @@ export function createDbosFormalLifecycle({
           preexistingResourcePreserved: true
         });
       }
-      // The exact name was proved absent. From this point onward, a container
-      // appearing under this experiment-specific name is owned by this lifecycle
-      // and may be removed during cleanup. Never set this flag for preexisting state.
       state.cleanupContainerAllowed = true;
 
       const pull = await ops.runCommand(state.docker, ['pull', DBOS_FORMAL_PROFILE.postgresImage], { cwd: state.workspace, env });
@@ -309,9 +296,15 @@ export function createDbosFormalLifecycle({
   }
 
   async function cleanupHook(_spec, setup, run) {
-    const observedPids = [...collectObservedPids(run?.rawObservations ?? {})];
-    const liveObservedPids = observedPids.filter((pid) => ops.pidAlive(pid));
-    const workerCleanup = liveObservedPids.length === 0;
+    const pidCleanup = assessWorkerPidCleanup({
+      setupStatus: setup?.status,
+      mutantId: state.spec?.mutantId,
+      run,
+      pidAlive: ops.pidAlive
+    });
+    const observedPids = pidCleanup.observedPids;
+    const liveObservedPids = pidCleanup.liveObservedPids;
+    const workerCleanup = pidCleanup.workerCleanup;
 
     let databaseDrop = true;
     let databaseAbsent = true;
@@ -359,6 +352,9 @@ export function createDbosFormalLifecycle({
       oracleCleanup,
       temporaryResourcesCleanup,
       candidateLifecycle: 'DBOS TypeScript isolated formal PostgreSQL runtime',
+      workerPidProvenanceRequired: pidCleanup.provenanceRequired,
+      workerPidProvenanceObserved: pidCleanup.provenanceObserved,
+      workerProcessPids: pidCleanup.workerProcessPids,
       observedWorkerPids: observedPids,
       liveObservedWorkerPids,
       containerName: state.containerName,
