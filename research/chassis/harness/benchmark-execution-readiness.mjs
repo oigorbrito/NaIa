@@ -26,13 +26,14 @@ export function assessBenchmarkExecutionReadiness(
   for (const candidate of criticalPlan?.candidates ?? []) {
     const cleanupEntry = cleanupSupport?.[candidate.candidate] ?? {};
     const missingCleanupPhases = missingFormalCleanupPhases(cleanupSupport, candidate.candidate);
-    if (!formalCleanupSupportsCandidate(cleanupSupport, candidate.candidate)) {
+    const cleanupEvidenceValidated = formalCleanupSupportsCandidate(cleanupSupport, candidate.candidate);
+    if (!cleanupEvidenceValidated) {
       unsupportedCleanupCandidates.push({
         candidate: candidate.candidate,
         mode: candidate.mode,
         missingPhases: missingCleanupPhases,
         status: cleanupEntry.status ?? null,
-        evidenceBacked: Boolean(cleanupEntry.verificationEvidence)
+        evidenceBacked: false
       });
     }
 
