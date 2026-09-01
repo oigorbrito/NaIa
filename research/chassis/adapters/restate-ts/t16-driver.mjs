@@ -124,7 +124,7 @@ export async function runRestateT16({
     await waitForEvent(serviceA, (event) => event.event === 't16_service_ready', timeoutMs, 'service ready');
     schedule.push('deployment-A-service-ready');
 
-    const registrationA = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portA}` });
+    const registrationA = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portA}`, use_http_11: true });
     deploymentA = deploymentId(registrationA);
     if (!deploymentA) throw new Error('Restate T16 deployment A registration did not expose deployment identity');
     schedule.push('deployment-A-registered');
@@ -142,7 +142,7 @@ export async function runRestateT16({
     await waitForEvent(serviceB, (event) => event.event === 't16_service_ready', timeoutMs, 'service ready');
     schedule.push('deployment-B-service-ready');
 
-    const registrationB = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portB}` });
+    const registrationB = await adminRequest(adminUrl, 'POST', '/deployments', { uri: `http://127.0.0.1:${portB}`, use_http_11: true });
     deploymentB = deploymentId(registrationB);
     if (!deploymentB) throw new Error('Restate T16 deployment B registration did not expose deployment identity');
     if (deploymentA === deploymentB) throw new Error('Restate T16 semantic mutation requires distinct deployment identities');
