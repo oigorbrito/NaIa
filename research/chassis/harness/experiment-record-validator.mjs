@@ -1,4 +1,5 @@
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { assessCandidateProfileBinding } from './formal-candidate-profile-binding.mjs';
 import { assessFormalEnvironmentConsistency } from './formal-environment-identity.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
@@ -75,6 +76,11 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       if (['BLOCKED', 'INCONCLUSIVE'].includes(record.verdict)) errors.push(`${mutantId}: benchmark-ineligible verdict ${record.verdict}`);
       if (repetitionIds.has(record.repetition)) errors.push(`${mutantId}: duplicate repetition ${record.repetition}`);
       repetitionIds.add(record.repetition);
+
+      const candidateBinding = assessCandidateProfileBinding(record);
+      for (const error of candidateBinding.errors) {
+        errors.push(`${mutantId}: repetition ${record.repetition} candidate profile binding: ${error}`);
+      }
 
       const environment = record?.setup?.environment ?? {};
       const lifecycle = environment.formalRuntimeLifecycle;
