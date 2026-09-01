@@ -19,11 +19,26 @@ on:
       - 'research/chassis/adapters/temporal-ts/package.json'
       - 'research/chassis/adapters/temporal-ts/package-lock.json'
       - 'research/chassis/adapters/temporal-ts/adapter.mjs'
+      - 'research/chassis/adapters/temporal-ts/workflows.mjs'
+      - 'research/chassis/adapters/temporal-ts/activities.mjs'
       - 'research/chassis/adapters/temporal-ts/t5-*.mjs'
       - 'research/chassis/adapters/dbos-ts/package.json'
       - 'research/chassis/adapters/dbos-ts/package-lock.json'
       - 'research/chassis/adapters/dbos-ts/adapter.mjs'
+      - 'research/chassis/adapters/dbos-ts/workflows.mjs'
       - 'research/chassis/adapters/dbos-ts/t5-*.mjs'
+      - 'research/chassis/adapters/restate-ts/package.json'
+      - 'research/chassis/adapters/restate-ts/package-lock.json'
+      - 'research/chassis/adapters/restate-ts/adapter.mjs'
+      - 'research/chassis/adapters/restate-ts/workflow.mjs'
+      - 'research/chassis/adapters/restate-ts/t5-*.mjs'
+      - 'research/chassis/adapters/restate-ts/t11-*.mjs'
+      - 'research/chassis/adapters/restate-ts/t12-*.mjs'
+      - 'research/chassis/adapters/restate-ts/t16-*.mjs'
+      - 'research/chassis/adapters/triggerdev/package.json'
+      - 'research/chassis/adapters/triggerdev/adapter.mjs'
+      - 'research/chassis/adapters/triggerdev/trigger.config.mjs'
+      - 'research/chassis/adapters/triggerdev/trigger/naia-objective.mjs'
       - 'research/chassis/harness/benchmark-execution-readiness.mjs'
       - 'research/chassis/harness/benchmark-execution-readiness.test.mjs'
       - 'research/chassis/harness/benchmark-promotion-gate.mjs'
@@ -48,6 +63,7 @@ on:
       - 'research/chassis/harness/formal-candidate-profile-binding.test.mjs'
       - 'research/chassis/harness/formal-environment-identity.mjs'
       - 'research/chassis/harness/formal-environment-identity.test.mjs'
+      - 'research/chassis/harness/formal-restate-environment-identity.test.mjs'
       - 'research/chassis/harness/formal-executor-support.mjs'
       - 'research/chassis/harness/formal-promotion-policy.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.mjs'
@@ -56,11 +72,14 @@ on:
       - 'research/chassis/harness/formal-runtime-lifecycle.test.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
+      - 'research/chassis/harness/formal-restate-lifecycle.mjs'
+      - 'research/chassis/harness/formal-restate-lifecycle.test.mjs'
       - 'research/chassis/harness/formal-runtime-lifecycle-router.mjs'
       - 'research/chassis/harness/formal-single-run.mjs'
       - 'research/chassis/harness/formal-single-run.test.mjs'
       - 'research/chassis/harness/harness-provenance.mjs'
       - 'research/chassis/harness/harness-provenance.test.mjs'
+      - 'research/chassis/harness/harness-transitive-authority.test.mjs'
       - 'research/chassis/harness/repository-provenance.mjs'
       - 'research/chassis/harness/repository-provenance.test.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
@@ -77,8 +96,11 @@ on:
       - 'research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
+      - 'research/chassis/harness/formal-restate-lifecycle-receipt.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-promotion-review.mjs'
       - 'research/chassis/harness/formal-lifecycle-promotion-review.test.mjs'
+      - 'research/chassis/harness/formal-restate-lifecycle-promotion-review.test.mjs'
+      - 'research/chassis/harness/formal-test-fixtures.mjs'
       - 'research/chassis/harness/experiment-ledger-validator.mjs'
       - 'research/chassis/harness/experiment-ledger-validator.test.mjs'
       - 'research/chassis/harness/experiment-ledger-status.mjs'
@@ -103,7 +125,7 @@ jobs:
         with:
           node-version: '22.16.0'
 
-      - name: Verify formal provenance, neutral evaluators, candidate profile, environment, worker PID cleanup and promotion gates
+      - name: Verify formal provenance, neutral evaluators, candidate profiles, isolated lifecycles, worker PID cleanup and promotion gates
         shell: bash
         run: |
           set -euo pipefail
@@ -117,9 +139,11 @@ jobs:
           node --test \
             research/chassis/harness/experiment-protocol-validator.test.mjs \
             research/chassis/harness/harness-provenance.test.mjs \
+            research/chassis/harness/harness-transitive-authority.test.mjs \
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/formal-candidate-profile-binding.test.mjs \
             research/chassis/harness/formal-environment-identity.test.mjs \
+            research/chassis/harness/formal-restate-environment-identity.test.mjs \
             research/chassis/harness/t7-t8-evaluator.test.mjs \
             research/chassis/harness/critical-evaluator-neutrality.test.mjs \
             research/chassis/harness/isolated-external-fault-runner.test.mjs \
@@ -128,6 +152,7 @@ jobs:
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
             research/chassis/harness/formal-dbos-lifecycle.test.mjs \
+            research/chassis/harness/formal-restate-lifecycle.test.mjs \
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/common-runner-record-bridge.test.mjs \
             research/chassis/harness/t5-record-bridge.test.mjs \
@@ -135,7 +160,9 @@ jobs:
             research/chassis/harness/t12-record-bridge.test.mjs \
             research/chassis/harness/t16-record-bridge.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-restate-lifecycle-receipt.test.mjs \
             research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
+            research/chassis/harness/formal-restate-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
             research/chassis/harness/formal-ledger-revision-consistency.test.mjs \
             research/chassis/harness/formal-ledger-environment-consistency.test.mjs \
