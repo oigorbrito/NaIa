@@ -156,6 +156,7 @@ export function createDbosFormalLifecycle({
     workspace: null,
     docker: env.NAIA_DOCKER_CLI || 'docker',
     containerName: null,
+    cleanupContainerAllowed: false,
     containerId: null,
     port: null,
     databaseUrl: null,
@@ -195,9 +196,14 @@ export function createDbosFormalLifecycle({
           workerCleanup: true,
           oracleCleanup: true,
           reason: 'DBOS_FORMAL_PREEXISTING_CONTAINER',
-          containerName: state.containerName
+          containerName: state.containerName,
+          preexistingResourcePreserved: true
         });
       }
+      // The exact name was proved absent. From this point onward, a container
+      // appearing under this experiment-specific name is owned by this lifecycle
+      // and may be removed during cleanup. Never set this flag for preexisting state.
+      state.cleanupContainerAllowed = true;
 
       const pull = await ops.runCommand(state.docker, ['pull', DBOS_FORMAL_PROFILE.postgresImage], { cwd: state.workspace, env });
       if (pull.code !== 0 || pull.spawnError) {
@@ -311,7 +317,7 @@ export function createDbosFormalLifecycle({
     let databaseAbsent = true;
     let containerCleanup = true;
     let removeResult = null;
-    if (state.containerName) {
+    if (state.containerName && state.cleanupContainerAllowed) {
       const present = await ops.runCommand(state.docker, ['inspect', state.containerName], { cwd: state.workspace ?? repositoryRoot, env });
       if (present.code === 0) {
         const drop = await ops.runCommand(state.docker, [
@@ -357,6 +363,7 @@ export function createDbosFormalLifecycle({
       liveObservedWorkerPids,
       containerName: state.containerName,
       containerId: state.containerId,
+      cleanupContainerAllowed: state.cleanupContainerAllowed,
       databaseDrop,
       databaseAbsent,
       postgresContainerCleanup: containerCleanup,
