@@ -1,0 +1,233 @@
+name: Research Chassis DBOS T11 T16 Recheck
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-dbos-t11-t16-recheck.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mutant: [T11, T16]
+        repetition: [1, 2, 3]
+    env:
+      POSTGRES_IMAGE: 'postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297'
+      DBOS_SYSTEM_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/naia_chassis'
+      NAIA_T11_TIMEOUT_MS: '30000'
+      NAIA_T16_TIMEOUT_MS: '30000'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: research/chassis/adapters/dbos-ts/package-lock.json
+
+      - name: Initialize isolated recheck workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUAL_DIR="$RUNNER_TEMP/naia-dbos-recheck-${{ matrix.mutant }}-${{ matrix.repetition }}"
+          PG_CONTAINER="naia-dbos-recheck-pg-${GITHUB_RUN_ID}-${{ matrix.mutant }}-${{ matrix.repetition }}"
+          rm -rf "$QUAL_DIR"
+          mkdir -p "$QUAL_DIR/evidence"
+          echo "QUAL_DIR=$QUAL_DIR" >> "$GITHUB_ENV"
+          echo "PG_CONTAINER=$PG_CONTAINER" >> "$GITHUB_ENV"
+          {
+            echo "classification=NOT_RUN"
+            echo "candidate=DBOS TypeScript"
+            echo "candidate_version=4.27.6"
+            echo "mutant=${{ matrix.mutant }}"
+            echo "repetition=${{ matrix.repetition }}"
+            echo "head_sha=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "postgres_image=$POSTGRES_IMAGE"
+            echo "scope=TARGETED_PILOT_RECHECK"
+            echo "formal_ledger=false"
+          } > "$QUAL_DIR/evidence/runtime-manifest.txt"
+          sha256sum research/chassis/adapters/dbos-ts/package-lock.json | tee "$QUAL_DIR/evidence/declared-lock.sha256"
+          if pgrep -af '[t]11-worker-process.mjs|[t]16-worker-process.mjs' > "$QUAL_DIR/evidence/pre-run-processes.txt"; then
+            echo 'BLOCKED_PRE_RUN_PROCESS_CONTAMINATION' > "$QUAL_DIR/evidence/classification.txt"
+            exit 1
+          fi
+
+      - name: Start exact isolated PostgreSQL
+        id: postgres_start
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$POSTGRES_IMAGE" | tee "$QUAL_DIR/evidence/postgres-pull.txt"
+          docker image inspect "$POSTGRES_IMAGE" --format '{{json .RepoDigests}} {{.Id}}' | tee "$QUAL_DIR/evidence/postgres-image-identity.txt"
+          docker run -d --name "$PG_CONTAINER" \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 5432:5432 \
+            "$POSTGRES_IMAGE" | tee "$QUAL_DIR/evidence/postgres-container-id.txt"
+          for i in $(seq 1 120); do
+            if docker exec "$PG_CONTAINER" pg_isready -U postgres -d postgres > "$QUAL_DIR/evidence/postgres-ready.txt" 2>&1; then break; fi
+            if [ "$i" -eq 120 ]; then
+              docker logs "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres.log" 2>&1 || true
+              exit 3
+            fi
+            sleep 0.5
+          done
+          docker exec "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE naia_chassis;' \
+            > "$QUAL_DIR/evidence/postgres-create-db.txt" 2>&1
+          docker exec "$PG_CONTAINER" psql -U postgres -d postgres -Atc 'SELECT version();' > "$QUAL_DIR/evidence/postgres-version.txt"
+
+      - name: Install frozen DBOS dependency graph
+        id: npm_install
+        if: steps.postgres_start.outcome == 'success'
+        continue-on-error: true
+        working-directory: research/chassis/adapters/dbos-ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE=$(sha256sum package-lock.json | awk '{print $1}')
+          npm ci --ignore-scripts --no-audit --no-fund
+          AFTER=$(sha256sum package-lock.json | awk '{print $1}')
+          test "$BEFORE" = "$AFTER"
+          cp package-lock.json "$QUAL_DIR/evidence/package-lock.runtime.json"
+          printf '%s\n' "$AFTER" > "$QUAL_DIR/evidence/runtime-lock.sha256"
+          npm ls --all --json > "$QUAL_DIR/evidence/npm-tree.json"
+          node -e "const v=require('./node_modules/@dbos-inc/dbos-sdk/package.json').version; console.log('@dbos-inc/dbos-sdk='+v); if(v!=='4.27.6') process.exitCode=2" \
+            | tee "$QUAL_DIR/evidence/sdk-versions.txt"
+
+      - name: Execute targeted candidate-native experiment
+        id: execute
+        if: steps.postgres_start.outcome == 'success' && steps.npm_install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          STDOUT="$QUAL_DIR/evidence/${MUTANT,,}-driver.stdout.log"
+          STDERR="$QUAL_DIR/evidence/${MUTANT,,}-driver.stderr.log"
+          if [ "$MUTANT" = T11 ]; then
+            (cd research/chassis/adapters/dbos-ts && node t11-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+          else
+            (cd research/chassis/adapters/dbos-ts && node t16-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+          fi
+          CODE=$?
+          echo "$CODE" > "$QUAL_DIR/evidence/${MUTANT,,}-driver.exit-code.txt"
+          exit "$CODE"
+
+      - name: Evaluate emitted evidence
+        id: evaluate
+        if: always() && steps.execute.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          INPUT="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          OUTPUT="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          test -s "$INPUT"
+          node --input-type=module - "$MUTANT" "$INPUT" "$OUTPUT" <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { evaluateT11Evidence } from './research/chassis/harness/t11-evaluator.mjs';
+          import { evaluateT16Evidence } from './research/chassis/harness/t16-evaluator.mjs';
+          const [mutant,input,output]=process.argv.slice(2);
+          const evidence=JSON.parse(await readFile(input,'utf8'));
+          const evaluation=mutant==='T11' ? evaluateT11Evidence(evidence) : evaluateT16Evidence(evidence);
+          await writeFile(output, JSON.stringify(evaluation,null,2)+'\n');
+          console.log(JSON.stringify(evaluation,null,2));
+          NODE
+
+      - name: Classify
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          EVALUATION="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          if [ '${{ steps.postgres_start.outcome }}' != success ]; then C='BLOCKED_INFRASTRUCTURE_POSTGRES_START';
+          elif [ '${{ steps.npm_install.outcome }}' != success ]; then C='BLOCKED_INFRASTRUCTURE_NPM';
+          elif [ ! -s "$EVIDENCE" ]; then C='INCONCLUSIVE_NO_RUNTIME_EVIDENCE';
+          elif [ '${{ steps.evaluate.outcome }}' != success ] || [ ! -s "$EVALUATION" ]; then C='INCONCLUSIVE_EVALUATION_ERROR';
+          else
+            C=$(node --input-type=module - "$EVALUATION" <<'NODE'
+          import {readFile} from 'node:fs/promises';
+          const e=JSON.parse(await readFile(process.argv[2],'utf8'));
+          console.log(e.verdict==='PASS'?'QUALIFICATION_PASS':e.verdict==='FAIL'?'QUALIFICATION_FAIL':e.verdict==='BLOCKED'?'BLOCKED_RUNTIME_PREREQUISITE':'INCONCLUSIVE_FAULT_OR_MEASUREMENT');
+          NODE
+            )
+          fi
+          echo "$C" | tee "$QUAL_DIR/evidence/classification.txt"
+          echo "classification=$C" >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+          {
+            echo "postgres_start=${{ steps.postgres_start.outcome }}"
+            echo "npm_install=${{ steps.npm_install.outcome }}"
+            echo "execute=${{ steps.execute.outcome }}"
+            echo "evaluate=${{ steps.evaluate.outcome }}"
+          } >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          pkill -f '[t]11-worker-process.mjs' 2>/dev/null || true
+          pkill -f '[t]16-worker-process.mjs' 2>/dev/null || true
+          sleep .5
+          PROCESS_CLEAN=true
+          pgrep -af '[t]11-worker-process.mjs|[t]16-worker-process.mjs' > "$QUAL_DIR/evidence/post-run-processes.txt" && PROCESS_CLEAN=false
+          DB_CLEAN=true
+          CONTAINER_CLEAN=true
+          if docker inspect "$PG_CONTAINER" >/dev/null 2>&1; then
+            docker exec "$PG_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS naia_chassis WITH (FORCE);' \
+              > "$QUAL_DIR/evidence/postgres-drop-db.txt" 2>&1 || DB_CLEAN=false
+            docker logs "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres.log" 2>&1 || true
+            docker rm -f "$PG_CONTAINER" > "$QUAL_DIR/evidence/postgres-remove.txt" 2>&1 || CONTAINER_CLEAN=false
+          fi
+          docker inspect "$PG_CONTAINER" >/dev/null 2>&1 && CONTAINER_CLEAN=false
+          CLEAN=true
+          [ "$PROCESS_CLEAN" = true ] || CLEAN=false
+          [ "$DB_CLEAN" = true ] || CLEAN=false
+          [ "$CONTAINER_CLEAN" = true ] || CLEAN=false
+          {
+            echo "cleanup_status=$([ "$CLEAN" = true ] && echo PASS || echo FAIL)"
+            echo "worker_process_cleanup=$PROCESS_CLEAN"
+            echo "durable_database_cleanup=$DB_CLEAN"
+            echo "postgres_container_cleanup=$CONTAINER_CLEAN"
+          } | tee "$QUAL_DIR/evidence/cleanup.txt"
+
+      - name: Invalidate result if cleanup failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f "$QUAL_DIR/evidence/classification.txt" ] || exit 0
+          C=$(cat "$QUAL_DIR/evidence/classification.txt")
+          CLEANUP=$(sed -n 's/^cleanup_status=//p' "$QUAL_DIR/evidence/cleanup.txt" | head -1)
+          if [ "$CLEANUP" != PASS ] && [[ "$C" != BLOCKED_* ]]; then
+            echo 'INCONCLUSIVE_CLEANUP_FAIL' > "$QUAL_DIR/evidence/classification.txt"
+          fi
+
+      - name: Upload raw recheck evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbos-recheck-${{ matrix.mutant }}-${{ github.sha }}-r${{ matrix.repetition }}
+          path: ${{ env.QUAL_DIR }}/evidence/
+          if-no-files-found: error
+          retention-days: 30
