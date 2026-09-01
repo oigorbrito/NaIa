@@ -22,14 +22,23 @@ test('Restate T5 structural slice parses without resolving runtime dependencies'
   }
 });
 
-test('Restate T5 driver encodes the live ownership schedule and fails closed on unproven stale transport', async () => {
+test('Restate T5 driver derives stale completion from the explicit native attempt event, not transport finish', async () => {
+  const driver = await readFile(path.join(adapterDir, 't5-two-worker-driver.mjs'), 'utf8');
+  assert.match(driver, /staleAttemptActuallyObserved = staleAttemptEvent !== null/);
+  assert.match(driver, /attempted: staleAttemptActuallyObserved/);
+  assert.match(driver, /rejectedOrNonAuthoritative: staleAttemptActuallyObserved && outputStillNotReady/);
+  assert.match(driver, /newAuthorityStillCurrentAfterStaleAttempt: staleAttemptActuallyObserved && outputStillNotReady/);
+  assert.match(driver, /staleAttemptBeforeNewCompletion/);
+  assert.match(driver, /Date\.parse\(staleAttemptEvent\?\.timestamp/);
+  assert.doesNotMatch(driver, /attempted: staleTransportFinished/);
+});
+
+test('Restate T5 driver encodes the live ownership schedule and independently inspects authority after stale attempt', async () => {
   const driver = await readFile(path.join(adapterDir, 't5-two-worker-driver.mjs'), 'utf8');
   assert.match(driver, /\/pause/);
   assert.match(driver, /resume\?deployment=latest/);
   assert.match(driver, /\/restate\/output\//);
   assert.match(driver, /outputAfterStale\.status === 470/);
-  assert.match(driver, /attempted: staleTransportFinished/);
-  assert.match(driver, /newAuthorityStillCurrentAfterStaleAttempt: staleTransportFinished && outputStillNotReady/);
   assert.match(driver, /finalResult\?\.completedByVariant === 'B'/);
   assert.match(driver, /worker-A-ready/);
   assert.match(driver, /new-authority-acquired-and-held/);
@@ -48,5 +57,6 @@ test('Restate T5 uses two concrete child service processes and explicit release 
   assert.match(driver, /releaseCompletion\(serviceA\)/);
   assert.match(driver, /releaseCompletion\(serviceB\)/);
   assert.match(service, /t5_http_response_finished/);
+  assert.match(service, /t5_http_response_closed/);
   assert.match(service, /release-completion/);
 });
