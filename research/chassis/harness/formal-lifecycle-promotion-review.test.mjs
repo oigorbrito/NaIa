@@ -6,6 +6,8 @@ import { reviewLifecyclePromotion } from './formal-lifecycle-promotion-review.mj
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
 
 const HARNESS_SHA = 'b'.repeat(64);
+const REPOSITORY_REVISION = '1'.repeat(40);
+const EXECUTION_REF = `github-actions:run=123;job=temporal;sha=${REPOSITORY_REVISION}`;
 const QUALIFICATION = currentLifecycleQualificationProvenance('Temporal TypeScript');
 const QUALIFICATION_RECORD = Object.freeze({
   profile: QUALIFICATION.profile,
@@ -31,6 +33,10 @@ function temporalRecord() {
       dependencyIdentity: {},
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node v22.16.0',
+        repositoryProvenance: {
+          source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
+          trackedWorktreeClean: true, reason: null
+        },
         formalLifecycleQualification: { ...QUALIFICATION_RECORD },
         formalRuntimeLifecycle: { candidate: 'Temporal TypeScript', status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
@@ -86,15 +92,18 @@ function review(args) {
   });
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness and candidate qualification bundle into support proposal only', () => {
+test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness, candidate bundle and Git revision into support proposal only', () => {
   const { recordText, validationText } = texts();
   const result = review({
     recordText,
     validationText,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    executionRef: EXECUTION_REF,
     verifiedAt: '2026-09-01T00:00:02.000Z'
   });
   assert.equal(result.eligibleForSupportPromotion, true);
+  assert.equal(result.checks.executionRefRepositoryRevisionPresent, true);
+  assert.equal(result.checks.recordRepositoryRevisionVerified, true);
+  assert.equal(result.checks.executionRefRepositoryRevisionMatchesRecord, true);
   assert.equal(result.checks.currentHarnessSha256Valid, true);
   assert.equal(result.checks.recordHarnessMatchesCurrent, true);
   assert.equal(result.checks.currentLifecycleQualificationSha256Valid, true);
@@ -104,6 +113,7 @@ test('promotion review converts a valid T5/r1 lifecycle receipt with matching ha
   assert.equal(result.proposedSupport.preRunCleanup, true);
   assert.equal(result.proposedSupport.postRunCleanup, true);
   assert.equal(result.proposedSupport.status, 'RUNTIME_VERIFIED');
+  assert.equal(result.proposedSupport.verificationEvidence.repositoryRevision, REPOSITORY_REVISION);
   assert.equal(result.proposedSupport.verificationEvidence.harnessSha256, HARNESS_SHA);
   assert.equal(result.proposedSupport.verificationEvidence.lifecycleQualificationSha256, QUALIFICATION.aggregateSha256);
   assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence, 'Temporal TypeScript'), true);
@@ -112,12 +122,24 @@ test('promotion review converts a valid T5/r1 lifecycle receipt with matching ha
   assert.equal(result.automaticRepositoryMutationAllowed, false);
 });
 
+test('promotion review rejects execution ref whose Git revision differs from the record', () => {
+  const { recordText, validationText } = texts();
+  const result = review({
+    recordText,
+    validationText,
+    executionRef: `github-actions:run=123;job=temporal;sha=${'2'.repeat(40)}`
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.executionRefRepositoryRevisionMatchesRecord, false);
+  assert.equal(result.proposedSupport, null);
+});
+
 test('promotion review rejects receipt produced by a different formal harness aggregate', () => {
   const { recordText, validationText } = texts();
   const result = reviewLifecyclePromotion({
     recordText,
     validationText,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    executionRef: EXECUTION_REF,
     currentHarnessSha256: 'f'.repeat(64),
     currentLifecycleQualificationSha256: QUALIFICATION.aggregateSha256
   });
@@ -131,7 +153,7 @@ test('promotion review rejects stale candidate lifecycle qualification bundle', 
   const result = reviewLifecyclePromotion({
     recordText,
     validationText,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    executionRef: EXECUTION_REF,
     currentHarnessSha256: HARNESS_SHA,
     currentLifecycleQualificationSha256: 'f'.repeat(64)
   });
@@ -145,7 +167,7 @@ test('promotion review rejects missing or malformed current harness identity', (
   const result = reviewLifecyclePromotion({
     recordText,
     validationText,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    executionRef: EXECUTION_REF,
     currentHarnessSha256: '',
     currentLifecycleQualificationSha256: QUALIFICATION.aggregateSha256
   });
@@ -158,7 +180,7 @@ test('promotion review rejects missing candidate qualification identity', () => 
   const result = reviewLifecyclePromotion({
     recordText,
     validationText,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    executionRef: EXECUTION_REF,
     currentHarnessSha256: HARNESS_SHA,
     currentLifecycleQualificationSha256: ''
   });
@@ -172,7 +194,7 @@ test('promotion review rejects a supplied validator result whose candidate ident
   const result = review({
     recordText,
     validationText: `${JSON.stringify(tampered, null, 2)}\n`,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc'
+    executionRef: EXECUTION_REF
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.candidateMatches, false);
@@ -193,7 +215,7 @@ test('promotion review recomputes lifecycle receipt validity instead of trusting
   const result = review({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
     validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc'
+    executionRef: EXECUTION_REF
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.recomputedValidationEligible, false);
@@ -206,7 +228,7 @@ test('promotion review rejects driver-only provenance even if supplied validatio
   const result = review({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
     validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
-    executionRef: 'github-actions:run=123;job=temporal;sha=abc'
+    executionRef: EXECUTION_REF
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.recomputedValidationEligible, false);
