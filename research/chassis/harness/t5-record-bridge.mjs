@@ -1,15 +1,33 @@
 import { evaluateT5Evidence } from './t5-evaluator.mjs';
 import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
-export function t5EvidenceToRunResult(evidence, spec, setup) {
-  const evaluation = evaluateT5Evidence(evidence);
-  const injected =
+function nonEmpty(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function t5FaultStimulusObserved(evidence) {
+  const workersDistinct =
+    nonEmpty(evidence?.oldWorkerIdentity) &&
+    nonEmpty(evidence?.newWorkerIdentity) &&
+    evidence.oldWorkerIdentity !== evidence.newWorkerIdentity;
+  const authoritiesDistinct =
+    nonEmpty(evidence?.oldAuthorityIdentity) &&
+    nonEmpty(evidence?.newAuthorityIdentity) &&
+    evidence.oldAuthorityIdentity !== evidence.newAuthorityIdentity;
+
+  return Boolean(
     evidence?.authorityAdvanced === true &&
     evidence?.staleCompletion?.attempted === true &&
     evidence?.staleCompletion?.attemptedBeforeNewCompletion === true &&
     evidence?.newAuthorityCompletion?.attempted === true &&
-    evaluation.checks.workersDistinct === true &&
-    evaluation.checks.authoritiesDistinct === true;
+    workersDistinct &&
+    authoritiesDistinct
+  );
+}
+
+export function t5EvidenceToRunResult(evidence, spec, setup) {
+  const evaluation = evaluateT5Evidence(evidence);
+  const injected = t5FaultStimulusObserved(evidence);
   const workerProcessPids = normalizeWorkerProcessPids(
     evidence?.rawNativeEvidence?.workerA?.pid,
     evidence?.rawNativeEvidence?.workerB?.pid
