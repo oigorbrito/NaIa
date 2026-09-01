@@ -1,4 +1,8 @@
-import { FORMAL_CLEANUP_SUPPORT, missingFormalCleanupPhases } from './formal-cleanup-support.mjs';
+import {
+  FORMAL_CLEANUP_SUPPORT,
+  formalCleanupSupportsCandidate,
+  missingFormalCleanupPhases
+} from './formal-cleanup-support.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 export function assessBenchmarkExecutionReadiness(
@@ -20,12 +24,15 @@ export function assessBenchmarkExecutionReadiness(
   const unsupportedCleanupCandidates = [];
 
   for (const candidate of criticalPlan?.candidates ?? []) {
+    const cleanupEntry = cleanupSupport?.[candidate.candidate] ?? {};
     const missingCleanupPhases = missingFormalCleanupPhases(cleanupSupport, candidate.candidate);
-    if (missingCleanupPhases.length > 0) {
+    if (!formalCleanupSupportsCandidate(cleanupSupport, candidate.candidate)) {
       unsupportedCleanupCandidates.push({
         candidate: candidate.candidate,
         mode: candidate.mode,
-        missingPhases: missingCleanupPhases
+        missingPhases: missingCleanupPhases,
+        status: cleanupEntry.status ?? null,
+        evidenceBacked: Boolean(cleanupEntry.verificationEvidence)
       });
     }
 
@@ -71,7 +78,10 @@ export function assertBenchmarkExecutionReady(
       ...assessment.errors,
       ...assessment.unsupportedMutants.map((mutantId) => `${mutantId}: formal executor not implemented`),
       ...assessment.unsupportedCandidateMutants.map((entry) => `${entry.candidate}/${entry.mutantId}: formal executor not implemented for candidate/mode`),
-      ...assessment.unsupportedCleanupCandidates.map((entry) => `${entry.candidate}: formal cleanup not implemented for ${entry.missingPhases.join(',')}`)
+      ...assessment.unsupportedCleanupCandidates.map((entry) => {
+        const phaseReason = entry.missingPhases.length > 0 ? `missing ${entry.missingPhases.join(',')}` : 'cleanup phases declared';
+        return `${entry.candidate}: formal cleanup not runtime-verified with evidence (${phaseReason}; status=${entry.status ?? 'missing'}; evidenceBacked=${entry.evidenceBacked})`;
+      })
     ];
     throw new Error(`benchmark execution gate closed: ${reasons.join('; ')}`);
   }
