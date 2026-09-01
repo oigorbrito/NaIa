@@ -99,7 +99,16 @@ async function main() {
       requireIdentity();
       console.log(JSON.stringify(await withClient(async (client) => {
         const handle = client.workflow.getHandle(objectiveId);
-        return handle.query(statusQuery);
+        const description = await handle.describe();
+        const nativeStatus = description.status?.name ?? String(description.status ?? 'UNKNOWN');
+        if (nativeStatus === 'RUNNING') {
+          return handle.query(statusQuery);
+        }
+        return {
+          objectiveId,
+          state: nativeStatus === 'COMPLETED' ? 'COMPLETED' : nativeStatus,
+          nativeStatus
+        };
       })));
       return;
     case 'cancel':
