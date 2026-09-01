@@ -1,5 +1,5 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
-import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
 import {
   lifecycleQualificationRecordProvenanceStructurallyValid,
@@ -10,6 +10,7 @@ import {
   formalPromotionPolicyProvenanceValid
 } from './formal-promotion-policy.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
+import { repositoryProvenanceReady, repositoryProvenanceStructurallyValid } from './repository-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
   'workerCleanup',
@@ -51,23 +52,32 @@ export function auditStoredFormalRecord(record) {
   if (!schema.valid) errors.push(...schema.errors.map((error) => `record: ${error}`));
 
   const candidate = record?.candidate ?? 'unknown candidate';
-  const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
+  const environment = record?.setup?.environment ?? {};
+  const lifecycle = environment.formalRuntimeLifecycle;
+
+  if (!repositoryProvenanceStructurallyValid(environment.repositoryProvenance)) {
+    errors.push(`${candidate}: stored formal record lacks structurally valid Git repository provenance`);
+  }
+
   if (!lifecycle || lifecycle.candidate !== record?.candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
     errors.push(`${candidate}: stored formal record lacks immutable RUNTIME_VERIFIED lifecycle provenance`);
   }
 
   if (!lifecycleQualificationRecordProvenanceStructurallyValid(
-    record?.setup?.environment?.formalLifecycleQualification,
+    environment.formalLifecycleQualification,
     record?.candidate
   )) {
     errors.push(`${candidate}: stored formal record lacks structurally valid lifecycle qualification provenance`);
   }
 
-  if (!formalPromotionPolicyProvenanceStructurallyValid(record?.setup?.environment?.formalPromotionPolicy)) {
+  if (!formalPromotionPolicyProvenanceStructurallyValid(environment.formalPromotionPolicy)) {
     errors.push(`${candidate}: stored formal record lacks structurally valid promotion policy provenance`);
   }
 
   if (record?.setup?.status === 'READY') {
+    if (!repositoryProvenanceReady(environment.repositoryProvenance)) {
+      errors.push(`${candidate}: READY stored formal record requires verified clean Git repository revision provenance`);
+    }
     if (!preRunCleanupReceiptValid(record?.setup?.preRunCleanupReceipt)) {
       errors.push(`${candidate}: READY stored formal record lacks a complete PASS pre-run cleanup receipt`);
     }
