@@ -6,11 +6,19 @@ import {
   currentCandidateProfileExpectation
 } from './formal-candidate-profile-binding.mjs';
 
+const CANDIDATES = [
+  'Temporal TypeScript',
+  'DBOS TypeScript',
+  'Restate',
+  'Trigger.dev'
+];
+
 function record(candidate = 'Temporal TypeScript') {
   const fields = candidateProfileRecordFields(candidate);
   return {
     candidate,
     setup: {
+      status: 'READY',
       candidateVersion: fields.candidateVersion,
       candidateSourceRef: fields.candidateSourceRef,
       adapterSha256: fields.adapterSha256,
@@ -25,6 +33,15 @@ function record(candidate = 'Temporal TypeScript') {
     }
   };
 }
+
+test('all four preregistered candidates bind to their frozen capability and manifest identities', () => {
+  for (const candidate of CANDIDATES) {
+    const expected = currentCandidateProfileExpectation(candidate);
+    assert.ok(expected, candidate);
+    const result = assessCandidateProfileBinding(record(candidate));
+    assert.equal(result.bound, true, `${candidate}: ${result.errors.join('\n')}`);
+  }
+});
 
 test('current Temporal record binding requires all four frozen execution packages', () => {
   const expected = currentCandidateProfileExpectation('Temporal TypeScript');
@@ -41,6 +58,27 @@ test('current DBOS record binding requires the exact SDK package and current ada
   const expected = currentCandidateProfileExpectation('DBOS TypeScript');
   assert.deepEqual(expected.packages.map((entry) => entry.package), ['@dbos-inc/dbos-sdk']);
   const result = assessCandidateProfileBinding(record('DBOS TypeScript'));
+  assert.equal(result.bound, true, result.errors.join('\n'));
+});
+
+test('current Restate record binding requires both frozen SDK packages', () => {
+  const expected = currentCandidateProfileExpectation('Restate');
+  assert.deepEqual(expected.packages.map((entry) => entry.package), [
+    '@restatedev/restate-sdk',
+    '@restatedev/restate-sdk-clients'
+  ]);
+  const result = assessCandidateProfileBinding(record('Restate'));
+  assert.equal(result.bound, true, result.errors.join('\n'));
+});
+
+test('current Trigger.dev binding includes SDK build and CLI package identities', () => {
+  const expected = currentCandidateProfileExpectation('Trigger.dev');
+  assert.deepEqual(expected.packages.map((entry) => entry.package), [
+    '@trigger.dev/build',
+    '@trigger.dev/sdk',
+    'trigger.dev'
+  ]);
+  const result = assessCandidateProfileBinding(record('Trigger.dev'));
   assert.equal(result.bound, true, result.errors.join('\n'));
 });
 
@@ -87,7 +125,8 @@ test('installed version drift cannot bind to frozen candidate even if record exp
   value.setup.dependencyIdentity.packages[0].installedVersion = '4.28.0';
   const result = assessCandidateProfileBinding(value);
   assert.equal(result.bound, false);
-  assert.match(result.errors.join('\n'), /must all equal frozen version 4\.27\.6/);
+  assert.match(result.errors.join('\n'), /record expected\/declared versions must both equal frozen version 4\.27\.6/);
+  assert.match(result.errors.join('\n'), /READY record installedVersion must equal frozen version 4\.27\.6/);
 });
 
 test('mode and worker authority boundary are bound to frozen capability matrix', () => {
@@ -98,4 +137,17 @@ test('mode and worker authority boundary are bound to frozen capability matrix',
   assert.equal(result.bound, false);
   assert.match(result.errors.join('\n'), /execution mode mismatch/);
   assert.match(result.errors.join('\n'), /workerAuthorityBoundary differs/);
+});
+
+test('blocked records may omit installed package version but cannot report a conflicting one', () => {
+  const value = record('Restate');
+  value.setup.status = 'BLOCKED_SETUP';
+  for (const entry of value.setup.dependencyIdentity.packages) entry.installedVersion = null;
+  let result = assessCandidateProfileBinding(value);
+  assert.equal(result.bound, true, result.errors.join('\n'));
+
+  value.setup.dependencyIdentity.packages[0].installedVersion = '0.0.0';
+  result = assessCandidateProfileBinding(value);
+  assert.equal(result.bound, false);
+  assert.match(result.errors.join('\n'), /blocked record installedVersion, when present, must equal frozen version/);
 });
