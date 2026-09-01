@@ -53,7 +53,7 @@ async function registerDeployment() {
   const response = await fetch(`${adminUrl}/deployments`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ uri: publicEndpoint })
+    body: JSON.stringify({ uri: publicEndpoint, use_http_11: true })
   });
   if (!response.ok) {
     throw new Error(`Restate deployment registration failed ${response.status}: ${await response.text()}`);
