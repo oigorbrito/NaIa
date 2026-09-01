@@ -7,12 +7,18 @@ on:
     paths:
       - '.github/workflows/research-chassis-worker-pid-provenance.yml'
       - 'research/chassis/formal-promotion-policy.v1.json'
+      - 'research/chassis/harness/formal-promotion-policy.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.test.mjs'
       - 'research/chassis/harness/formal-runtime-lifecycle.mjs'
       - 'research/chassis/harness/formal-runtime-lifecycle.test.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
+      - 'research/chassis/harness/formal-runtime-lifecycle-router.mjs'
+      - 'research/chassis/harness/formal-single-run.mjs'
+      - 'research/chassis/harness/formal-single-run.test.mjs'
+      - 'research/chassis/harness/harness-provenance.mjs'
+      - 'research/chassis/harness/harness-provenance.test.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.mjs'
       - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
@@ -49,7 +55,7 @@ jobs:
         with:
           node-version: '22.16.0'
 
-      - name: Verify explicit worker process PID provenance and formal promotion gates
+      - name: Verify formal provenance, worker PID cleanup and promotion gates
         shell: bash
         run: |
           set -euo pipefail
@@ -61,9 +67,11 @@ jobs:
           echo 'credential_bypass=NO CREDENTIAL BYPASS'
           echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
           node --test \
+            research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
             research/chassis/harness/formal-dbos-lifecycle.test.mjs \
+            research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/common-runner-record-bridge.test.mjs \
             research/chassis/harness/t5-record-bridge.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
