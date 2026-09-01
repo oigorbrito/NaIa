@@ -1,4 +1,5 @@
-import { validateExecutionLedger } from './experiment-ledger-validator.mjs';
+import { auditStoredFormalLedger, validateExecutionLedger } from './experiment-ledger-validator.mjs';
+import { FORMAL_CLEANUP_SUPPORT } from './formal-cleanup-support.mjs';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 
 function nonEmpty(value) {
@@ -13,8 +14,16 @@ function validExceptionPolicy(policy) {
   return policy && policy.enforced === true && nonEmpty(policy.justification) && nonEmpty(policy.constraint);
 }
 
-export function assessCandidatePromotion(records, faultSuite, { acceptedFailures = {}, enforcedPolicies = {} } = {}) {
-  const comparability = benchmarkEligible(records, faultSuite);
+export function assessCandidatePromotion(
+  records,
+  faultSuite,
+  {
+    acceptedFailures = {},
+    enforcedPolicies = {},
+    cleanupSupport = FORMAL_CLEANUP_SUPPORT
+  } = {}
+) {
+  const comparability = benchmarkEligible(records, faultSuite, cleanupSupport);
   const candidate = comparability.candidate ?? records?.[0]?.candidate ?? null;
   const errors = [...comparability.errors];
   const exceptions = [];
@@ -56,28 +65,49 @@ export function assessCandidatePromotion(records, faultSuite, { acceptedFailures
   };
 }
 
-export function assessBenchmarkPromotion({ ledger, protocol, faultSuite, acceptedFailures = {}, enforcedPolicies = {} }) {
+export function assessBenchmarkPromotion({
+  ledger,
+  protocol,
+  faultSuite,
+  acceptedFailures = {},
+  enforcedPolicies = {},
+  cleanupSupport = FORMAL_CLEANUP_SUPPORT
+}) {
   const ledgerValidation = validateExecutionLedger(ledger, protocol, faultSuite, { allowPrefix: false });
-  if (!ledgerValidation.valid || !ledgerValidation.complete) {
+  const formalAudit = auditStoredFormalLedger(ledger);
+  if (!ledgerValidation.valid || !ledgerValidation.complete || !formalAudit.valid) {
     return {
       readyForSelection: false,
       ledger: ledgerValidation,
+      formalAudit,
       candidates: [],
       qualifiedCandidates: [],
-      errors: ['benchmark ledger is not a complete valid preregistered execution']
+      errors: [
+        !ledgerValidation.valid || !ledgerValidation.complete
+          ? 'benchmark ledger is not a complete valid preregistered execution'
+          : null,
+        !formalAudit.valid
+          ? 'benchmark ledger immutable formal provenance audit failed'
+          : null
+      ].filter(Boolean)
     };
   }
 
   const candidateResults = [];
   for (const candidate of protocol.candidates ?? []) {
     const records = ledger.filter((record) => record.candidate === candidate);
-    candidateResults.push(assessCandidatePromotion(records, faultSuite, { acceptedFailures, enforcedPolicies }));
+    candidateResults.push(assessCandidatePromotion(records, faultSuite, {
+      acceptedFailures,
+      enforcedPolicies,
+      cleanupSupport
+    }));
   }
   const qualifiedCandidates = candidateResults.filter((entry) => entry.qualified).map((entry) => entry.candidate);
 
   return {
     readyForSelection: qualifiedCandidates.length > 0,
     ledger: ledgerValidation,
+    formalAudit,
     candidates: candidateResults,
     qualifiedCandidates,
     errors: qualifiedCandidates.length > 0 ? [] : ['no candidate satisfies promotion rules']
