@@ -106,6 +106,33 @@ async function adminRequest(adminUrl, method, pathname, body) {
   return { status: response.status, headers: Object.fromEntries(response.headers), body: parsed };
 }
 
+async function resumeLatestAfterPause(adminUrl, invocationId, timeoutMs) {
+  const pathname = `/invocations/${encodeURIComponent(invocationId)}/resume?deployment=latest`;
+  const deadline = Date.now() + timeoutMs;
+  const attempts = [];
+  while (true) {
+    const response = await fetch(`${adminUrl}${pathname}`, { method: 'PATCH' });
+    const text = await response.text();
+    let body = null;
+    if (text) {
+      try { body = JSON.parse(text); } catch { body = text; }
+    }
+    attempts.push({ status: response.status, text, observedAt: new Date().toISOString() });
+    if (response.ok) {
+      return { status: response.status, headers: Object.fromEntries(response.headers), body, attempts };
+    }
+    const waitingForPausedPinnedState = response.status === 409 &&
+      /still running or the deployment id is not pinned yet/i.test(text);
+    if (!waitingForPausedPinnedState) {
+      throw new Error(`Restate Admin PATCH ${pathname} failed ${response.status}: ${text}`);
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Restate T5 pause never materialized as paused/suspended with pinned deployment after ${attempts.length} resume probes: ${text}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 function deploymentId(registration) {
   const body = registration?.body ?? {};
   const fromBody = body.id ?? body.deployment_id ?? body.deploymentId ?? null;
@@ -142,6 +169,7 @@ export async function runRestateT5({
   let deploymentA = null;
   let deploymentB = null;
   let submission = null;
+  let resumeGate = null;
   let staleAttemptEvent = null;
   let staleTransportDisposition = null;
   let outputAfterStale = null;
@@ -188,8 +216,8 @@ export async function runRestateT5({
 
     await adminRequest(adminUrl, 'PATCH', `/invocations/${encodeURIComponent(invocationId)}/pause`);
     schedule.push('old-authority-paused');
-    const resume = await adminRequest(adminUrl, 'PATCH', `/invocations/${encodeURIComponent(invocationId)}/resume?deployment=latest`);
-    if (resume.status !== 200) throw new Error(`Restate T5 resume did not return 200: ${resume.status}`);
+    resumeGate = await resumeLatestAfterPause(adminUrl, invocationId, timeoutMs);
+    if (resumeGate.status !== 200) throw new Error(`Restate T5 resume did not return 200: ${resumeGate.status}`);
 
     const acquiredB = await waitForEvent(
       serviceB,
@@ -269,6 +297,7 @@ export async function runRestateT5({
         invocationId,
         deploymentA,
         deploymentB,
+        resumeGate,
         schedule,
         acquiredA,
         acquiredB,
