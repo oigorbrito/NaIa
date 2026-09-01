@@ -57,6 +57,7 @@ on:
       - 'research/chassis/harness/t12-record-bridge.mjs'
       - 'research/chassis/harness/t16-record-bridge.mjs'
       - 'research/chassis/harness/formal-cleanup-support.mjs'
+      - 'research/chassis/harness/formal-cleanup-support.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-qualification-provenance.mjs'
       - 'research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
@@ -99,6 +100,7 @@ jobs:
           node --test \
             research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/repository-provenance.test.mjs \
+            research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
