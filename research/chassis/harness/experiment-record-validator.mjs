@@ -97,5 +97,5 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
     }
   }
 
-  return { eligible: errors.length === 0, candidate, repositoryRevisions, errors };
+  return { eligible: errors.length === 0, candidate, errors };
 }
