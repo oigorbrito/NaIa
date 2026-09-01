@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { computeHarnessProvenance } from './harness-provenance.mjs';
+import { repositoryProvenanceReady } from './repository-provenance.mjs';
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -23,7 +24,14 @@ function packageJsonPath(root, packageName) {
   return path.join(root, 'node_modules', ...packageName.split('/'), 'package.json');
 }
 
-export async function inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env = process.env, formalProvenance = false }) {
+export async function inspectCandidateSetup({
+  candidate,
+  repositoryRoot,
+  harnessPath,
+  env = process.env,
+  formalProvenance = false,
+  repositoryProvenance = null
+}) {
   if (!candidate || typeof candidate !== 'object') throw new Error('candidate capability entry is required');
   if (!repositoryRoot) throw new Error('repositoryRoot is required');
   if (!harnessPath) throw new Error('harnessPath is required');
@@ -85,6 +93,7 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
   if (!manifestPresent) blockers.push('PACKAGE_MANIFEST_MISSING');
   if (!harnessPresent) blockers.push('HARNESS_SOURCE_MISSING');
   if (formalProvenance && (!harnessProvenance || harnessProvenance.error)) blockers.push('HARNESS_PROVENANCE_INCOMPLETE');
+  if (formalProvenance && !repositoryProvenanceReady(repositoryProvenance)) blockers.push('REPOSITORY_PROVENANCE_UNVERIFIED');
   if (packageChecks.some((entry) => !entry.declaredExact)) blockers.push('DEPENDENCY_PIN_MISMATCH');
   if (packageChecks.some((entry) => !entry.installedPresent)) blockers.push('DEPENDENCY_NOT_INSTALLED');
   if (packageChecks.some((entry) => entry.installedPresent && !entry.installedExact)) blockers.push('INSTALLED_DEPENDENCY_VERSION_MISMATCH');
@@ -97,7 +106,10 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
       : sha256(await readFile(harnessPath))
     : '';
 
-  if (formalProvenance) dependencyIdentity.harnessProvenance = harnessProvenance;
+  if (formalProvenance) {
+    dependencyIdentity.harnessProvenance = harnessProvenance;
+    dependencyIdentity.repositoryProvenance = repositoryProvenance;
+  }
 
   return {
     status: ready ? 'READY' : 'BLOCKED_SETUP',
@@ -113,7 +125,8 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
       requiredEnvNames: requiredEnv,
       missingEnvNames: missingEnv,
       blockerRegisterRef: candidate.blocker ?? null,
-      harnessProvenanceMode: formalProvenance ? 'FORMAL_BUNDLE' : 'SINGLE_FILE'
+      harnessProvenanceMode: formalProvenance ? 'FORMAL_BUNDLE' : 'SINGLE_FILE',
+      repositoryRevision: formalProvenance ? (repositoryProvenance?.revision ?? null) : null
     },
     cleanupVerifiedBeforeRun: false,
     diagnostics: {
@@ -121,6 +134,7 @@ export async function inspectCandidateSetup({ candidate, repositoryRoot, harness
       manifestPresent,
       harnessPresent,
       harnessProvenance,
+      repositoryProvenance,
       packageChecks,
       missingEnv,
       blockers,
