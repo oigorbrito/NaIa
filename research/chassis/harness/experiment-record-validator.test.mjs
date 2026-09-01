@@ -20,11 +20,17 @@ const verifiedSupport = {
 };
 
 function record(overrides = {}) {
+  const mutantId = overrides.mutantId ?? 'T7';
+  const rawObservations = overrides.withPid === false ? {} : { workerProcess: { pid: overrides.pid ?? 8801 } };
+  if (mutantId === 'T16') {
+    rawObservations.semanticMutation = { dimension: 'runtimeVersion', before: 'v1', after: 'v2' };
+  }
+
   return {
     schemaVersion: 1,
     experimentId: overrides.experimentId ?? 'exp-1',
     candidate: overrides.candidate ?? 'Temporal TypeScript',
-    mutantId: overrides.mutantId ?? 'T7',
+    mutantId,
     repetition: overrides.repetition ?? 1,
     randomSeed: overrides.randomSeed ?? 1001,
     setup: {
@@ -38,7 +44,7 @@ function record(overrides = {}) {
     run: {
       startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
       fault: { intended: 'process termination after effect', injected: true, targetKind: 'worker-process', targetIdentity: 1234, signal: 'SIGKILL', durableAuthorityAlive: true },
-      rawObservations: overrides.mutantId === 'T16' ? { semanticMutation: { dimension: 'runtimeVersion', before: 'v1', after: 'v2' } } : {},
+      rawObservations,
       acceptanceChecks: { noDuplicate: true, recoveryObserved: true }
     },
     cleanup: { status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true },
@@ -59,7 +65,8 @@ function completeRecords(minRepetitions = 100) {
     experimentId: `${mutantId}-${index + 1}`,
     mutantId,
     repetition: index + 1,
-    randomSeed: 100000 + index + 1
+    randomSeed: 100000 + index + 1,
+    pid: 9000 + index + 1
   })));
 }
 
@@ -111,10 +118,20 @@ test('benchmark eligibility enforces declared minimum unique repetitions', () =>
 
 test('benchmark eligibility rejects duplicate repetitions presented as replication', () => {
   const records = completeRecords(100);
-  records.push(record({ experimentId: 'duplicate-T7-1', mutantId: 'T7', repetition: 1, randomSeed: 999999 }));
+  records.push(record({ experimentId: 'duplicate-T7-1', mutantId: 'T7', repetition: 1, randomSeed: 999999, pid: 9999 }));
   const result = benchmarkEligible(records, suite(100), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
+});
+
+test('benchmark eligibility rejects injected critical record without observed PID provenance', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', withPid: false })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks observed process PID provenance/);
 });
 
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
@@ -126,7 +143,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support', () => {
+test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and PID provenance', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
