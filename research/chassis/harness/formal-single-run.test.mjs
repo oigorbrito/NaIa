@@ -217,8 +217,8 @@ test('formal single-run rejects a critical mutant without a declared executor be
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
   await assert.rejects(
-    runFormalSingle({ repositoryRoot, candidateName: 'Restate', mutantId: 'T11', repetition: 1, env: {} }),
-    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Restate\/T11/
+    runFormalSingle({ repositoryRoot, candidateName: 'Trigger.dev', mutantId: 'T11', repetition: 1, env: {} }),
+    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Trigger\.dev\/T11/
   );
 });
 
