@@ -32,11 +32,12 @@ function recordView(provenance) {
   };
 }
 
-test('Temporal and DBOS lifecycle qualification bundles are candidate-specific and include T5 schema, Git and environment provenance, policy and frozen dependency graph', () => {
+test('Temporal, DBOS and Restate lifecycle qualification bundles are candidate-specific and include T5 schema, Git and environment provenance, policy and frozen dependency graph', () => {
   const temporal = FORMAL_LIFECYCLE_QUALIFICATION_FILES['Temporal TypeScript'];
   const dbos = FORMAL_LIFECYCLE_QUALIFICATION_FILES['DBOS TypeScript'];
+  const restate = FORMAL_LIFECYCLE_QUALIFICATION_FILES.Restate;
 
-  for (const files of [temporal, dbos]) {
+  for (const files of [temporal, dbos, restate]) {
     assert.ok(files.includes('research/chassis/harness/experiment-record-schema-validator.mjs'));
     assert.ok(files.includes('research/chassis/harness/repository-provenance.mjs'));
     assert.ok(files.includes('research/chassis/harness/formal-environment-identity.mjs'));
@@ -53,11 +54,23 @@ test('Temporal and DBOS lifecycle qualification bundles are candidate-specific a
   assert.ok(temporal.includes('research/chassis/adapters/temporal-ts/package-lock.json'));
   assert.ok(temporal.includes('research/chassis/adapters/temporal-ts/t5-two-worker-driver.mjs'));
   assert.equal(temporal.includes('research/chassis/harness/formal-dbos-lifecycle.mjs'), false);
+  assert.equal(temporal.includes('research/chassis/harness/formal-restate-lifecycle.mjs'), false);
 
   assert.ok(dbos.includes('research/chassis/harness/formal-dbos-lifecycle.mjs'));
   assert.ok(dbos.includes('research/chassis/adapters/dbos-ts/package-lock.json'));
   assert.ok(dbos.includes('research/chassis/adapters/dbos-ts/t5-two-worker-driver.mjs'));
   assert.equal(dbos.includes('research/chassis/harness/formal-runtime-lifecycle.mjs'), false);
+  assert.equal(dbos.includes('research/chassis/harness/formal-restate-lifecycle.mjs'), false);
+
+  assert.ok(restate.includes('research/chassis/harness/formal-restate-lifecycle.mjs'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/package.json'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/package-lock.json'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/adapter.mjs'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/t5-two-worker-driver.mjs'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/t5-service-process.mjs'));
+  assert.ok(restate.includes('research/chassis/adapters/restate-ts/t5-workflow.mjs'));
+  assert.equal(restate.includes('research/chassis/harness/formal-runtime-lifecycle.mjs'), false);
+  assert.equal(restate.includes('research/chassis/harness/formal-dbos-lifecycle.mjs'), false);
 });
 
 test('qualification aggregate changes when an included runtime file changes', async (t) => {
@@ -71,6 +84,26 @@ test('qualification aggregate changes when an included runtime file changes', as
 
   assert.equal(before.profile, FORMAL_LIFECYCLE_QUALIFICATION_PROFILE);
   assert.notEqual(before.aggregateSha256, after.aggregateSha256);
+});
+
+test('Restate qualification aggregate changes when isolated lifecycle or T5 service graph changes', async (t) => {
+  const root = await syntheticRepository('Restate');
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const before = computeLifecycleQualificationProvenance(root, 'Restate');
+  await writeFile(
+    path.join(root, 'research/chassis/harness/formal-restate-lifecycle.mjs'),
+    'fixture:changed-restate-lifecycle\n'
+  );
+  const lifecycleChanged = computeLifecycleQualificationProvenance(root, 'Restate');
+  assert.notEqual(before.aggregateSha256, lifecycleChanged.aggregateSha256);
+
+  await writeFile(
+    path.join(root, 'research/chassis/adapters/restate-ts/t5-service-process.mjs'),
+    'fixture:changed-restate-t5-service\n'
+  );
+  const serviceChanged = computeLifecycleQualificationProvenance(root, 'Restate');
+  assert.notEqual(lifecycleChanged.aggregateSha256, serviceChanged.aggregateSha256);
 });
 
 test('qualification aggregate changes when Git provenance, environment identity, isolated record schema or frozen promotion policy changes', async (t) => {
@@ -108,36 +141,37 @@ test('qualification aggregate changes when Git provenance, environment identity,
 });
 
 test('qualification aggregate is stable when only mutable cleanup support registry changes', async (t) => {
-  const root = await syntheticRepository('DBOS TypeScript');
+  const root = await syntheticRepository('Restate');
   t.after(() => rm(root, { recursive: true, force: true }));
 
-  const before = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  const before = computeLifecycleQualificationProvenance(root, 'Restate');
   const support = path.join(root, 'research/chassis/harness/formal-cleanup-support.mjs');
   await mkdir(path.dirname(support), { recursive: true });
   await writeFile(support, 'support-state:v1\n');
-  const middle = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  const middle = computeLifecycleQualificationProvenance(root, 'Restate');
   await writeFile(support, 'support-state:v2\n');
-  const after = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  const after = computeLifecycleQualificationProvenance(root, 'Restate');
 
   assert.equal(before.aggregateSha256, middle.aggregateSha256);
   assert.equal(middle.aggregateSha256, after.aggregateSha256);
 });
 
 test('historical shape validation is distinct from current expected-hash compatibility', async (t) => {
-  const root = await syntheticRepository('Temporal TypeScript');
+  const root = await syntheticRepository('Restate');
   t.after(() => rm(root, { recursive: true, force: true }));
-  const provenance = computeLifecycleQualificationProvenance(root, 'Temporal TypeScript');
+  const provenance = computeLifecycleQualificationProvenance(root, 'Restate');
   const value = recordView(provenance);
 
-  assert.equal(lifecycleQualificationRecordProvenanceStructurallyValid(value, 'Temporal TypeScript'), true);
-  assert.equal(lifecycleQualificationRecordProvenanceValid(value, 'Temporal TypeScript', provenance.aggregateSha256), true);
+  assert.equal(lifecycleQualificationRecordProvenanceStructurallyValid(value, 'Restate'), true);
+  assert.equal(lifecycleQualificationRecordProvenanceValid(value, 'Restate', provenance.aggregateSha256), true);
 
   const old = { ...value, sha256: '0'.repeat(64) };
-  assert.equal(lifecycleQualificationRecordProvenanceStructurallyValid(old, 'Temporal TypeScript'), true);
-  assert.equal(lifecycleQualificationRecordProvenanceValid(old, 'Temporal TypeScript', provenance.aggregateSha256), false);
+  assert.equal(lifecycleQualificationRecordProvenanceStructurallyValid(old, 'Restate'), true);
+  assert.equal(lifecycleQualificationRecordProvenanceValid(old, 'Restate', provenance.aggregateSha256), false);
 });
 
-test('unsupported candidate has no fabricated lifecycle qualification bundle', () => {
+test('Trigger.dev has no fabricated lifecycle qualification bundle while Restate does', () => {
   assert.equal(lifecycleQualificationFiles('Trigger.dev'), null);
-  assert.equal(lifecycleQualificationFiles('Restate'), null);
+  assert.ok(Array.isArray(lifecycleQualificationFiles('Restate')));
+  assert.ok(lifecycleQualificationFiles('Restate').length > 0);
 });
