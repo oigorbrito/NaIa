@@ -10,6 +10,8 @@ import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const REVISION_A = '1'.repeat(40);
 const REVISION_B = '2'.repeat(40);
+const HARNESS_A = 'e'.repeat(64);
+const HARNESS_B = '9'.repeat(64);
 
 function qualificationRecord(candidate = 'Temporal TypeScript') {
   const value = currentLifecycleQualificationProvenance(candidate);
@@ -44,7 +46,7 @@ function verifiedSupport(candidate = 'Temporal TypeScript') {
   };
 }
 
-function t7Record(repetition, repositoryRevision) {
+function t7Record(repetition, repositoryRevision, harnessSha256 = HARNESS_A) {
   const workerPid = 7000 + repetition;
   return {
     schemaVersion: 1,
@@ -58,7 +60,7 @@ function t7Record(repetition, repositoryRevision) {
       candidateVersion: '1.23.0',
       candidateSourceRef: 'frozen',
       adapterSha256: 'd'.repeat(64),
-      harnessSha256: 'e'.repeat(64),
+      harnessSha256,
       dependencyIdentity: {},
       environment: {
         os: 'linux',
@@ -113,7 +115,7 @@ const t7Suite = {
   benchmarkEligibility: { forbidBlockedOrInconclusive: ['T7'] }
 };
 
-test('candidate benchmark accepts repetitions from one frozen repository revision even when lifecycle support was qualified on an earlier revision', () => {
+test('candidate benchmark accepts repetitions from one frozen repository revision and one harness identity even when lifecycle support was qualified earlier', () => {
   const result = benchmarkEligible(
     [t7Record(1, REVISION_A), t7Record(2, REVISION_A)],
     t7Suite,
@@ -130,6 +132,26 @@ test('candidate benchmark rejects repetitions mixed across repository revisions'
   );
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /formal benchmark records span multiple Git repository revisions/);
+});
+
+test('candidate benchmark rejects repetitions with the same claimed repository revision but different harness identities', () => {
+  const result = benchmarkEligible(
+    [t7Record(1, REVISION_A, HARNESS_A), t7Record(2, REVISION_A, HARNESS_B)],
+    t7Suite,
+    verifiedSupport()
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /formal benchmark records span multiple harness identities/);
+});
+
+test('candidate benchmark rejects malformed harness identity rather than treating it as absent from consistency set', () => {
+  const result = benchmarkEligible(
+    [t7Record(1, REVISION_A, 'not-a-sha'), t7Record(2, REVISION_A, 'not-a-sha')],
+    t7Suite,
+    verifiedSupport()
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks a valid formal harness SHA-256 identity/);
 });
 
 test('cross-candidate comparison reports one common revision only when every verified record shares it', () => {
