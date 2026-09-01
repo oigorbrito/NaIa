@@ -8,6 +8,8 @@ import {
 } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
+const REPOSITORY_REVISION = '1'.repeat(40);
+
 function qualificationRecord(candidate = 'Temporal TypeScript') {
   const value = currentLifecycleQualificationProvenance(candidate);
   return value ? {
@@ -26,7 +28,8 @@ function record({
   omitWorkerFromCleanup = false,
   liveWorker = false,
   tamperPromotionPolicy = false,
-  tamperLifecycleQualification = false
+  tamperLifecycleQualification = false,
+  repositoryVerified = true
 } = {}) {
   const workerPid = 7701;
   const driverPid = 7799;
@@ -64,6 +67,15 @@ function record({
         os: 'linux',
         arch: 'x64',
         runtime: 'node v22.16.0',
+        repositoryProvenance: repositoryVerified
+          ? {
+              source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
+              trackedWorktreeClean: true, reason: null
+            }
+          : {
+              source: 'git', status: 'UNVERIFIED', revision: REPOSITORY_REVISION,
+              trackedWorktreeClean: false, reason: 'TRACKED_WORKTREE_DIRTY'
+            },
         formalPromotionPolicy: promotionPolicy,
         formalLifecycleQualification: qualification,
         formalRuntimeLifecycle: {
@@ -114,7 +126,8 @@ function record({
 }
 
 const verificationEvidence = {
-  executionRef: 'test-fixture:runtime-receipt',
+  executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
+  repositoryRevision: REPOSITORY_REVISION,
   experimentId: 'temporal-typescript-t5-001',
   mutantId: 'T5',
   repetition: 1,
@@ -170,6 +183,23 @@ test('formal ledger admission rejects boolean-only cleanup promotion without rec
   assert.match(result.errors.join('\n'), /cleanup support is not runtime-verified/);
 });
 
+test('formal ledger admission rejects cleanup support whose execution ref is bound to a different Git revision', () => {
+  const support = structuredClone(verifiedSupport);
+  support['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
+  const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), support);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /cleanup support is not runtime-verified/);
+});
+
+test('formal ledger admission requires verified clean Git provenance for READY formal execution', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', repositoryVerified: false }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /READY stored formal record lacks verified clean Git repository provenance/);
+});
+
 test('formal ledger admission requires PASS cleanup for READY formal execution', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', cleanupStatus: 'NOT_APPLICABLE' }),
@@ -185,7 +215,7 @@ test('formal ledger admission rejects record bound to a different promotion poli
     verifiedSupport
   );
   assert.equal(result.valid, false);
-  assert.match(result.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
+  assert.match(result.errors.join('\n'), /promotion policy differs from current frozen promotion policy/);
 });
 
 test('formal ledger admission rejects record bound to a stale lifecycle qualification bundle', () => {
@@ -194,7 +224,7 @@ test('formal ledger admission rejects record bound to a stale lifecycle qualific
     verifiedSupport
   );
   assert.equal(result.valid, false);
-  assert.match(result.errors.join('\n'), /lacks current candidate lifecycle qualification bundle provenance/);
+  assert.match(result.errors.join('\n'), /lifecycle qualification bundle differs from current qualification bundle/);
 });
 
 test('formal ledger admission rejects injected critical execution with zero explicit worker process PIDs', () => {
@@ -233,7 +263,7 @@ test('formal ledger admission rejects explicit worker PID reported alive after c
   assert.match(result.errors.join('\n'), /still alive: 7701/);
 });
 
-test('formal ledger admission opens only when lifecycle, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle, Git revision, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -248,7 +278,7 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after Git revision, lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
