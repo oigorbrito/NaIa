@@ -12,10 +12,11 @@ const COMMON_FILES = Object.freeze([
   'research/chassis/harness/common-runner-run-hook.mjs',
   'research/chassis/harness/experiment-executor.mjs',
   'research/chassis/harness/experiment-protocol-validator.mjs',
-  'research/chassis/harness/experiment-record-validator.mjs',
+  'research/chassis/harness/experiment-record-schema-validator.mjs',
   'research/chassis/harness/formal-executor-support.mjs',
   'research/chassis/harness/formal-lifecycle-promotion-review.mjs',
   'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs',
+  'research/chassis/harness/formal-promotion-policy.mjs',
   'research/chassis/harness/formal-runtime-lifecycle-router.mjs',
   'research/chassis/harness/formal-single-run.mjs',
   'research/chassis/harness/formal-worker-pid-provenance.mjs',
@@ -25,6 +26,7 @@ const COMMON_FILES = Object.freeze([
   'research/chassis/adapter-capabilities.v1.json',
   'research/chassis/experiment-protocol.v1.json',
   'research/chassis/fault-suite.v1.json',
+  'research/chassis/formal-promotion-policy.v1.json',
   'research/chassis/T5-OWNERSHIP-CONTRACT-V1.md'
 ]);
 
