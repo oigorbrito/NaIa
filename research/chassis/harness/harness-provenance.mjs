@@ -34,6 +34,7 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/repository-provenance.mjs',
   'research/chassis/harness/t5-evaluator.mjs',
   'research/chassis/harness/t5-record-bridge.mjs',
+  'research/chassis/harness/t7-t8-evaluator.mjs',
   'research/chassis/harness/t11-cancel-retry-control.mjs',
   'research/chassis/harness/t11-evaluator.mjs',
   'research/chassis/harness/t11-record-bridge.mjs',
