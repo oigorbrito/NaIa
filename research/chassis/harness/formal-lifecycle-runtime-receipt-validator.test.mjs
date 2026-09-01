@@ -15,6 +15,66 @@ function qualificationRecord(candidate) {
   };
 }
 
+function dependencyIdentity(candidate) {
+  if (candidate === 'Temporal TypeScript') {
+    return {
+      manifestSha256: 'd'.repeat(64),
+      packages: [{
+        package: '@temporalio/worker',
+        expectedVersion: '1.23.0',
+        declaredVersion: '1.23.0',
+        installedVersion: '1.23.0'
+      }]
+    };
+  }
+  return {
+    manifestSha256: 'e'.repeat(64),
+    packages: [{
+      package: '@dbos-inc/dbos-sdk',
+      expectedVersion: '4.27.6',
+      declaredVersion: '4.27.6',
+      installedVersion: '4.27.6'
+    }]
+  };
+}
+
+function preRunReceipt(candidate) {
+  const shared = {
+    status: 'PASS',
+    workerCleanup: true,
+    durableStateCleanup: true,
+    oracleCleanup: true,
+    temporaryResourcesCleanup: true,
+    evidenceId: `${candidate}:runtime-receipt`,
+    observedPlatform: { platform: 'linux', arch: 'x64' }
+  };
+  if (candidate === 'Temporal TypeScript') {
+    return {
+      ...shared,
+      cliSha256: 'f'.repeat(64),
+      versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
+      expectedProfile: {
+        sdkVersion: '1.23.0',
+        cliVersion: '1.8.1',
+        serverVersion: '1.31.2',
+        platform: 'linux',
+        arch: 'x64'
+      },
+      workspace: '/tmp/temporal-runtime-receipt',
+      address: '127.0.0.1:7233',
+      serverPid: 4500
+    };
+  }
+  return {
+    ...shared,
+    dockerVersion: 'Docker version 28.0.0',
+    postgresImage: 'postgres:16.10-alpine@sha256:' + '1'.repeat(64),
+    postgresImageIdentity: 'postgres@sha256:' + '1'.repeat(64) + ' sha256:' + '2'.repeat(64),
+    workspace: '/tmp/dbos-runtime-receipt',
+    containerId: 'dynamic-container'
+  };
+}
+
 function baseCleanup(candidate) {
   const shared = {
     status: 'PASS',
@@ -39,14 +99,6 @@ function baseCleanup(candidate) {
 }
 
 function makeRecord(candidate, overrides = {}) {
-  const preRunCleanupReceipt = {
-    status: 'PASS',
-    workerCleanup: true,
-    durableStateCleanup: true,
-    oracleCleanup: true,
-    temporaryResourcesCleanup: true,
-    evidenceId: `${candidate}:runtime-receipt`
-  };
   const record = {
     schemaVersion: 1,
     experimentId: candidate === 'Temporal TypeScript' ? 'temporal-typescript-t5-001' : 'dbos-typescript-t5-001',
@@ -57,14 +109,17 @@ function makeRecord(candidate, overrides = {}) {
     setup: {
       status: 'READY',
       candidateVersion: candidate === 'Temporal TypeScript' ? '1.23.0' : '4.27.6',
-      candidateSourceRef: 'frozen-source-ref',
+      candidateSourceRef: candidate === 'Temporal TypeScript'
+        ? 'temporalio/sdk-typescript v1.23.0'
+        : 'dbos-inc/dbos-transact-ts v4.27',
       adapterSha256: 'a'.repeat(64),
       harnessSha256: 'b'.repeat(64),
-      dependencyIdentity: {},
+      dependencyIdentity: dependencyIdentity(candidate),
       environment: {
-        os: 'linux',
+        os: 'linux 6.11.0',
         arch: 'x64',
         runtime: 'node v22.16.0',
+        packageManager: null,
         repositoryProvenance: {
           source: 'git',
           status: 'VERIFIED',
@@ -75,9 +130,13 @@ function makeRecord(candidate, overrides = {}) {
         formalLifecycleQualification: qualificationRecord(candidate),
         formalRuntimeLifecycle: { candidate, status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
-      parameters: { randomSeed: candidate === 'Temporal TypeScript' ? 1050001 : 2050001 },
+      parameters: {
+        randomSeed: candidate === 'Temporal TypeScript' ? 1050001 : 2050001,
+        mode: 'local-process',
+        workerAuthorityBoundary: candidate === 'Temporal TypeScript' ? 'Temporal worker process' : 'DBOS executor process'
+      },
       cleanupVerifiedBeforeRun: true,
-      preRunCleanupReceipt
+      preRunCleanupReceipt: preRunReceipt(candidate)
     },
     run: {
       startedAt: '2026-09-01T00:00:00.000Z',
@@ -106,6 +165,13 @@ function makeRecord(candidate, overrides = {}) {
     setup: {
       ...record.setup,
       ...(overrides.setup ?? {}),
+      dependencyIdentity: overrides.setup?.dependencyIdentity === undefined
+        ? record.setup.dependencyIdentity
+        : overrides.setup.dependencyIdentity,
+      parameters: { ...record.setup.parameters, ...(overrides.setup?.parameters ?? {}) },
+      preRunCleanupReceipt: overrides.setup?.preRunCleanupReceipt === undefined
+        ? record.setup.preRunCleanupReceipt
+        : overrides.setup.preRunCleanupReceipt,
       environment: { ...record.setup.environment, ...(overrides.setup?.environment ?? {}) }
     },
     run: {
@@ -121,7 +187,10 @@ test('Temporal T5 runtime receipt can qualify lifecycle even when candidate sema
   const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript'));
   assert.equal(result.valid, true);
   assert.equal(result.checks.repositoryRevisionVerified, true);
+  assert.equal(result.checks.formalEnvironmentIdentityValid, true, result.formalEnvironmentIdentity.errors.join('\n'));
   assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
+  assert.match(result.formalEnvironmentIdentity.commonSha256, /^[a-f0-9]{64}$/);
+  assert.match(result.formalEnvironmentIdentity.candidateProfileSha256, /^[a-f0-9]{64}$/);
   assert.equal(result.candidateVerdict, 'FAIL');
   assert.equal(result.candidateVerdictIgnoredForLifecycleVerification, true);
   assert.deepEqual(result.workerProcessPids, [4101, 4102]);
@@ -134,6 +203,7 @@ test('DBOS T5 runtime receipt can qualify lifecycle independently of candidate s
   const result = validateRuntimeLifecycleReceipt(makeRecord('DBOS TypeScript'));
   assert.equal(result.valid, true);
   assert.equal(result.checks.repositoryRevisionVerified, true);
+  assert.equal(result.checks.formalEnvironmentIdentityValid, true, result.formalEnvironmentIdentity.errors.join('\n'));
   assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
   assert.equal(result.eligibleForLifecycleStatusPromotion, true);
   assert.equal(result.checks.databaseAbsent, true);
@@ -153,6 +223,15 @@ test('runtime lifecycle receipt rejects READY execution without verified Git rep
   }));
   assert.equal(result.eligibleForLifecycleStatusPromotion, false);
   assert.equal(result.checks.repositoryRevisionVerified, false);
+});
+
+test('runtime lifecycle receipt rejects READY execution without complete formal environment identity', () => {
+  const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
+    setup: { dependencyIdentity: null }
+  }));
+  assert.equal(result.eligibleForLifecycleStatusPromotion, false);
+  assert.equal(result.checks.formalEnvironmentIdentityValid, false);
+  assert.match(result.formalEnvironmentIdentity.errors.join('\n'), /manifestSha256|installed formal dependency set/);
 });
 
 test('runtime lifecycle receipt rejects stale candidate qualification bundle', () => {
