@@ -115,7 +115,7 @@ export function auditStoredFormalRecord(record) {
   return { valid: errors.length === 0, errors };
 }
 
-export function assessStoredFormalRecordCurrentCompatibility(record) {
+export function assessStoredFormalRecordCurrentCompatibility(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   const candidate = record?.candidate ?? 'unknown candidate';
 
@@ -135,6 +135,11 @@ export function assessStoredFormalRecordCurrentCompatibility(record) {
     for (const error of candidateBinding.errors) {
       errors.push(`${candidate}: READY stored formal record candidate profile differs from current frozen candidate profile: ${error}`);
     }
+
+    const runtimeIdentityBinding = assessLifecycleRuntimeIdentityBinding(record, cleanupSupport, record?.candidate);
+    for (const error of runtimeIdentityBinding.errors) {
+      errors.push(`${candidate}: READY stored formal record lifecycle runtime identity differs from current runtime-verified cleanup support: ${error}`);
+    }
   }
 
   return { compatible: errors.length === 0, errors };
@@ -150,11 +155,11 @@ export function auditStoredFormalLedger(records) {
   return { valid: errors.length === 0, recordCount: records.length, errors };
 }
 
-export function assessStoredFormalLedgerCurrentCompatibility(records) {
+export function assessStoredFormalLedgerCurrentCompatibility(records, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   if (!Array.isArray(records)) return { compatible: false, recordCount: 0, errors: ['records must be an array'] };
   const errors = [];
   for (let index = 0; index < records.length; index += 1) {
-    const assessment = assessStoredFormalRecordCurrentCompatibility(records[index]);
+    const assessment = assessStoredFormalRecordCurrentCompatibility(records[index], cleanupSupport);
     for (const error of assessment.errors) errors.push(`ledger index ${index}: ${error}`);
   }
   return { compatible: errors.length === 0, recordCount: records.length, errors };
@@ -214,11 +219,8 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
   const historical = auditStoredFormalRecord(record);
   errors.push(...historical.errors);
 
-  const compatibility = assessStoredFormalRecordCurrentCompatibility(record);
+  const compatibility = assessStoredFormalRecordCurrentCompatibility(record, cleanupSupport);
   errors.push(...compatibility.errors);
-
-  const runtimeIdentityBinding = assessLifecycleRuntimeIdentityBinding(record, cleanupSupport, candidate);
-  errors.push(...runtimeIdentityBinding.errors);
 
   return { valid: errors.length === 0, errors };
 }
@@ -279,7 +281,7 @@ export function appendRecordToLedger(
     throw new Error(`existing formal ledger historical provenance is invalid: ${currentHistoricalAudit.errors.join('; ')}`);
   }
 
-  const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records);
+  const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records, cleanupSupport);
   if (!currentCompatibility.compatible) {
     throw new Error(`existing formal ledger is incompatible with current frozen qualification/promotion state: ${currentCompatibility.errors.join('; ')}`);
   }
@@ -316,7 +318,7 @@ export function appendRecordToLedger(
     throw new Error(`appended formal ledger historical provenance is invalid: ${nextHistoricalAudit.errors.join('; ')}`);
   }
 
-  const nextCompatibility = assessStoredFormalLedgerCurrentCompatibility(next);
+  const nextCompatibility = assessStoredFormalLedgerCurrentCompatibility(next, cleanupSupport);
   if (!nextCompatibility.compatible) {
     throw new Error(`appended formal ledger is incompatible with current frozen qualification/promotion state: ${nextCompatibility.errors.join('; ')}`);
   }
