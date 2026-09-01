@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { createExternalEffectOracle } from './external-oracle.mjs';
 import { runUntilKillpoint } from './crash-controller.mjs';
+import { evaluateT7T8Semantics } from './t7-t8-evaluator.mjs';
 
 function parseLine(line) {
   try { return JSON.parse(line); } catch { return { event: 'unparseable_stdout', raw: line }; }
@@ -123,26 +124,15 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
     const status = parseStatus(statusProcess.stdout);
     const terminal = resume?.terminalEvent ?? initial?.terminalEvent ?? null;
     const durableAuthorityAlive = authorityResponsive(statusProcess, status);
-
-    const acceptanceChecks = mutantId === 'T7'
-      ? {
-          crashInjected: initial.killIssued === true && initial.timedOut !== true,
-          responseLossNotInjected: totalResponseLossCount === 0,
-          exactlyOneExternalApply: totalApplyCount === 1,
-          stableOperationIdentity: related.length === 1,
-          durableAuthorityResponsiveAfterCrash: durableAuthorityAlive,
-          recoveredToTerminalState: ['objective_completed', 'reconciliation_required'].includes(terminal?.event),
-          terminalStatusObservable: ['COMPLETED', 'RECONCILIATION_REQUIRED'].includes(status?.state)
-        }
-      : {
-          exactlyOneResponseLoss: totalResponseLossCount === 1,
-          measurementCutoffNotReached: initial.timedOut !== true,
-          exactlyOneExternalApply: totalApplyCount === 1,
-          stableOperationIdentity: related.length === 1,
-          durableAuthorityResponsiveAfterResponseLoss: durableAuthorityAlive,
-          recoveredToTerminalState: ['objective_completed', 'reconciliation_required'].includes(terminal?.event),
-          terminalStatusObservable: ['COMPLETED', 'RECONCILIATION_REQUIRED'].includes(status?.state)
-        };
+    const semanticEvaluation = evaluateT7T8Semantics(mutantId, {
+      totalApplyCount,
+      totalResponseLossCount,
+      relatedOperationCount: related.length,
+      durableAuthorityReachable: durableAuthorityAlive,
+      terminalEvent: terminal?.event ?? 'missing_terminal_event',
+      finalStatus: status?.state ?? 'MISSING_FINAL_STATUS',
+      measurementCutoffReached: initial.timedOut === true
+    });
 
     return {
       fault: mutantId === 'T7'
@@ -172,9 +162,11 @@ export async function runIsolatedExternalFault({ adapter, candidate, cwd, mutant
         oracleOperations: related,
         totalApplyCount,
         totalResponseLossCount,
-        measurementCutoffKilledProcess: mutantId === 'T8' && initial.timedOut === true
+        measurementCutoffKilledProcess: mutantId === 'T8' && initial.timedOut === true,
+        semanticEvaluationValid: semanticEvaluation.valid,
+        semanticEvaluationErrors: semanticEvaluation.errors
       },
-      acceptanceChecks
+      acceptanceChecks: semanticEvaluation.checks
     };
   } finally {
     await oracle.stop();
