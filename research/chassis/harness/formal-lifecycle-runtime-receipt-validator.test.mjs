@@ -3,6 +3,8 @@ import test from 'node:test';
 import { currentLifecycleQualificationProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
 
+const REPOSITORY_REVISION = '1'.repeat(40);
+
 function qualificationRecord(candidate) {
   const provenance = currentLifecycleQualificationProvenance(candidate);
   return {
@@ -63,6 +65,13 @@ function makeRecord(candidate, overrides = {}) {
         os: 'linux',
         arch: 'x64',
         runtime: 'node v22.16.0',
+        repositoryProvenance: {
+          source: 'git',
+          status: 'VERIFIED',
+          revision: REPOSITORY_REVISION,
+          trackedWorktreeClean: true,
+          reason: null
+        },
         formalLifecycleQualification: qualificationRecord(candidate),
         formalRuntimeLifecycle: { candidate, status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
@@ -111,6 +120,7 @@ function makeRecord(candidate, overrides = {}) {
 test('Temporal T5 runtime receipt can qualify lifecycle even when candidate semantic verdict is FAIL', () => {
   const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript'));
   assert.equal(result.valid, true);
+  assert.equal(result.checks.repositoryRevisionVerified, true);
   assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
   assert.equal(result.candidateVerdict, 'FAIL');
   assert.equal(result.candidateVerdictIgnoredForLifecycleVerification, true);
@@ -123,10 +133,26 @@ test('Temporal T5 runtime receipt can qualify lifecycle even when candidate sema
 test('DBOS T5 runtime receipt can qualify lifecycle independently of candidate semantic verdict', () => {
   const result = validateRuntimeLifecycleReceipt(makeRecord('DBOS TypeScript'));
   assert.equal(result.valid, true);
+  assert.equal(result.checks.repositoryRevisionVerified, true);
   assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
   assert.equal(result.eligibleForLifecycleStatusPromotion, true);
   assert.equal(result.checks.databaseAbsent, true);
   assert.equal(result.checks.postgresContainerCleanup, true);
+});
+
+test('runtime lifecycle receipt rejects READY execution without verified Git repository provenance', () => {
+  const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
+    setup: {
+      environment: {
+        repositoryProvenance: {
+          source: 'git', status: 'UNVERIFIED', revision: REPOSITORY_REVISION,
+          trackedWorktreeClean: false, reason: 'TRACKED_WORKTREE_DIRTY'
+        }
+      }
+    }
+  }));
+  assert.equal(result.eligibleForLifecycleStatusPromotion, false);
+  assert.equal(result.checks.repositoryRevisionVerified, false);
 });
 
 test('runtime lifecycle receipt rejects stale candidate qualification bundle', () => {
