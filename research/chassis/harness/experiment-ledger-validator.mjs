@@ -1,6 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { assessFormalEnvironmentConsistency, deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import {
   lifecycleQualificationRecordProvenanceStructurallyValid,
   lifecycleQualificationRecordProvenanceValid
@@ -85,6 +86,10 @@ export function auditStoredFormalRecord(record) {
   if (record?.setup?.status === 'READY') {
     if (!repositoryProvenanceReady(environment.repositoryProvenance)) {
       errors.push(`${candidate}: READY stored formal record requires verified clean Git repository revision provenance`);
+    }
+    const formalEnvironment = deriveFormalEnvironmentIdentity(record);
+    if (!formalEnvironment.valid) {
+      for (const error of formalEnvironment.errors) errors.push(`${candidate}: READY stored formal record environment identity: ${error}`);
     }
     if (!preRunCleanupReceiptValid(record?.setup?.preRunCleanupReceipt)) {
       errors.push(`${candidate}: READY stored formal record lacks a complete PASS pre-run cleanup receipt`);
@@ -183,6 +188,10 @@ export function assessStoredFormalLedgerHarnessConsistency(records) {
   };
 }
 
+export function assessStoredFormalLedgerEnvironmentConsistency(records) {
+  return assessFormalEnvironmentConsistency(records);
+}
+
 export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   const candidate = record?.candidate;
@@ -270,6 +279,11 @@ export function appendRecordToLedger(
     throw new Error(`existing formal ledger cannot continue across harness identities: ${currentHarnessConsistency.errors.join('; ')}`);
   }
 
+  const currentEnvironmentConsistency = assessStoredFormalLedgerEnvironmentConsistency(records);
+  if (!currentEnvironmentConsistency.consistent) {
+    throw new Error(`existing formal ledger cannot continue across environment identities: ${currentEnvironmentConsistency.errors.join('; ')}`);
+  }
+
   if (!current.nextExpectedExperiment) throw new Error('preregistered ledger is already complete');
 
   const validation = validateRecordAgainstSpec(record, current.nextExpectedExperiment);
@@ -302,12 +316,18 @@ export function appendRecordToLedger(
     throw new Error(`appended formal ledger would mix harness identities: ${nextHarnessConsistency.errors.join('; ')}`);
   }
 
+  const nextEnvironmentConsistency = assessStoredFormalLedgerEnvironmentConsistency(next);
+  if (!nextEnvironmentConsistency.consistent) {
+    throw new Error(`appended formal ledger would mix environment identities: ${nextEnvironmentConsistency.errors.join('; ')}`);
+  }
+
   return {
     records: next,
     validation: nextValidation,
     formalAudit: nextHistoricalAudit,
     currentCompatibility: nextCompatibility,
     repositoryRevisionConsistency: nextRevisionConsistency,
-    harnessConsistency: nextHarnessConsistency
+    harnessConsistency: nextHarnessConsistency,
+    environmentConsistency: nextEnvironmentConsistency
   };
 }
