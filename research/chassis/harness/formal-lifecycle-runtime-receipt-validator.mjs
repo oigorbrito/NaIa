@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { explicitWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
   'workerCleanup',
@@ -44,6 +45,7 @@ export function validateRuntimeLifecycleReceipt(record) {
   const preRun = record?.setup?.preRunCleanupReceipt ?? null;
   const cleanup = record?.cleanup ?? null;
   const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle ?? null;
+  const workerProcessPids = explicitWorkerProcessPids(record?.run);
   const observedWorkerPids = cleanup?.observedWorkerPids ?? [];
   const liveObservedWorkerPids = cleanup?.liveObservedWorkerPids ?? [];
   const specific = candidateSpecificChecks(record);
@@ -62,7 +64,9 @@ export function validateRuntimeLifecycleReceipt(record) {
     intendedFaultInjected: record?.run?.fault?.injected === true,
     concreteFaultTarget: Boolean(record?.run?.fault?.targetKind) && record?.run?.fault?.targetIdentity !== null && record?.run?.fault?.targetIdentity !== undefined && record?.run?.fault?.targetIdentity !== '',
     durableAuthorityAlive: record?.run?.fault?.durableAuthorityAlive === true,
+    explicitWorkerProcessPidsPresent: workerProcessPids.length > 0,
     observedWorkerPidsPresent: nonEmptyArray(observedWorkerPids),
+    explicitWorkerPidsIncludedInCleanupObservation: workerProcessPids.every((pid) => observedWorkerPids.includes(pid)),
     noObservedWorkerPidAliveAfterCleanup: Array.isArray(liveObservedWorkerPids) && liveObservedWorkerPids.length === 0,
     cleanupPass: cleanup?.status === 'PASS',
     cleanupDimensionsPass: allCleanupDimensionsTrue(cleanup),
@@ -77,6 +81,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     repetition: record?.repetition ?? null,
     candidateVerdict: record?.verdict ?? null,
     candidateVerdictIgnoredForLifecycleVerification: true,
+    workerProcessPids,
     checks,
     schemaErrors: schema.errors,
     eligibleForLifecycleStatusPromotion,
