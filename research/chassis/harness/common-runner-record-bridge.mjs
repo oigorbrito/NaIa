@@ -20,8 +20,8 @@ function semanticObservation(evidence, mutantId, authorityAlive) {
     totalResponseLossCount: evidence.oracle?.totalResponseLossCount ?? -1,
     relatedOperationCount: Array.isArray(evidence.oracle?.operations) ? evidence.oracle.operations.length : -1,
     durableAuthorityReachable: authorityAlive,
-    terminalEvent: terminal?.event ?? 'missing_terminal_event',
-    finalStatus: evidence.status?.parsed?.state ?? 'MISSING_FINAL_STATUS',
+    terminalEvent: terminal?.event ?? null,
+    finalStatus: evidence.status?.parsed?.state ?? null,
     measurementCutoffReached: evidence.initial?.timedOut === true
   };
 }
