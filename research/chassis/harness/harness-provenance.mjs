@@ -14,6 +14,7 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/experiment-executor.mjs',
   'research/chassis/harness/experiment-ledger-validator.mjs',
   'research/chassis/harness/experiment-protocol-validator.mjs',
+  'research/chassis/harness/experiment-record-schema-validator.mjs',
   'research/chassis/harness/experiment-record-validator.mjs',
   'research/chassis/harness/external-oracle.mjs',
   'research/chassis/harness/fault-barrier.mjs',
