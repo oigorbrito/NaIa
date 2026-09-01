@@ -23,8 +23,16 @@ test('protocol matches fault-suite, freezes revision and environment comparabili
   assert.equal(result.uniqueSeeds, 4 * 6 * 100);
   assert.equal(protocol.executionOrder.repositoryRevisionPolicy, REVISION_POLICY);
   assert.equal(protocol.executionOrder.environmentIdentityPolicy, ENVIRONMENT_POLICY);
+  assert.deepEqual(protocol.requiredRecordFields, [
+    'experimentId', 'candidate', 'mutantId', 'repetition',
+    'setup.candidateVersion', 'setup.candidateSourceRef', 'setup.adapterSha256', 'setup.harnessSha256',
+    'setup.dependencyIdentity', 'setup.environment', 'setup.parameters', 'setup.preRunCleanupReceipt',
+    'run.startedAt', 'run.finishedAt', 'run.fault', 'run.workload', 'run.rawObservations', 'run.acceptanceChecks',
+    'cleanup', 'artifacts', 'verdict'
+  ]);
 
   const revision = protocol.methodology.preExecutionAmendments.find((entry) => entry.id === 'A001');
+  assert.equal(revision.date, '2026-09-01');
   assert.equal(revision.status, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.equal(revision.policy, REVISION_POLICY);
   assert.equal(revision.outcomeDriven, false);
@@ -33,6 +41,7 @@ test('protocol matches fault-suite, freezes revision and environment comparabili
   assert.equal(revision.lifecycleQualificationMayPrecedeBenchmarkRevision, true);
 
   const environment = protocol.methodology.preExecutionAmendments.find((entry) => entry.id === 'A002');
+  assert.equal(environment.date, '2026-09-01');
   assert.equal(environment.status, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.equal(environment.policy, ENVIRONMENT_POLICY);
   assert.equal(environment.outcomeDriven, false);
@@ -76,7 +85,7 @@ test('protocol validation rejects silent removal of frozen revision or environme
   assert.match(result.errors.join('\n'), /executionOrder\.environmentIdentityPolicy must equal/);
 });
 
-test('protocol validation rejects removal or post-hoc mutation of A001 and A002', async () => {
+test('protocol validation rejects removal or post-hoc mutation of A001 and A002 including frozen constraint text', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   protocol.methodology.preExecutionAmendments = [];
@@ -89,17 +98,30 @@ test('protocol validation rejects removal or post-hoc mutation of A001 and A002'
   const a001 = mutatedRevision.methodology.preExecutionAmendments.find((entry) => entry.id === 'A001');
   a001.outcomeDriven = true;
   a001.changesRepetitionThreshold = true;
+  a001.constraint = 'weakened after outcomes';
   result = validateExperimentProtocol(mutatedRevision, suite);
   assert.equal(result.valid, false);
   assert.match(result.errors.join('\n'), /A001: outcomeDriven must be false/);
   assert.match(result.errors.join('\n'), /A001: changesRepetitionThreshold must be false/);
+  assert.match(result.errors.join('\n'), /A001: frozen constraint text changed/);
 
   const mutatedEnvironment = await json('experiment-protocol.v1.json');
   const a002 = mutatedEnvironment.methodology.preExecutionAmendments.find((entry) => entry.id === 'A002');
   a002.policy = 'post-hoc-environment-policy';
   a002.outcomeDriven = true;
+  a002.constraint = 'ignore runtime drift if results look similar';
   result = validateExperimentProtocol(mutatedEnvironment, suite);
   assert.equal(result.valid, false);
   assert.match(result.errors.join('\n'), /A002: policy must equal/);
   assert.match(result.errors.join('\n'), /A002: outcomeDriven must be false/);
+  assert.match(result.errors.join('\n'), /A002: frozen constraint text changed/);
+});
+
+test('protocol validation rejects silent mutation of the frozen formal record contract', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  protocol.requiredRecordFields = protocol.requiredRecordFields.filter((field) => field !== 'setup.dependencyIdentity');
+  const result = validateExperimentProtocol(protocol, suite);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /requiredRecordFields must remain the frozen formal record contract/);
 });
