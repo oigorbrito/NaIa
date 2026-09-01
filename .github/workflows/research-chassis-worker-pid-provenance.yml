@@ -1,0 +1,57 @@
+name: Research Chassis Worker PID Provenance
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-worker-pid-provenance.yml'
+      - 'research/chassis/harness/formal-worker-pid-provenance.mjs'
+      - 'research/chassis/harness/formal-worker-pid-provenance.test.mjs'
+      - 'research/chassis/harness/common-runner-record-bridge.mjs'
+      - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
+      - 'research/chassis/harness/t5-record-bridge.mjs'
+      - 'research/chassis/harness/t5-record-bridge.test.mjs'
+      - 'research/chassis/harness/t11-record-bridge.mjs'
+      - 'research/chassis/harness/t12-record-bridge.mjs'
+      - 'research/chassis/harness/t16-record-bridge.mjs'
+      - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
+      - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
+      - 'research/chassis/harness/formal-lifecycle-promotion-review.mjs'
+      - 'research/chassis/harness/formal-lifecycle-promotion-review.test.mjs'
+      - 'research/chassis/harness/experiment-ledger-validator.mjs'
+      - 'research/chassis/harness/formal-ledger-admission.test.mjs'
+      - 'research/chassis/harness/experiment-record-validator.mjs'
+      - 'research/chassis/harness/experiment-record-validator.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-pid-provenance-structural-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Verify explicit worker process PID provenance gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'scope=CHASSIS_ONLY'
+          echo 'harness=LOCAL TEST HARNESS'
+          echo 'repository=OWN REPOSITORY'
+          echo 'third_party_target=NO THIRD-PARTY TARGET'
+          node --test \
+            research/chassis/harness/formal-worker-pid-provenance.test.mjs \
+            research/chassis/harness/common-runner-record-bridge.test.mjs \
+            research/chassis/harness/t5-record-bridge.test.mjs \
+            research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
+            research/chassis/harness/formal-ledger-admission.test.mjs \
+            research/chassis/harness/experiment-record-validator.test.mjs
