@@ -39,6 +39,7 @@ on:
       - 'research/chassis/harness/isolated-external-fault-runner.test.mjs'
       - 'research/chassis/harness/t7-t8-evaluator.mjs'
       - 'research/chassis/harness/t7-t8-evaluator.test.mjs'
+      - 'research/chassis/harness/critical-evaluator-neutrality.test.mjs'
       - 'research/chassis/harness/experiment-executor.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.test.mjs'
@@ -114,6 +115,7 @@ jobs:
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/formal-environment-identity.test.mjs \
             research/chassis/harness/t7-t8-evaluator.test.mjs \
+            research/chassis/harness/critical-evaluator-neutrality.test.mjs \
             research/chassis/harness/isolated-external-fault-runner.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
