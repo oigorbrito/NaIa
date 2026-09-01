@@ -1,4 +1,5 @@
 import { evaluateT16Evidence } from './t16-evaluator.mjs';
+import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 export function t16EvidenceToRunResult(evidence, spec, setup) {
   const evaluation = evaluateT16Evidence(evidence);
@@ -10,6 +11,11 @@ export function t16EvidenceToRunResult(evidence, spec, setup) {
     mutation?.before !== mutation?.after &&
     mutation?.before !== undefined &&
     mutation?.after !== undefined;
+  const workerProcessPids = normalizeWorkerProcessPids(
+    evidence?.rawNativeEvidence?.workerA?.pid,
+    evidence?.rawNativeEvidence?.workerB?.pid,
+    evidence?.rawNativeEvidence?.workerC?.pid
+  );
 
   return {
     blocked: false,
@@ -27,6 +33,7 @@ export function t16EvidenceToRunResult(evidence, spec, setup) {
       objectiveId: evidence?.objectiveIdentity ?? null
     },
     rawObservations: {
+      workerProcessPids,
       semanticMutation: mutation,
       compatibilityDisposition: disposition,
       t16Evidence: evidence,
