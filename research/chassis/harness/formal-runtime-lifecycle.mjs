@@ -310,7 +310,7 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
     const sqliteCleanup = state.sqlitePath ? !(await ops.pathExists(state.sqlitePath)) : true;
     const workerCleanup = liveObservedPids.length === 0;
     const durableStateCleanup = serverCleanup && sqliteCleanup && workspaceCleanup;
-    const oracleCleanup = !mutantUsesProcessScopedOracle(state.spec?.mutantId) || runnerBoundarySettled(run);
+    const oracleCleanup = setup?.status === 'BLOCKED_SETUP' || !mutantUsesProcessScopedOracle(state.spec?.mutantId) || runnerBoundarySettled(run);
     const temporaryResourcesCleanup = workspaceCleanup;
     const allClean = workerCleanup && durableStateCleanup && oracleCleanup && temporaryResourcesCleanup;
 
