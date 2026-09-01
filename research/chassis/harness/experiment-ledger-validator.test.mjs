@@ -11,6 +11,7 @@ import {
   validateExecutionLedger,
   validateRecordAgainstSpec
 } from './experiment-ledger-validator.mjs';
+import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -36,6 +37,7 @@ function blockedRecord(spec) {
       dependencyIdentity: null,
       environment: {
         os: 'fixture-os', arch: 'fixture-arch', runtime: 'node v22.0.0',
+        formalPromotionPolicy: formalPromotionPolicyProvenance(),
         formalRuntimeLifecycle: { candidate: spec.candidate, status: 'RUNTIME_VERIFIED' }
       },
       parameters: { randomSeed: spec.randomSeed },
@@ -117,6 +119,17 @@ test('record identity is bound to preregistered experimentId and random seed', a
   assert.match(validation.errors.join('\n'), /randomSeed mismatch/);
 });
 
+test('stored formal audit rejects promotion policy hash drift', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [spec] = buildExecutionPlan(protocol, suite);
+  const tampered = blockedRecord(spec);
+  tampered.setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
+  const audit = auditStoredFormalRecord(tampered);
+  assert.equal(audit.valid, false);
+  assert.match(audit.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
+});
+
 test('ledger rejects a valid record executed out of preregistered round-robin order', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
@@ -176,6 +189,19 @@ test('immutable formal audit rejects stored lifecycle provenance removed after a
     () => appendRecordToLedger(tamperedPrefix, blockedRecord(plan[1]), protocol, suite, { cleanupSupport: verifiedTemporalSupport }),
     /existing formal ledger immutable provenance is invalid/
   );
+});
+
+test('immutable formal audit rejects promotion policy hash drift after admission', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const plan = buildExecutionPlan(protocol, suite);
+  const appended = appendRecordToLedger([], blockedRecord(plan[0]), protocol, suite, { cleanupSupport: verifiedTemporalSupport });
+  const tamperedPrefix = structuredClone(appended.records);
+  tamperedPrefix[0].setup.environment.formalPromotionPolicy.sha256 = 'f'.repeat(64);
+
+  const audit = auditStoredFormalLedger(tamperedPrefix);
+  assert.equal(audit.valid, false);
+  assert.match(audit.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
 });
 
 test('duplicate experimentId cannot occupy the next ledger slot', async () => {
