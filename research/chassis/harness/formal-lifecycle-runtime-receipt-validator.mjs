@@ -40,7 +40,13 @@ function candidateSpecificChecks(record) {
       workspaceCleanup: cleanup.workspaceCleanup === true
     };
   }
-  return { supportedCandidate: false };
+  if (record?.candidate === 'Restate') {
+    return {
+      restateServerCleanup: cleanup.restateServerCleanup === true,
+      workspaceCleanup: cleanup.workspaceCleanup === true
+    };
+  }
+  return { supportedCandidateSpecificCleanup: false };
 }
 
 export function validateRuntimeLifecycleReceipt(record) {
@@ -58,7 +64,7 @@ export function validateRuntimeLifecycleReceipt(record) {
 
   const checks = {
     schemaValid: schema.valid,
-    supportedCandidate: ['Temporal TypeScript', 'DBOS TypeScript'].includes(record?.candidate),
+    supportedCandidate: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate'].includes(record?.candidate),
     firstPreregisteredMutant: record?.mutantId === 'T5',
     firstRepetition: record?.repetition === 1,
     setupReady: record?.setup?.status === 'READY',
