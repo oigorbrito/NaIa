@@ -12,6 +12,20 @@
       "record random seeds and run-time parameters when randomized scheduling or timing is used",
       "distinguish artifact functionality from independently reproduced results",
       "do not promote blocked setup or absent fault injection to candidate PASS/FAIL"
+    ],
+    "preExecutionAmendments": [
+      {
+        "id": "A001",
+        "date": "2026-09-01",
+        "status": "FROZEN_BEFORE_FORMAL_EXECUTION",
+        "policy": "single-verified-git-revision-per-formal-ledger",
+        "reason": "Prevent mixing code revisions across round-robin repetitions or candidates; operationalizes the existing requirement to record software identity and provenance.",
+        "outcomeDriven": false,
+        "changesSemanticVerdicts": false,
+        "changesRepetitionThreshold": false,
+        "lifecycleQualificationMayPrecedeBenchmarkRevision": true,
+        "constraint": "The T5/r1 lifecycle qualification support may originate from an earlier verified revision only while its candidate lifecycle-qualification hash remains current; every record admitted to one formal benchmark ledger must otherwise share one verified Git repository revision."
+      }
     ]
   },
   "decisionState": {
@@ -50,7 +64,8 @@
   "executionOrder": {
     "policy": "round-robin-by-repetition",
     "reason": "avoid completing all repetitions of one candidate before exposing later candidates to the same experimental window",
-    "sequence": "for repetition 1..100, execute each critical mutant for each candidate using the declared environment profile; record any unavailable run as BLOCKED rather than substituting another configuration"
+    "sequence": "for repetition 1..100, execute each critical mutant for each candidate using the declared environment profile; record any unavailable run as BLOCKED rather than substituting another configuration",
+    "repositoryRevisionPolicy": "single-verified-git-revision-per-formal-ledger"
   },
   "requiredRecordFields": [
     "experimentId",
