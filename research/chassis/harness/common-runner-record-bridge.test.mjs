@@ -122,7 +122,7 @@ test('RECONCILIATION_REQUIRED cannot be upgraded to formal T7 PASS by legacy run
   assert.equal(result.acceptanceChecks.finalStatusCompleted, false);
 });
 
-test('bridge preserves runtime prerequisite BLOCKED classification', () => {
+test('bridge preserves runtime prerequisite BLOCKED classification and does not fabricate missing semantic observations', () => {
   const value = evidence('T8', { verdict: 'BLOCKED', blocker: 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT' });
   value.checks.responseLossInjected = true;
   value.oracle.totalResponseLossCount = 0;
@@ -132,8 +132,9 @@ test('bridge preserves runtime prerequisite BLOCKED classification', () => {
   assert.equal(result.blocker, 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT');
   assert.equal(result.fault.injected, false);
   assert.equal(result.fault.durableAuthorityAlive, false);
-  assert.equal(result.rawObservations.semanticEvaluationValid, true);
-  assert.equal(result.acceptanceChecks.durableAuthorityReachable, false);
+  assert.equal(result.rawObservations.semanticEvaluationValid, false);
+  assert.deepEqual(result.acceptanceChecks, {});
+  assert.match(result.rawObservations.semanticEvaluationErrors.join('\n'), /finalStatus is required/);
 });
 
 test('managed-controller T7 cannot be converted into injected worker fault', () => {
