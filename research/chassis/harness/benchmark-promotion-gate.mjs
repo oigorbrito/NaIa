@@ -5,7 +5,7 @@ import {
   validateExecutionLedger
 } from './experiment-ledger-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT } from './formal-cleanup-support.mjs';
-import { benchmarkEligible } from './experiment-record-validator.mjs';
+import { benchmarkEligible, benchmarkRepositoryRevisions } from './experiment-record-validator.mjs';
 
 const PROMOTION_POLICY_URL = new URL('../formal-promotion-policy.v1.json', import.meta.url);
 
@@ -27,6 +27,18 @@ function policyFor(map, candidate, mutantId) {
 
 function validExceptionPolicy(policy) {
   return policy && policy.enforced === true && nonEmpty(policy.justification) && nonEmpty(policy.constraint);
+}
+
+export function assessBenchmarkRepositoryRevisionConsistency(records) {
+  const repositoryRevisions = benchmarkRepositoryRevisions(records);
+  return {
+    consistent: repositoryRevisions.length <= 1,
+    repositoryRevision: repositoryRevisions.length === 1 ? repositoryRevisions[0] : null,
+    repositoryRevisions,
+    errors: repositoryRevisions.length <= 1
+      ? []
+      : [`benchmark comparison spans multiple Git repository revisions: ${repositoryRevisions.join(', ')}`]
+  };
 }
 
 export function assessCandidatePromotion(
@@ -96,12 +108,20 @@ export function assessBenchmarkPromotion({
   const ledgerValidation = validateExecutionLedger(ledger, protocol, faultSuite, { allowPrefix: false });
   const historicalAudit = auditStoredFormalLedger(ledger);
   const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(ledger);
-  if (!ledgerValidation.valid || !ledgerValidation.complete || !historicalAudit.valid || !currentCompatibility.compatible) {
+  const repositoryRevisionConsistency = assessBenchmarkRepositoryRevisionConsistency(ledger);
+  if (
+    !ledgerValidation.valid ||
+    !ledgerValidation.complete ||
+    !historicalAudit.valid ||
+    !currentCompatibility.compatible ||
+    !repositoryRevisionConsistency.consistent
+  ) {
     return {
       readyForSelection: false,
       ledger: ledgerValidation,
       formalAudit: historicalAudit,
       currentCompatibility,
+      repositoryRevisionConsistency,
       candidates: [],
       qualifiedCandidates: [],
       promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
@@ -114,6 +134,9 @@ export function assessBenchmarkPromotion({
           : null,
         !currentCompatibility.compatible
           ? 'benchmark ledger is incompatible with current frozen qualification/promotion state'
+          : null,
+        !repositoryRevisionConsistency.consistent
+          ? 'benchmark ledger mixes Git repository revisions and is not comparable'
           : null
       ].filter(Boolean)
     };
@@ -135,6 +158,7 @@ export function assessBenchmarkPromotion({
     ledger: ledgerValidation,
     formalAudit: historicalAudit,
     currentCompatibility,
+    repositoryRevisionConsistency,
     candidates: candidateResults,
     qualifiedCandidates,
     promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
