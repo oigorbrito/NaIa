@@ -33,10 +33,11 @@ test('aggregate harness hash changes if one bound component changes', async (t) 
   assert.notEqual(before.files[1].sha256, after.files[1].sha256);
 });
 
-test('formal provenance bundle includes runtime lifecycle, Git revision, environment, evaluators, schema, cleanup and promotion authorities', () => {
+test('formal provenance bundle includes runtime lifecycle, Git revision, candidate profile, environment, evaluators, schema, cleanup and promotion authorities', () => {
   for (const required of [
     'research/chassis/harness/harness-provenance.mjs',
     'research/chassis/harness/repository-provenance.mjs',
+    'research/chassis/harness/formal-candidate-profile-binding.mjs',
     'research/chassis/harness/formal-environment-identity.mjs',
     'research/chassis/harness/benchmark-execution-readiness.mjs',
     'research/chassis/harness/benchmark-promotion-gate.mjs',
