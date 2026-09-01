@@ -20,6 +20,7 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/fault-barrier.mjs',
   'research/chassis/harness/formal-cleanup-support.mjs',
   'research/chassis/harness/formal-dbos-lifecycle.mjs',
+  'research/chassis/harness/formal-environment-identity.mjs',
   'research/chassis/harness/formal-executor-support.mjs',
   'research/chassis/harness/formal-lifecycle-promotion-review.mjs',
   'research/chassis/harness/formal-lifecycle-qualification-provenance.mjs',
