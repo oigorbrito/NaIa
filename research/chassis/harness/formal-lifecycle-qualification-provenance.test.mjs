@@ -32,13 +32,14 @@ function recordView(provenance) {
   };
 }
 
-test('Temporal and DBOS lifecycle qualification bundles are candidate-specific and include T5 schema, Git provenance, policy and frozen dependency graph', () => {
+test('Temporal and DBOS lifecycle qualification bundles are candidate-specific and include T5 schema, Git and environment provenance, policy and frozen dependency graph', () => {
   const temporal = FORMAL_LIFECYCLE_QUALIFICATION_FILES['Temporal TypeScript'];
   const dbos = FORMAL_LIFECYCLE_QUALIFICATION_FILES['DBOS TypeScript'];
 
   for (const files of [temporal, dbos]) {
     assert.ok(files.includes('research/chassis/harness/experiment-record-schema-validator.mjs'));
     assert.ok(files.includes('research/chassis/harness/repository-provenance.mjs'));
+    assert.ok(files.includes('research/chassis/harness/formal-environment-identity.mjs'));
     assert.ok(files.includes('research/chassis/harness/formal-promotion-policy.mjs'));
     assert.ok(files.includes('research/chassis/formal-promotion-policy.v1.json'));
     assert.ok(files.includes('research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'));
@@ -72,7 +73,7 @@ test('qualification aggregate changes when an included runtime file changes', as
   assert.notEqual(before.aggregateSha256, after.aggregateSha256);
 });
 
-test('qualification aggregate changes when Git provenance authority, isolated record schema or frozen promotion policy changes', async (t) => {
+test('qualification aggregate changes when Git provenance, environment identity, isolated record schema or frozen promotion policy changes', async (t) => {
   const root = await syntheticRepository('DBOS TypeScript');
   t.after(() => rm(root, { recursive: true, force: true }));
 
@@ -85,11 +86,18 @@ test('qualification aggregate changes when Git provenance authority, isolated re
   assert.notEqual(before.aggregateSha256, repositoryChanged.aggregateSha256);
 
   await writeFile(
+    path.join(root, 'research/chassis/harness/formal-environment-identity.mjs'),
+    'fixture:changed-environment-identity\n'
+  );
+  const environmentChanged = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  assert.notEqual(repositoryChanged.aggregateSha256, environmentChanged.aggregateSha256);
+
+  await writeFile(
     path.join(root, 'research/chassis/harness/experiment-record-schema-validator.mjs'),
     'fixture:changed-record-schema\n'
   );
   const schemaChanged = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
-  assert.notEqual(repositoryChanged.aggregateSha256, schemaChanged.aggregateSha256);
+  assert.notEqual(environmentChanged.aggregateSha256, schemaChanged.aggregateSha256);
 
   await writeFile(
     path.join(root, 'research/chassis/formal-promotion-policy.v1.json'),
