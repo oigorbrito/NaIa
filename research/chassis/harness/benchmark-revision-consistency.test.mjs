@@ -46,7 +46,7 @@ function verifiedSupport(candidate = 'Temporal TypeScript') {
   };
 }
 
-function t7Record(repetition, repositoryRevision, harnessSha256 = HARNESS_A) {
+function t7Record(repetition, repositoryRevision, harnessSha256 = HARNESS_A, overrides = {}) {
   const workerPid = 7000 + repetition;
   return {
     schemaVersion: 1,
@@ -58,14 +58,25 @@ function t7Record(repetition, repositoryRevision, harnessSha256 = HARNESS_A) {
     setup: {
       status: 'READY',
       candidateVersion: '1.23.0',
-      candidateSourceRef: 'frozen',
+      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
       adapterSha256: 'd'.repeat(64),
       harnessSha256,
-      dependencyIdentity: {},
+      dependencyIdentity: {
+        manifestPath: '/fixture/research/chassis/adapters/temporal-ts/package.json',
+        manifestSha256: '7'.repeat(64),
+        packages: [{
+          package: '@temporalio/worker',
+          expectedVersion: '1.23.0',
+          declaredVersion: '1.23.0',
+          installedVersion: '1.23.0',
+          installedPackageJson: '/fixture/node_modules/@temporalio/worker/package.json'
+        }]
+      },
       environment: {
-        os: 'linux',
-        arch: 'x64',
-        runtime: 'node v22.16.0',
+        os: overrides.os ?? 'linux 6.11.0',
+        arch: overrides.arch ?? 'x64',
+        runtime: overrides.runtime ?? 'node v22.16.0',
+        packageManager: null,
         repositoryProvenance: {
           source: 'git',
           status: 'VERIFIED',
@@ -77,14 +88,27 @@ function t7Record(repetition, repositoryRevision, harnessSha256 = HARNESS_A) {
         formalLifecycleQualification: qualificationRecord(),
         formalRuntimeLifecycle: { candidate: 'Temporal TypeScript', status: 'RUNTIME_VERIFIED' }
       },
-      parameters: { randomSeed: 1070000 + repetition },
+      parameters: {
+        randomSeed: 1070000 + repetition,
+        mode: 'local-process',
+        workerAuthorityBoundary: 'Temporal worker process'
+      },
       cleanupVerifiedBeforeRun: true,
       preRunCleanupReceipt: {
         status: 'PASS',
         workerCleanup: true,
         durableStateCleanup: true,
         oracleCleanup: true,
-        temporaryResourcesCleanup: true
+        temporaryResourcesCleanup: true,
+        cliSha256: '6'.repeat(64),
+        versionOutput: overrides.versionOutput ?? 'Temporal CLI 1.8.1 Server 1.31.2',
+        expectedProfile: {
+          sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
+        },
+        observedPlatform: { platform: 'linux', arch: 'x64' },
+        workspace: `/tmp/run-${repetition}`,
+        address: `127.0.0.1:${7200 + repetition}`,
+        serverPid: 90000 + repetition
       }
     },
     run: {
@@ -115,13 +139,14 @@ const t7Suite = {
   benchmarkEligibility: { forbidBlockedOrInconclusive: ['T7'] }
 };
 
-test('candidate benchmark accepts repetitions from one frozen repository revision and one harness identity even when lifecycle support was qualified earlier', () => {
+test('candidate benchmark accepts repetitions from one frozen repository revision harness and environment identity even when lifecycle support was qualified earlier', () => {
   const result = benchmarkEligible(
     [t7Record(1, REVISION_A), t7Record(2, REVISION_A)],
     t7Suite,
     verifiedSupport()
   );
   assert.equal(result.eligible, true, result.errors.join('\n'));
+  assert.equal(result.environmentConsistency.consistent, true);
 });
 
 test('candidate benchmark rejects repetitions mixed across repository revisions', () => {
@@ -152,6 +177,26 @@ test('candidate benchmark rejects malformed harness identity rather than treatin
   );
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks a valid formal harness SHA-256 identity/);
+});
+
+test('candidate benchmark rejects same revision and harness when Node runtime changes', () => {
+  const result = benchmarkEligible(
+    [t7Record(1, REVISION_A), t7Record(2, REVISION_A, HARNESS_A, { runtime: 'node v24.0.0' })],
+    t7Suite,
+    verifiedSupport()
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /multiple common execution environment identities/);
+});
+
+test('candidate benchmark rejects same revision harness and Node when native runtime profile changes', () => {
+  const result = benchmarkEligible(
+    [t7Record(1, REVISION_A), t7Record(2, REVISION_A, HARNESS_A, { versionOutput: 'Temporal CLI 1.8.1 Server 1.31.3' })],
+    t7Suite,
+    verifiedSupport()
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /multiple candidate execution profile identities/);
 });
 
 test('cross-candidate comparison reports one common revision only when every verified record shares it', () => {
