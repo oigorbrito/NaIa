@@ -65,6 +65,18 @@ async function syntheticBlockedRepository() {
         required_env: ['DBOS_SYSTEM_DATABASE_URL'],
         worker_authority_boundary: 'synthetic DBOS executor boundary',
         blocker: 'B001'
+      },
+      {
+        candidate: 'Restate',
+        version: 'v1.7.8',
+        source_ref: 'restatedev/restate v1.7.8',
+        execution_package: { '@restatedev/restate-sdk': '1.16.9' },
+        package_manifest: 'research/chassis/adapters/restate-ts/package.json',
+        adapter: 'research/chassis/adapters/restate-ts/adapter.mjs',
+        mode: 'local-process',
+        required_env: [],
+        worker_authority_boundary: 'synthetic Restate service process boundary',
+        blocker: 'B001'
       }
     ]
   };
@@ -205,8 +217,8 @@ test('formal single-run rejects a critical mutant without a declared executor be
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
   await assert.rejects(
-    runFormalSingle({ repositoryRoot, candidateName: 'Temporal TypeScript', mutantId: 'T11', repetition: 1, env: {} }),
-    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Temporal TypeScript\/T11/
+    runFormalSingle({ repositoryRoot, candidateName: 'Restate', mutantId: 'T11', repetition: 1, env: {} }),
+    /FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:Restate\/T11/
   );
 });
 
