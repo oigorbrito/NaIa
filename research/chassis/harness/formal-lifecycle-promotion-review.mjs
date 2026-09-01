@@ -44,6 +44,7 @@ export function reviewLifecyclePromotion({
   const recordRevision = repositoryProvenanceReady(repositoryProvenance)
     ? String(repositoryProvenance.revision).toLowerCase()
     : null;
+  const runtimeIdentitySha256 = recomputedValidation?.runtimeIdentitySha256 ?? null;
 
   const checks = {
     executionRefPresent: nonEmpty(normalizedExecutionRef),
@@ -60,6 +61,10 @@ export function reviewLifecyclePromotion({
       record?.candidate,
       normalizedLifecycleQualificationSha256
     ),
+    runtimeIdentitySha256Valid: sha256Value(runtimeIdentitySha256),
+    suppliedRuntimeIdentityMatchesRecomputed:
+      sha256Value(suppliedValidation?.runtimeIdentitySha256) &&
+      suppliedValidation.runtimeIdentitySha256 === runtimeIdentitySha256,
     suppliedValidationEligible: suppliedValidation?.eligibleForLifecycleStatusPromotion === true,
     recomputedValidationEligible: recomputedValidation.eligibleForLifecycleStatusPromotion === true,
     candidateMatches: suppliedValidation?.candidate === record?.candidate && recomputedValidation.candidate === record?.candidate,
@@ -81,6 +86,7 @@ export function reviewLifecyclePromotion({
         validatorSha256: sha256(validationText),
         harnessSha256: normalizedHarnessSha256,
         lifecycleQualificationSha256: normalizedLifecycleQualificationSha256,
+        runtimeIdentitySha256,
         verifiedAt
       }
     : null;
@@ -90,6 +96,7 @@ export function reviewLifecyclePromotion({
     candidate: record?.candidate ?? null,
     experimentId: record?.experimentId ?? null,
     repositoryRevision: recordRevision,
+    runtimeIdentitySha256,
     candidateSemanticVerdict: record?.verdict ?? null,
     candidateSemanticVerdictDoesNotControlLifecyclePromotion: true,
     checks,
