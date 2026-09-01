@@ -81,6 +81,7 @@ const verifiedTemporalSupport = {
       repetition: 1,
       recordSha256: 'd'.repeat(64),
       validatorSha256: 'e'.repeat(64),
+      harnessSha256: 'b'.repeat(64),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }
@@ -170,6 +171,18 @@ test('hypothetical verified support accepts only the exact next record without c
   assert.equal(appended.formalAudit.valid, true);
   assert.equal(appended.records.length, 1);
   assert.equal(appended.validation.nextExpectedExperiment.experimentId, plan[1].experimentId);
+});
+
+test('hypothetical support without harness hash cannot open append admission', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [first] = buildExecutionPlan(protocol, suite);
+  const support = structuredClone(verifiedTemporalSupport);
+  delete support['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  assert.throws(
+    () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
+    /formal cleanup support is not runtime-verified/
+  );
 });
 
 test('immutable formal audit rejects stored lifecycle provenance removed after admission', async () => {
