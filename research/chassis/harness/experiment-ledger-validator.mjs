@@ -1,7 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
-import { collectObservedPids, workerPidProvenanceRequired } from './formal-worker-pid-provenance.mjs';
+import { explicitWorkerProcessPids, workerPidProvenanceRequired } from './formal-worker-pid-provenance.mjs';
 
 function sameIdentity(record, spec) {
   return record?.experimentId === spec.experimentId
@@ -47,8 +47,8 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
     mutantId: record?.mutantId,
     run: record?.run
   });
-  if (pidProvenanceRequired && collectObservedPids(record?.run?.rawObservations ?? {}).size === 0) {
-    errors.push(`${candidate ?? 'unknown candidate'}: injected critical formal execution lacks observed process PID provenance`);
+  if (pidProvenanceRequired && explicitWorkerProcessPids(record?.run).length === 0) {
+    errors.push(`${candidate ?? 'unknown candidate'}: injected critical formal execution lacks explicit worker process PID provenance`);
   }
 
   return { valid: errors.length === 0, errors };
