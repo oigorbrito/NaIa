@@ -74,6 +74,18 @@ export function defaultCleanupResult(setup) {
   };
 }
 
+function failedPreRunReceipt(error) {
+  return {
+    status: 'FAIL',
+    workerCleanup: false,
+    durableStateCleanup: false,
+    oracleCleanup: false,
+    temporaryResourcesCleanup: false,
+    reason: 'PRE_RUN_CLEANUP_HOOK_ERROR',
+    error: String(error)
+  };
+}
+
 export async function executeCandidateExperiment({
   repositoryRoot,
   candidateName,
@@ -94,23 +106,26 @@ export async function executeCandidateExperiment({
   return executeExperiment(spec, {
     environment,
     setup: async () => {
-      const inspected = await inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true });
-      if (inspected.status !== 'READY') return inspected;
+      // Candidate-owned lifecycle infrastructure may be necessary to establish
+      // required environment coordinates (for example DBOS_SYSTEM_DATABASE_URL).
+      // Establish it first, then inspect the fully concrete setup. A failed
+      // lifecycle never becomes candidate FAIL: the cleanup receipt gate closes
+      // setup before the run hook can execute.
       let receipt = null;
       if (typeof preRunCleanupHook === 'function') {
         try {
-          receipt = await preRunCleanupHook(spec, inspected, candidate, context);
+          receipt = await preRunCleanupHook(spec, null, candidate, context);
         } catch (error) {
-          receipt = {
-            status: 'FAIL',
-            workerCleanup: false,
-            durableStateCleanup: false,
-            oracleCleanup: false,
-            temporaryResourcesCleanup: false,
-            reason: 'PRE_RUN_CLEANUP_HOOK_ERROR',
-            error: String(error)
-          };
+          receipt = failedPreRunReceipt(error);
         }
+      }
+
+      const inspected = await inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true });
+      if (inspected.status !== 'READY') {
+        return {
+          ...inspected,
+          diagnostics: { ...(inspected.diagnostics ?? {}), preRunCleanupReceipt: receipt }
+        };
       }
       return applyPreRunCleanupGate(inspected, receipt);
     },
