@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "status": "PILOT_FROZEN_BEFORE_OUTCOMES",
+  "candidate": "Temporal TypeScript restricted profile",
+  "candidateSdkVersion": "1.23.0",
+  "nodeVersion": "22.16.0",
+  "temporalCli": {
+    "version": "1.8.1",
+    "embeddedServerVersion": "1.31.2",
+    "asset": "temporal_cli_1.8.1_linux_amd64.tar.gz",
+    "sha256": "b94417b9a8760b30217f4b881dabce4b16a76a38b5e99e2eca3ce358b8030f06"
+  },
+  "dependencyGraph": {
+    "lockfile": "research/chassis/adapters/temporal-ts/package-lock.json",
+    "sha256": "70577d13ae243d0f5b0f7f1c7933655af7ac8a238c0b2238c474bb055641235f",
+    "freezeRun": 33511353807,
+    "requireRuntimeLockMatch": true
+  },
+  "serverProfile": {
+    "mode": "temporal-cli-start-dev",
+    "address": "127.0.0.1:7233",
+    "namespace": "default",
+    "headless": true,
+    "persistence": "isolated-sqlite-file-per-cell",
+    "workerFaultBoundary": "server process and sqlite remain alive while worker/adapter process is faulted"
+  },
+  "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
+  "repetitions": [1, 2, 3],
+  "classificationPolicy": {
+    "infrastructure": "BLOCKED_*",
+    "missingOrInvalidFault": "INCONCLUSIVE_*",
+    "candidatePass": "QUALIFICATION_PASS",
+    "candidateFail": "QUALIFICATION_FAIL"
+  },
+  "formalLedger": false,
+  "benchmarkPromotionAllowed": false
+}
