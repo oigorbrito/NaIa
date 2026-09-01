@@ -1,6 +1,10 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
-import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import {
+  FORMAL_CLEANUP_SUPPORT,
+  assessLifecycleRuntimeIdentityBinding,
+  formalCleanupSupportsCandidate
+} from './formal-cleanup-support.mjs';
 import { assessCandidateProfileBinding } from './formal-candidate-profile-binding.mjs';
 import { assessFormalEnvironmentConsistency, deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import {
@@ -212,6 +216,9 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
 
   const compatibility = assessStoredFormalRecordCurrentCompatibility(record);
   errors.push(...compatibility.errors);
+
+  const runtimeIdentityBinding = assessLifecycleRuntimeIdentityBinding(record, cleanupSupport, candidate);
+  errors.push(...runtimeIdentityBinding.errors);
 
   return { valid: errors.length === 0, errors };
 }
