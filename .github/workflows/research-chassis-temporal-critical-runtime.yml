@@ -1,0 +1,328 @@
+name: Research Chassis Temporal Critical Runtime Qualification
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-temporal-critical-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        mutant: [T5, T7, T8, T11, T12, T16]
+        repetition: [1, 2, 3]
+    env:
+      TEMPORAL_CLI_VERSION: '1.8.1'
+      TEMPORAL_CLI_ARCHIVE: 'temporal_cli_1.8.1_linux_amd64.tar.gz'
+      TEMPORAL_CLI_SHA256: 'b94417b9a8760b30217f4b881dabce4b16a76a38b5e99e2eca3ce358b8030f06'
+      TEMPORAL_SDK_VERSION: '1.23.0'
+      TEMPORAL_LOCK_SHA256: '70577d13ae243d0f5b0f7f1c7933655af7ac8a238c0b2238c474bb055641235f'
+      TEMPORAL_ADDRESS: '127.0.0.1:7233'
+      TEMPORAL_NAMESPACE: 'default'
+      NAIA_T5_TIMEOUT_MS: '30000'
+      NAIA_T11_TIMEOUT_MS: '30000'
+      NAIA_T12_TIMEOUT_MS: '30000'
+      NAIA_T16_TIMEOUT_MS: '30000'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+          cache-dependency-path: research/chassis/adapters/temporal-ts/package-lock.json
+
+      - name: Initialize isolated qualification workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUAL_DIR="$RUNNER_TEMP/naia-temporal-${{ matrix.mutant }}-${{ matrix.repetition }}"
+          rm -rf "$QUAL_DIR"
+          mkdir -p "$QUAL_DIR/bin" "$QUAL_DIR/server-work" "$QUAL_DIR/evidence"
+          echo "QUAL_DIR=$QUAL_DIR" >> "$GITHUB_ENV"
+          {
+            echo "classification=NOT_RUN"
+            echo "candidate=Temporal TypeScript restricted profile"
+            echo "candidate_sdk_version=$TEMPORAL_SDK_VERSION"
+            echo "temporal_cli_version=$TEMPORAL_CLI_VERSION"
+            echo "temporal_server_version=1.31.2"
+            echo "mutant=${{ matrix.mutant }}"
+            echo "repetition=${{ matrix.repetition }}"
+            echo "head_sha=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "temporal_address=$TEMPORAL_ADDRESS"
+            echo "temporal_namespace=$TEMPORAL_NAMESPACE"
+            echo "persistence=isolated_sqlite_file"
+            echo "scope=CONTROLLED_LOCAL_FAULT_INJECTION"
+            echo "formal_ledger=false"
+          } > "$QUAL_DIR/evidence/runtime-manifest.txt"
+          ACTUAL_LOCK=$(sha256sum research/chassis/adapters/temporal-ts/package-lock.json | awk '{print $1}')
+          printf 'expected=%s\nactual=%s\n' "$TEMPORAL_LOCK_SHA256" "$ACTUAL_LOCK" | tee "$QUAL_DIR/evidence/declared-lock-validation.txt"
+          test "$ACTUAL_LOCK" = "$TEMPORAL_LOCK_SHA256"
+          if pgrep -af '[t]5-worker-process.mjs|[t]11-worker-process.mjs|[t]16-worker-process.mjs|temporal-ts/[a]dapter.mjs|[t]emporal server start-dev' > "$QUAL_DIR/evidence/pre-run-processes.txt"; then
+            echo 'BLOCKED_PRE_RUN_PROCESS_CONTAMINATION' > "$QUAL_DIR/evidence/classification.txt"
+            exit 1
+          fi
+
+      - name: Install frozen Temporal SDK dependency graph
+        id: npm_install
+        continue-on-error: true
+        working-directory: research/chassis/adapters/temporal-ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE=$(sha256sum package-lock.json | awk '{print $1}')
+          npm ci --ignore-scripts --no-audit --no-fund
+          AFTER=$(sha256sum package-lock.json | awk '{print $1}')
+          test "$BEFORE" = "$TEMPORAL_LOCK_SHA256"
+          test "$AFTER" = "$TEMPORAL_LOCK_SHA256"
+          cp package-lock.json "$QUAL_DIR/evidence/package-lock.runtime.json"
+          printf '%s\n' "$AFTER" > "$QUAL_DIR/evidence/runtime-lock.sha256"
+          npm ls --all --json > "$QUAL_DIR/evidence/npm-tree.json"
+          node --input-type=module <<'NODE' | tee "$QUAL_DIR/evidence/sdk-versions.txt"
+          import { readFile } from 'node:fs/promises';
+          const expected = {
+            '@temporalio/activity':'1.23.0',
+            '@temporalio/client':'1.23.0',
+            '@temporalio/worker':'1.23.0',
+            '@temporalio/workflow':'1.23.0'
+          };
+          for (const [name,version] of Object.entries(expected)) {
+            const actual=JSON.parse(await readFile(`node_modules/${name}/package.json`,'utf8')).version;
+            console.log(`${name}=${actual}`);
+            if(actual!==version) process.exitCode=2;
+          }
+          NODE
+
+      - name: Download and verify exact Temporal CLI and embedded server
+        id: cli_download
+        if: steps.npm_install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$QUAL_DIR/bin"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            -o "$TEMPORAL_CLI_ARCHIVE" \
+            "https://github.com/temporalio/cli/releases/download/v${TEMPORAL_CLI_VERSION}/${TEMPORAL_CLI_ARCHIVE}"
+          printf '%s  %s\n' "$TEMPORAL_CLI_SHA256" "$TEMPORAL_CLI_ARCHIVE" \
+            | sha256sum --check --strict | tee "$QUAL_DIR/evidence/temporal-cli-checksum.txt"
+          tar -xzf "$TEMPORAL_CLI_ARCHIVE"
+          chmod +x temporal
+          ./temporal --version | tee "$QUAL_DIR/evidence/temporal-cli-version.txt"
+          grep -F 'Server 1.31.2' "$QUAL_DIR/evidence/temporal-cli-version.txt"
+
+      - name: Start isolated persistent Temporal development server
+        id: server_start
+        if: steps.npm_install.outcome == 'success' && steps.cli_download.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$QUAL_DIR/server-work"
+          "$QUAL_DIR/bin/temporal" server start-dev \
+            --headless \
+            --ip 127.0.0.1 \
+            --port 7233 \
+            --db-filename "$QUAL_DIR/server-work/temporal.sqlite" \
+            --log-level warn \
+            > "$QUAL_DIR/evidence/temporal-server.log" 2>&1 &
+          echo $! > "$QUAL_DIR/evidence/temporal-server.pid"
+          for i in $(seq 1 120); do
+            if "$QUAL_DIR/bin/temporal" operator cluster health --address "$TEMPORAL_ADDRESS" \
+              > "$QUAL_DIR/evidence/cluster-health.txt" 2> "$QUAL_DIR/evidence/cluster-health.err" && \
+               "$QUAL_DIR/bin/temporal" operator namespace describe --namespace "$TEMPORAL_NAMESPACE" --address "$TEMPORAL_ADDRESS" \
+              > "$QUAL_DIR/evidence/namespace-describe.txt" 2> "$QUAL_DIR/evidence/namespace-describe.err"; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$QUAL_DIR/evidence/temporal-server.pid")" 2>/dev/null; then
+              tail -200 "$QUAL_DIR/evidence/temporal-server.log" >&2 || true
+              exit 2
+            fi
+            sleep 0.5
+          done
+          tail -200 "$QUAL_DIR/evidence/temporal-server.log" >&2 || true
+          exit 3
+
+      - name: Execute controlled candidate-native critical experiment
+        id: execute
+        if: steps.npm_install.outcome == 'success' && steps.cli_download.outcome == 'success' && steps.server_start.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          STDOUT="$QUAL_DIR/evidence/${MUTANT,,}-driver.stdout.log"
+          STDERR="$QUAL_DIR/evidence/${MUTANT,,}-driver.stderr.log"
+          case "$MUTANT" in
+            T5)
+              (cd research/chassis/adapters/temporal-ts && node t5-two-worker-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            T7|T8)
+              node research/chassis/harness/common-runner.mjs \
+                --adapter research/chassis/adapters/temporal-ts/adapter.mjs \
+                --candidate 'Temporal TypeScript' \
+                --mode local-process \
+                --mutant "$MUTANT" \
+                --timeout-ms 30000 \
+                --output "$EVIDENCE" > "$STDOUT" 2> "$STDERR"
+              ;;
+            T11)
+              (cd research/chassis/adapters/temporal-ts && node t11-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            T12)
+              (cd research/chassis/adapters/temporal-ts && node t12-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            T16)
+              (cd research/chassis/adapters/temporal-ts && node t16-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            *)
+              echo "unsupported mutant $MUTANT" >&2
+              exit 64
+              ;;
+          esac
+          CODE=$?
+          echo "$CODE" > "$QUAL_DIR/evidence/${MUTANT,,}-driver.exit-code.txt"
+          exit "$CODE"
+
+      - name: Evaluate emitted candidate evidence
+        id: evaluate
+        if: always() && steps.execute.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          INPUT="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          OUTPUT="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          test -s "$INPUT"
+          node --input-type=module - "$MUTANT" "$INPUT" "$OUTPUT" <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { evaluateT5Evidence } from './research/chassis/harness/t5-evaluator.mjs';
+          import { evaluateT11Evidence } from './research/chassis/harness/t11-evaluator.mjs';
+          import { evaluateT12Evidence } from './research/chassis/harness/t12-evaluator.mjs';
+          import { evaluateT16Evidence } from './research/chassis/harness/t16-evaluator.mjs';
+          const [mutant,input,output]=process.argv.slice(2);
+          const evidence=JSON.parse(await readFile(input,'utf8'));
+          let evaluation;
+          if (mutant==='T5') evaluation=evaluateT5Evidence(evidence);
+          else if (mutant==='T11') evaluation=evaluateT11Evidence(evidence);
+          else if (mutant==='T12') evaluation=evaluateT12Evidence(evidence);
+          else if (mutant==='T16') evaluation=evaluateT16Evidence(evidence);
+          else if (mutant==='T7' || mutant==='T8') {
+            evaluation={mutantId:mutant,checks:evidence.checks ?? {},verdict:evidence.verdict ?? 'INCONCLUSIVE',blocker:evidence.blocker ?? null};
+          } else throw new Error(`unsupported mutant ${mutant}`);
+          await writeFile(output, JSON.stringify(evaluation,null,2)+'\n');
+          console.log(JSON.stringify(evaluation,null,2));
+          NODE
+
+      - name: Classify without conflating infrastructure, injection, and candidate behavior
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          EVALUATION="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          if [ '${{ steps.npm_install.outcome }}' != success ]; then C='BLOCKED_INFRASTRUCTURE_NPM';
+          elif [ '${{ steps.cli_download.outcome }}' != success ]; then C='BLOCKED_INFRASTRUCTURE_TEMPORAL_CLI';
+          elif [ '${{ steps.server_start.outcome }}' != success ]; then C='BLOCKED_INFRASTRUCTURE_TEMPORAL_SERVER_START';
+          elif [ ! -s "$EVIDENCE" ]; then C='INCONCLUSIVE_NO_RUNTIME_EVIDENCE';
+          elif [ '${{ steps.evaluate.outcome }}' != success ] || [ ! -s "$EVALUATION" ]; then C='INCONCLUSIVE_EVALUATION_ERROR';
+          else
+            C=$(node --input-type=module - "$EVALUATION" <<'NODE'
+          import {readFile} from 'node:fs/promises';
+          const e=JSON.parse(await readFile(process.argv[2],'utf8'));
+          console.log(e.verdict==='PASS'?'QUALIFICATION_PASS':e.verdict==='FAIL'?'QUALIFICATION_FAIL':e.verdict==='BLOCKED'?'BLOCKED_RUNTIME_PREREQUISITE':'INCONCLUSIVE_FAULT_OR_MEASUREMENT');
+          NODE
+            )
+          fi
+          echo "$C" | tee "$QUAL_DIR/evidence/classification.txt"
+          echo "classification=$C" >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+          {
+            echo "npm_install=${{ steps.npm_install.outcome }}"
+            echo "cli_download=${{ steps.cli_download.outcome }}"
+            echo "server_start=${{ steps.server_start.outcome }}"
+            echo "execute=${{ steps.execute.outcome }}"
+            echo "evaluate=${{ steps.evaluate.outcome }}"
+          } >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+
+      - name: Verify and record isolated cleanup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          pkill -f '[t]5-worker-process.mjs' 2>/dev/null || true
+          pkill -f '[t]11-worker-process.mjs' 2>/dev/null || true
+          pkill -f '[t]16-worker-process.mjs' 2>/dev/null || true
+          pkill -f 'temporal-ts/[a]dapter.mjs' 2>/dev/null || true
+          sleep .5
+          WORKERS_CLEAN=true
+          pgrep -af '[t]5-worker-process.mjs|[t]11-worker-process.mjs|[t]16-worker-process.mjs|temporal-ts/[a]dapter.mjs' \
+            > "$QUAL_DIR/evidence/post-run-worker-processes.txt" && WORKERS_CLEAN=false
+
+          SERVER_CLEAN=true
+          if [ -f "$QUAL_DIR/evidence/temporal-server.pid" ]; then
+            PID=$(cat "$QUAL_DIR/evidence/temporal-server.pid")
+            kill "$PID" 2>/dev/null || true
+            for i in $(seq 1 20); do
+              kill -0 "$PID" 2>/dev/null || break
+              sleep .1
+            done
+            kill -9 "$PID" 2>/dev/null || true
+            kill -0 "$PID" 2>/dev/null && SERVER_CLEAN=false
+          fi
+
+          SQLITE_OBSERVED=false
+          [ -f "$QUAL_DIR/server-work/temporal.sqlite" ] && SQLITE_OBSERVED=true
+          rm -rf "$QUAL_DIR/server-work"
+          STORAGE_CLEAN=true
+          [ -e "$QUAL_DIR/server-work" ] && STORAGE_CLEAN=false
+
+          CLEAN=true
+          [ "$WORKERS_CLEAN" = true ] || CLEAN=false
+          [ "$SERVER_CLEAN" = true ] || CLEAN=false
+          [ "$STORAGE_CLEAN" = true ] || CLEAN=false
+          {
+            echo "cleanup_status=$([ "$CLEAN" = true ] && echo PASS || echo FAIL)"
+            echo "worker_process_cleanup=$WORKERS_CLEAN"
+            echo "temporal_server_cleanup=$SERVER_CLEAN"
+            echo "sqlite_store_observed=$SQLITE_OBSERVED"
+            echo "sqlite_store_cleanup=$STORAGE_CLEAN"
+          } | tee "$QUAL_DIR/evidence/cleanup.txt"
+
+      - name: Invalidate non-blocked qualification if cleanup failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -f "$QUAL_DIR/evidence/classification.txt" ] || exit 0
+          C=$(cat "$QUAL_DIR/evidence/classification.txt")
+          CLEANUP=$(sed -n 's/^cleanup_status=//p' "$QUAL_DIR/evidence/cleanup.txt" | head -1)
+          if [ "$CLEANUP" != PASS ] && [[ "$C" != BLOCKED_* ]]; then
+            echo 'INCONCLUSIVE_CLEANUP_FAIL' > "$QUAL_DIR/evidence/classification.txt"
+          fi
+
+      - name: Upload raw qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-${{ matrix.mutant }}-${{ github.sha }}-r${{ matrix.repetition }}
+          path: ${{ env.QUAL_DIR }}/evidence/
+          if-no-files-found: error
+          retention-days: 30
