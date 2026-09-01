@@ -11,7 +11,8 @@ function evidence(mutant, overrides = {}) {
     operationId: 'objective-1:external-effect',
     blocker: null,
     initial: { pid: 1234, signal: mutant === 'T7' ? 'SIGKILL' : null },
-    status: { process: { code: 0 }, parsed: { state: 'COMPLETED' } },
+    resume: mutant === 'T7' ? { pid: 1235 } : { pid: null, skipped: true },
+    status: { process: { code: 0, pid: 1299 }, parsed: { state: 'COMPLETED' } },
     checks: {
       crashInjected: mutant === 'T7',
       responseLossInjected: mutant === 'T8',
@@ -31,31 +32,34 @@ function evidence(mutant, overrides = {}) {
   };
 }
 
-test('bridge maps isolated T7 to worker-process fault without T8 acceptance leakage', () => {
+test('bridge maps isolated T7 to worker-process fault and exposes both execution-boundary PIDs', () => {
   const result = commonRunnerEvidenceToRunResult(evidence('T7'), 'T7');
   assert.equal(result.blocked, false);
   assert.equal(result.fault.injected, true);
   assert.equal(result.fault.targetKind, 'worker-process');
   assert.equal(result.fault.signal, 'SIGKILL');
   assert.equal(result.fault.durableAuthorityAlive, true);
+  assert.deepEqual(result.rawObservations.workerProcessPids, [1234, 1235]);
   assert.equal(result.acceptanceChecks.durableAuthorityReachable, true);
   assert.equal(result.acceptanceChecks.noUnexpectedResponseLoss, true);
   assert.equal('oneResponseLossObserved' in result.acceptanceChecks, false);
 });
 
-test('bridge maps isolated T8 to response-loss fault without process crash requirement', () => {
+test('bridge maps isolated T8 to response-loss fault and exposes the active adapter worker PID only', () => {
   const result = commonRunnerEvidenceToRunResult(evidence('T8'), 'T8');
   assert.equal(result.fault.injected, true);
   assert.equal(result.fault.targetKind, 'external-response');
   assert.equal(result.fault.signal, null);
   assert.equal(result.fault.durableAuthorityAlive, true);
+  assert.deepEqual(result.rawObservations.workerProcessPids, [1234]);
+  assert.equal(result.rawObservations.workerProcessPids.includes(1299), false);
   assert.equal(result.acceptanceChecks.oneResponseLossObserved, true);
 });
 
 test('bridge preserves runtime prerequisite BLOCKED classification', () => {
   const value = evidence('T8', { verdict: 'BLOCKED', blocker: 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT' });
   value.checks.responseLossInjected = false;
-  value.status = { process: { code: 1 }, parsed: null };
+  value.status = { process: { code: 1, pid: 1299 }, parsed: null };
   const result = commonRunnerEvidenceToRunResult(value, 'T8');
   assert.equal(result.blocked, true);
   assert.equal(result.blocker, 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT');
