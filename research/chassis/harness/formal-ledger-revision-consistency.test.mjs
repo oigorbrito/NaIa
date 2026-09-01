@@ -9,11 +9,9 @@ import {
   assessStoredFormalLedgerHarnessConsistency,
   assessStoredFormalLedgerRepositoryRevisionConsistency
 } from './experiment-ledger-validator.mjs';
-import {
-  currentLifecycleQualificationProvenance,
-  currentLifecycleQualificationSha256
-} from './formal-lifecycle-qualification-provenance.mjs';
+import { currentLifecycleQualificationProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
+import { verifiedCleanupSupport } from './formal-test-fixtures.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -37,24 +35,7 @@ function qualificationRecord(candidate) {
 }
 
 function supportEntry(candidate, supportRevision) {
-  const slug = candidate.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  return {
-    preRunCleanup: true,
-    postRunCleanup: true,
-    status: 'RUNTIME_VERIFIED',
-    verificationEvidence: {
-      executionRef: `github-actions:run=lifecycle;job=${slug};sha=${supportRevision}`,
-      repositoryRevision: supportRevision,
-      experimentId: `${slug}-t5-001`,
-      mutantId: 'T5',
-      repetition: 1,
-      recordSha256: 'a'.repeat(64),
-      validatorSha256: 'b'.repeat(64),
-      harnessSha256: 'c'.repeat(64),
-      lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate),
-      verifiedAt: '2026-09-01T00:00:00.000Z'
-    }
-  };
+  return verifiedCleanupSupport([candidate], supportRevision)[candidate];
 }
 
 function blockedRecord(spec, repositoryRevision, harnessSha256 = HARNESS_A) {
