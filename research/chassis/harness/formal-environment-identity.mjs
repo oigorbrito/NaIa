@@ -136,6 +136,7 @@ export function deriveFormalEnvironmentIdentity(record) {
       commonSha256: null,
       candidateProfile: null,
       candidateProfileSha256: null,
+      runtimeIdentitySha256: null,
       errors: []
     };
   }
@@ -175,6 +176,7 @@ export function deriveFormalEnvironmentIdentity(record) {
     commonSha256: errors.some((error) => error.startsWith('setup.environment.')) ? null : hashIdentity(common),
     candidateProfile,
     candidateProfileSha256: errors.length === 0 ? hashIdentity(candidateProfile) : null,
+    runtimeIdentitySha256: errors.length === 0 ? hashIdentity(candidateProfile.runtimeIdentity) : null,
     errors
   };
 }
