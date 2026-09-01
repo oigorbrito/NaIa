@@ -18,6 +18,10 @@ function nonEmptyArray(value) {
   return Array.isArray(value) && value.length > 0;
 }
 
+function sha256Value(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+}
+
 function allCleanupDimensionsTrue(value) {
   return CLEANUP_DIMENSIONS.every((key) => value?.[key] === true);
 }
@@ -57,6 +61,7 @@ export function validateRuntimeLifecycleReceipt(record) {
   const lifecycle = environment.formalRuntimeLifecycle ?? null;
   const lifecycleQualification = environment.formalLifecycleQualification ?? null;
   const formalEnvironmentIdentity = deriveFormalEnvironmentIdentity(record);
+  const runtimeIdentitySha256 = formalEnvironmentIdentity.runtimeIdentitySha256 ?? null;
   const workerProcessPids = explicitWorkerProcessPids(record?.run);
   const observedWorkerPids = cleanup?.observedWorkerPids ?? [];
   const liveObservedWorkerPids = cleanup?.liveObservedWorkerPids ?? [];
@@ -71,6 +76,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     cleanupVerifiedBeforeRun: record?.setup?.cleanupVerifiedBeforeRun === true,
     repositoryRevisionVerified: repositoryProvenanceReady(environment.repositoryProvenance),
     formalEnvironmentIdentityValid: formalEnvironmentIdentity.applicable === true && formalEnvironmentIdentity.valid === true,
+    formalRuntimeIdentitySha256Present: sha256Value(runtimeIdentitySha256),
     lifecycleDeclared: lifecycle?.candidate === record?.candidate,
     lifecycleStateIsPrePromotionOrVerified: ['IMPLEMENTED_NOT_RUNTIME_VERIFIED', 'RUNTIME_VERIFIED'].includes(lifecycle?.status),
     lifecycleQualificationBundleCurrent: lifecycleQualificationRecordProvenanceValid(lifecycleQualification, record?.candidate),
@@ -96,6 +102,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     repetition: record?.repetition ?? null,
     repositoryRevision: environment.repositoryProvenance?.revision ?? null,
     formalEnvironmentIdentity,
+    runtimeIdentitySha256,
     candidateVerdict: record?.verdict ?? null,
     candidateVerdictIgnoredForLifecycleVerification: true,
     workerProcessPids,
