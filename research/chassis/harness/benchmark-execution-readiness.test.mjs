@@ -29,6 +29,7 @@ function completeCleanupSupport(candidates) {
       validatorSha256: String(index + 1).padStart(64, 'b').slice(-64),
       harnessSha256: String(index + 1).padStart(64, 'c').slice(-64),
       lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate.candidate),
+      runtimeIdentitySha256: String(index + 1).padStart(64, 'd').slice(-64),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }]));
@@ -117,6 +118,17 @@ test('cleanup support without current lifecycle qualification hash cannot open r
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
   cleanupSupport.Restate.verificationEvidence.lifecycleQualificationSha256 = '0'.repeat(64);
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
+  assert.equal(result.ready, false);
+  assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
+});
+
+test('cleanup support without native runtime identity hash cannot open readiness', () => {
+  const protocol = { criticalMutants: ['T5'] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const support = { T5: { modes: ['local-process'], candidates: null } };
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.runtimeIdentitySha256;
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
