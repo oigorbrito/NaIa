@@ -13,6 +13,13 @@ function preRunCleanupReceiptValid(receipt) {
   return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt?.[key] === true);
 }
 
+export function benchmarkRepositoryRevisions(records) {
+  return [...new Set((records ?? [])
+    .map((record) => record?.setup?.environment?.repositoryProvenance)
+    .filter((value) => repositoryProvenanceReady(value))
+    .map((value) => String(value.revision).toLowerCase()))].sort();
+}
+
 export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   if (!Array.isArray(records) || records.length === 0) return { eligible: false, errors: ['no records'] };
@@ -20,6 +27,11 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
   if (!candidate || records.some((record) => record.candidate !== candidate)) errors.push('records must belong to one candidate');
   if (candidate && !formalCleanupSupportsCandidate(cleanupSupport, candidate)) {
     errors.push(`${candidate}: benchmark eligibility requires evidence-backed RUNTIME_VERIFIED formal cleanup support`);
+  }
+
+  const repositoryRevisions = benchmarkRepositoryRevisions(records);
+  if (repositoryRevisions.length > 1) {
+    errors.push(`${candidate ?? 'unknown candidate'}: formal benchmark records span multiple Git repository revisions: ${repositoryRevisions.join(', ')}`);
   }
 
   const mutants = new Map((faultSuite?.mutants ?? []).map((mutant) => [mutant.id, mutant]));
@@ -85,5 +97,5 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
     }
   }
 
-  return { eligible: errors.length === 0, candidate, errors };
+  return { eligible: errors.length === 0, candidate, repositoryRevisions, errors };
 }
