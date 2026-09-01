@@ -1,3 +1,4 @@
+import { deriveFormalEnvironmentIdentity } from './formal-environment-identity.mjs';
 import { currentLifecycleQualificationSha256 } from './formal-lifecycle-qualification-provenance.mjs';
 import { executionRefRepositoryRevision, gitRevisionValid } from './repository-provenance.mjs';
 
@@ -12,7 +13,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-runtime-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes plus the exact Git repository revision are recorded.'
+    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification/native-runtime hashes plus the exact Git repository revision are recorded.'
   }),
   'DBOS TypeScript': Object.freeze({
     preRunCleanup: false,
@@ -20,7 +21,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-dbos-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes plus the exact Git repository revision are recorded.'
+    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification/native-runtime hashes plus the exact Git repository revision are recorded.'
   }),
   Restate: Object.freeze({
     preRunCleanup: false,
@@ -28,7 +29,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-restate-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until the isolated Restate 1.7.8 lifecycle and T5/r1 receipt execute successfully with the observed server SHA-256, record/validator/harness/lifecycle-qualification hashes and exact Git repository revision recorded.'
+    note: 'Do not set cleanup support true until the isolated Restate 1.7.8 lifecycle and T5/r1 receipt execute successfully with the observed server SHA-256, record/validator/harness/lifecycle-qualification/native-runtime hashes and exact Git repository revision recorded.'
   }),
   'Trigger.dev': Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null })
 });
@@ -68,6 +69,7 @@ export function runtimeVerificationEvidenceValid(evidence, candidateName = null)
     sha256(evidence.validatorSha256) &&
     sha256(evidence.harnessSha256) &&
     sha256(evidence.lifecycleQualificationSha256) &&
+    sha256(evidence.runtimeIdentitySha256) &&
     (!candidateName || (currentQualificationSha && evidence.lifecycleQualificationSha256 === currentQualificationSha)) &&
     nonEmpty(evidence.verifiedAt)
   );
@@ -83,4 +85,41 @@ export function formalCleanupSupportsCandidate(cleanupSupport, candidateName) {
   return missingFormalCleanupPhases(cleanupSupport, candidateName).length === 0 &&
     entry.status === 'RUNTIME_VERIFIED' &&
     runtimeVerificationEvidenceValid(entry.verificationEvidence, candidateName);
+}
+
+export function assessLifecycleRuntimeIdentityBinding(record, cleanupSupport, candidateName = record?.candidate) {
+  if (record?.setup?.status !== 'READY') {
+    return {
+      applicable: false,
+      compatible: true,
+      candidate: candidateName ?? null,
+      expectedRuntimeIdentitySha256: null,
+      observedRuntimeIdentitySha256: null,
+      errors: []
+    };
+  }
+
+  const entry = cleanupSupport?.[candidateName] ?? {};
+  const expectedRuntimeIdentitySha256 = entry?.verificationEvidence?.runtimeIdentitySha256 ?? null;
+  const identity = deriveFormalEnvironmentIdentity(record);
+  const observedRuntimeIdentitySha256 = identity?.runtimeIdentitySha256 ?? null;
+  const errors = [];
+
+  if (!sha256(expectedRuntimeIdentitySha256)) {
+    errors.push(`${candidateName ?? 'unknown candidate'}: runtime-verified cleanup support lacks qualification native runtime identity SHA-256`);
+  }
+  if (!identity?.applicable || !identity?.valid || !sha256(observedRuntimeIdentitySha256)) {
+    errors.push(`${candidateName ?? 'unknown candidate'}: READY formal record lacks a valid native runtime identity SHA-256`);
+  } else if (sha256(expectedRuntimeIdentitySha256) && observedRuntimeIdentitySha256 !== expectedRuntimeIdentitySha256) {
+    errors.push(`${candidateName ?? 'unknown candidate'}: READY formal record native runtime identity differs from lifecycle qualification runtime identity`);
+  }
+
+  return {
+    applicable: true,
+    compatible: errors.length === 0,
+    candidate: candidateName ?? null,
+    expectedRuntimeIdentitySha256: sha256(expectedRuntimeIdentitySha256) ? expectedRuntimeIdentitySha256 : null,
+    observedRuntimeIdentitySha256: sha256(observedRuntimeIdentitySha256) ? observedRuntimeIdentitySha256 : null,
+    errors
+  };
 }
