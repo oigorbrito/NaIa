@@ -47,6 +47,17 @@
         "changesSemanticVerdicts": false,
         "changesRepetitionThreshold": false,
         "constraint": "Formal semantic acceptance for every benchmark-critical mutant must be computed by candidate-agnostic evaluator code from raw observations; candidate adapters and execution runners may translate native evidence but must not define or override success semantics. Fault injection is classified separately, and an absent intended fault remains INCONCLUSIVE. For T7 and T8, the frozen executable acceptance contract requires exactly one external apply, one stable semantic operation identity, reachable durable authority, objective_completed terminal recovery and COMPLETED final status; T7 additionally requires zero response losses, while T8 additionally requires that the measurement cutoff was not reached after the one required response-loss fault. RECONCILIATION_REQUIRED is observable evidence but is not T7/T8 PASS under this V1 contract."
+      },
+      {
+        "id": "A004",
+        "date": "2026-09-01",
+        "status": "FROZEN_BEFORE_FORMAL_EXECUTION",
+        "policy": "lifecycle-qualification-runtime-identity-must-match-formal-candidate-runtime",
+        "reason": "Prevent runtime-verified cleanup support obtained with one native runtime artifact from authorizing benchmark records executed with a different native runtime artifact under the same candidate/version label.",
+        "outcomeDriven": false,
+        "changesSemanticVerdicts": false,
+        "changesRepetitionThreshold": false,
+        "constraint": "Any runtime-verified T5/r1 lifecycle qualification used to open formal cleanup support must record a SHA-256 identity of the stable native runtime identity observed in that qualification, and every READY formal benchmark record for that candidate must derive the same native runtime identity SHA-256 before ledger admission or benchmark eligibility. A lifecycle qualification produced with a different native runtime artifact cannot authorize formal benchmark records even when candidate version, Git revision policy and lifecycle-qualification source hash otherwise satisfy their independent gates."
       }
     ]
   },
@@ -89,7 +100,8 @@
     "sequence": "for repetition 1..100, execute each critical mutant for each candidate using the declared environment profile; record any unavailable run as BLOCKED rather than substituting another configuration",
     "repositoryRevisionPolicy": "single-verified-git-revision-per-formal-ledger",
     "environmentIdentityPolicy": "single-common-runtime-and-candidate-profile-per-formal-ledger",
-    "evaluatorAuthorityPolicy": "candidate-agnostic-evaluator-authority"
+    "evaluatorAuthorityPolicy": "candidate-agnostic-evaluator-authority",
+    "lifecycleRuntimeIdentityPolicy": "lifecycle-qualification-runtime-identity-must-match-formal-candidate-runtime"
   },
   "requiredRecordFields": [
     "experimentId",
