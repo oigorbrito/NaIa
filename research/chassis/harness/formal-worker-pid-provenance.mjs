@@ -29,6 +29,37 @@ export function workerPidProvenanceRequired({ setupStatus, mutantId, run }) {
     && run?.fault?.injected === true;
 }
 
+export function validateWorkerPidCleanupEvidence({ setupStatus, mutantId, run, cleanup }) {
+  const required = workerPidProvenanceRequired({ setupStatus, mutantId, run });
+  const workerProcessPids = explicitWorkerProcessPids(run);
+  const observedWorkerPids = normalizeWorkerProcessPids(cleanup?.observedWorkerPids ?? []);
+  const liveObservedWorkerPids = normalizeWorkerProcessPids(cleanup?.liveObservedWorkerPids ?? []);
+  const errors = [];
+
+  if (required && workerProcessPids.length === 0) {
+    errors.push('injected critical execution lacks explicit worker process PID provenance');
+  }
+  if (required) {
+    const missingFromCleanup = workerProcessPids.filter((pid) => !observedWorkerPids.includes(pid));
+    if (missingFromCleanup.length > 0) {
+      errors.push(`cleanup evidence omitted explicit worker process PIDs: ${missingFromCleanup.join(',')}`);
+    }
+    const liveWorkers = workerProcessPids.filter((pid) => liveObservedWorkerPids.includes(pid));
+    if (liveWorkers.length > 0) {
+      errors.push(`cleanup evidence reports worker process PIDs still alive: ${liveWorkers.join(',')}`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    required,
+    workerProcessPids,
+    observedWorkerPids,
+    liveObservedWorkerPids,
+    errors
+  };
+}
+
 export function assessWorkerPidCleanup({ setupStatus, mutantId, run, pidAlive }) {
   if (typeof pidAlive !== 'function') throw new Error('pidAlive function is required');
 
