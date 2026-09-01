@@ -27,12 +27,20 @@ function temporalRecord() {
     setup: {
       status: 'READY',
       candidateVersion: '1.23.0',
-      candidateSourceRef: 'frozen',
+      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
       adapterSha256: 'a'.repeat(64),
       harnessSha256: HARNESS_SHA,
-      dependencyIdentity: {},
+      dependencyIdentity: {
+        manifestSha256: 'd'.repeat(64),
+        packages: [{
+          package: '@temporalio/worker',
+          expectedVersion: '1.23.0',
+          declaredVersion: '1.23.0',
+          installedVersion: '1.23.0'
+        }]
+      },
       environment: {
-        os: 'linux', arch: 'x64', runtime: 'node v22.16.0',
+        os: 'linux 6.11.0', arch: 'x64', runtime: 'node v22.16.0', packageManager: null,
         repositoryProvenance: {
           source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
           trackedWorktreeClean: true, reason: null
@@ -40,10 +48,21 @@ function temporalRecord() {
         formalLifecycleQualification: { ...QUALIFICATION_RECORD },
         formalRuntimeLifecycle: { candidate: 'Temporal TypeScript', status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
-      parameters: { randomSeed: 1050001 },
+      parameters: {
+        randomSeed: 1050001,
+        mode: 'local-process',
+        workerAuthorityBoundary: 'Temporal worker process'
+      },
       cleanupVerifiedBeforeRun: true,
       preRunCleanupReceipt: {
-        status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true
+        status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
+        cliSha256: 'e'.repeat(64),
+        versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
+        expectedProfile: {
+          sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
+        },
+        observedPlatform: { platform: 'linux', arch: 'x64' },
+        workspace: '/tmp/temporal-promotion-review', address: '127.0.0.1:7233', serverPid: 4500
       }
     },
     run: {
@@ -92,8 +111,9 @@ function review(args) {
   });
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness, candidate bundle and Git revision into support proposal only', () => {
-  const { recordText, validationText } = texts();
+test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness, candidate bundle, environment identity and Git revision into support proposal only', () => {
+  const { recordText, validationText, validation } = texts();
+  assert.equal(validation.checks.formalEnvironmentIdentityValid, true, validation.formalEnvironmentIdentity.errors.join('\n'));
   const result = review({
     recordText,
     validationText,
@@ -211,6 +231,19 @@ test('promotion review rejects missing immutable execution reference', () => {
 test('promotion review recomputes lifecycle receipt validity instead of trusting an eligible flag', () => {
   const { record, validation } = texts();
   record.cleanup.liveObservedWorkerPids = [4102];
+  const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
+  const result = review({
+    recordText: `${JSON.stringify(record, null, 2)}\n`,
+    validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
+    executionRef: EXECUTION_REF
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.recomputedValidationEligible, false);
+});
+
+test('promotion review rejects environment-incomplete receipt even if supplied validation claims eligibility', () => {
+  const { record, validation } = texts();
+  record.setup.dependencyIdentity = null;
   const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
   const result = review({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
