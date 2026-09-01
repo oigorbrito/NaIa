@@ -68,7 +68,7 @@ export function currentCandidateProfileExpectation(candidateName) {
   return candidateProfileExpectation(defaultRepositoryRoot(), candidateName);
 }
 
-export function candidateProfileRecordFields(candidateName) {
+export function candidateProfileRecordFields(candidateName, { installed = true } = {}) {
   const expected = currentCandidateProfileExpectation(candidateName);
   if (!expected) return null;
   return {
@@ -82,7 +82,7 @@ export function candidateProfileRecordFields(candidateName) {
       package: entry.package,
       expectedVersion: entry.expectedVersion,
       declaredVersion: entry.expectedVersion,
-      installedVersion: entry.expectedVersion
+      installedVersion: installed ? entry.expectedVersion : null
     }))
   };
 }
@@ -90,6 +90,8 @@ export function candidateProfileRecordFields(candidateName) {
 export function assessCandidateProfileBinding(record, repositoryRoot = defaultRepositoryRoot()) {
   const errors = [];
   const candidateName = record?.candidate ?? null;
+  const setupStatus = record?.setup?.status ?? null;
+  const requireInstalled = setupStatus === 'READY';
   let expected = null;
   try {
     expected = candidateProfileExpectation(repositoryRoot, candidateName);
@@ -143,16 +145,22 @@ export function assessCandidateProfileBinding(record, repositoryRoot = defaultRe
     if (!actual) continue;
     if (
       actual.expectedVersion !== expectedPackage.expectedVersion ||
-      actual.declaredVersion !== expectedPackage.expectedVersion ||
-      actual.installedVersion !== expectedPackage.expectedVersion
+      actual.declaredVersion !== expectedPackage.expectedVersion
     ) {
-      errors.push(`${expectedPackage.package}: record expected/declared/installed versions must all equal frozen version ${expectedPackage.expectedVersion}`);
+      errors.push(`${expectedPackage.package}: record expected/declared versions must both equal frozen version ${expectedPackage.expectedVersion}`);
+    }
+    if (requireInstalled && actual.installedVersion !== expectedPackage.expectedVersion) {
+      errors.push(`${expectedPackage.package}: READY record installedVersion must equal frozen version ${expectedPackage.expectedVersion}`);
+    }
+    if (!requireInstalled && actual.installedVersion !== null && actual.installedVersion !== expectedPackage.expectedVersion) {
+      errors.push(`${expectedPackage.package}: blocked record installedVersion, when present, must equal frozen version ${expectedPackage.expectedVersion}`);
     }
   }
 
   return {
     bound: errors.length === 0,
     candidate: candidateName,
+    setupStatus,
     expected,
     errors
   };
