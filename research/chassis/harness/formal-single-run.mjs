@@ -5,6 +5,7 @@ import { executeCandidateExperiment, loadExperimentContext } from './candidate-e
 import { candidateByName } from './candidate-setup.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
+import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -18,7 +19,17 @@ function requireValue(args, name) {
   return value;
 }
 
-export async function runFormalSingle({ repositoryRoot, candidateName, mutantId, repetition, outputPath, env = process.env, timeoutMs = 15000 }) {
+export async function runFormalSingle({
+  repositoryRoot,
+  candidateName,
+  mutantId,
+  repetition,
+  outputPath,
+  env = process.env,
+  timeoutMs = 15000,
+  lifecycleFactory = createFormalRuntimeLifecycle,
+  runHookFactory = createCommonRunnerRunHook
+}) {
   if (!Number.isInteger(repetition) || repetition < 1) throw new Error('repetition must be a positive integer');
 
   const context = await loadExperimentContext(repositoryRoot);
@@ -27,18 +38,39 @@ export async function runFormalSingle({ repositoryRoot, candidateName, mutantId,
     throw new Error(`FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:${candidateName}/${mutantId}`);
   }
 
-  const runHook = createCommonRunnerRunHook({ repositoryRoot, env, timeoutMs });
+  // The lifecycle and run hook intentionally share one mutable, per-experiment
+  // environment object. A lifecycle may publish only experiment-owned runtime
+  // coordinates (for example an isolated Temporal address/task queues) after
+  // pre-run cleanup succeeds, without mutating the caller's process.env.
+  const runtimeEnv = { ...env };
+  const lifecycle = lifecycleFactory({
+    candidateName,
+    repositoryRoot,
+    env: runtimeEnv,
+    timeoutMs
+  });
+  const runHook = runHookFactory({ repositoryRoot, env: runtimeEnv, timeoutMs });
+  const declaredEnvNames = [...new Set([
+    ...Object.keys(runtimeEnv).filter((name) => name.startsWith('NAIA_') || name.startsWith('TEMPORAL_') || name.startsWith('DBOS_') || name.startsWith('RESTATE_') || name.startsWith('TRIGGER_')),
+    ...(lifecycle?.declaredEnvNames ?? [])
+  ])].sort();
+
   const result = await executeCandidateExperiment({
     repositoryRoot,
     candidateName,
     mutantId,
     repetition,
     runHook,
+    preRunCleanupHook: lifecycle?.preRunCleanupHook,
+    cleanupHook: lifecycle?.cleanupHook,
     environment: {
-      packageManager: env.npm_config_user_agent ?? null,
-      requiredEnvNames: Object.keys(env).filter((name) => name.startsWith('NAIA_') || name.startsWith('TEMPORAL_') || name.startsWith('DBOS_') || name.startsWith('RESTATE_') || name.startsWith('TRIGGER_')).sort()
+      packageManager: runtimeEnv.npm_config_user_agent ?? null,
+      requiredEnvNames: declaredEnvNames,
+      formalRuntimeLifecycle: lifecycle
+        ? { candidate: lifecycle.candidateName, status: lifecycle.status }
+        : null
     },
-    env
+    env: runtimeEnv
   });
 
   if (outputPath) {
