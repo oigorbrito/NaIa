@@ -28,7 +28,6 @@ function semanticObservation(evidence, mutantId, authorityAlive) {
 
 export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
   requireEvidence(evidence, mutantId);
-  const checks = evidence.checks ?? {};
   const blocked = evidence.verdict === 'BLOCKED';
   const authorityAlive = durableAuthorityReachable(evidence);
   const workerProcessPids = normalizeWorkerProcessPids(evidence.initial?.pid, evidence.resume?.pid);
@@ -36,12 +35,13 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
 
   if (mutantId === 'T7') {
     const workerFaultAddressable = evidence.mode !== 'managed-controller' && evidence.mutants?.T7_process_sigkill !== 'NOT_EXECUTED';
+    const killReceiptValid = evidence.initial?.killIssued === true && evidence.initial?.timedOut !== true;
     return {
       blocked,
       blocker: blocked ? (evidence.blocker ?? 'RUNTIME_PREREQUISITE_BLOCKED') : null,
       fault: {
         intended: 'T7',
-        injected: workerFaultAddressable && checks.crashInjected === true,
+        injected: workerFaultAddressable && killReceiptValid,
         targetKind: workerFaultAddressable ? 'worker-process' : 'worker-process-unaddressed',
         targetIdentity: evidence.initial?.pid ?? null,
         signal: evidence.initial?.signal ?? null,
@@ -61,12 +61,13 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
     };
   }
 
+  const responseLossReceiptValid = evidence.oracle?.totalResponseLossCount === 1;
   return {
     blocked,
     blocker: blocked ? (evidence.blocker ?? 'RUNTIME_PREREQUISITE_BLOCKED') : null,
     fault: {
       intended: 'T8',
-      injected: checks.responseLossInjected === true,
+      injected: responseLossReceiptValid,
       targetKind: 'external-response',
       targetIdentity: evidence.operationId ?? null,
       signal: null,
