@@ -22,11 +22,13 @@ async function spawnAndWait(command, args, options, timeoutMs) {
   return { exitCode, stdout, stderr, timedOut };
 }
 
-function runtimePrerequisiteFailure(result) {
+export function runtimePrerequisiteFailure(result) {
   if (result?.timedOut) return false;
-  return /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i.test(
-    `${result?.stdout ?? ''}\n${result?.stderr ?? ''}`
-  );
+  const text = `${result?.stdout ?? ''}\n${result?.stderr ?? ''}`;
+  return /Cannot find package ['"][^'"]+['"]/i.test(text)
+    || /Cannot find module ['"](?:@[^/'"]+\/[^'"]+|[A-Za-z0-9_.-]+(?:\/[^'"]+)?)['"]/i.test(text)
+    || /\bECONNREFUSED\b/i.test(text)
+    || /\bspawn\s+\S+\s+ENOENT\b/i.test(text);
 }
 
 const T16_DRIVERS = Object.freeze({
