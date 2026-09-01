@@ -48,14 +48,19 @@ async function handleCommand(command) {
         const result = await handle.getResult();
         emit('recovery_attach_result', { objectiveId: command.objectiveId, result });
       } catch (error) {
-        // DBOS serializes/revives workflow errors across the durable boundary; the
-        // public native error name is the stable evidence we preserve here.
-        const cancelled = error?.name === 'DBOSAwaitedWorkflowCancelledError';
+        const errorText = String(error);
+        // DBOS 4.27.6 may revive the durable cancellation as a generic Error while
+        // retaining the native cancellation disposition in the message. The T11
+        // driver independently requires the durable final workflow state to remain
+        // CANCELLED, so this marker is not sufficient by itself for PASS.
+        const cancelled =
+          error?.name === 'DBOSAwaitedWorkflowCancelledError' ||
+          /\bAwaited\s+.+\s+was cancelled\b/i.test(errorText);
         emit(cancelled ? 'recovery_blocked_by_cancellation' : 'recovery_attach_error', {
           objectiveId: command.objectiveId,
           cancelled,
           errorName: error?.name ?? null,
-          error: String(error)
+          error: errorText
         });
       }
       return;
