@@ -108,6 +108,7 @@ export async function executeExperiment(spec, hooks) {
     : runResult.blocked === true
       ? (runResult.blocker ?? 'RUNTIME_PREREQUISITE_BLOCKED')
       : null;
+  const preRunCleanupReceipt = setupResult?.diagnostics?.preRunCleanupReceipt ?? null;
 
   const record = {
     schemaVersion: 1,
@@ -125,7 +126,8 @@ export async function executeExperiment(spec, hooks) {
       dependencyIdentity: setupResult.dependencyIdentity ?? null,
       environment: runtimeEnvironment,
       parameters: { randomSeed: spec.randomSeed, ...(setupResult.parameters ?? {}) },
-      cleanupVerifiedBeforeRun: setupResult.cleanupVerifiedBeforeRun === true
+      cleanupVerifiedBeforeRun: setupResult.cleanupVerifiedBeforeRun === true,
+      preRunCleanupReceipt
     },
     run: {
       startedAt,
