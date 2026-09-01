@@ -21,16 +21,28 @@ const verifiedSupport = {
 
 function record(overrides = {}) {
   const mutantId = overrides.mutantId ?? 'T7';
-  const rawObservations = overrides.withWorkerPid === false
-    ? (overrides.driverOnly ? { runnerProcess: { pid: 8899 } } : {})
-    : {
-        workerProcessPids: [overrides.pid ?? 8801],
-        workerProcess: { pid: overrides.pid ?? 8801 },
-        runnerProcess: { pid: 8899 }
-      };
+  const workerPid = overrides.pid ?? 8801;
+  const driverPid = 8899;
+  const withWorkerPid = overrides.withWorkerPid !== false;
+  const rawObservations = withWorkerPid
+    ? {
+        workerProcessPids: [workerPid],
+        workerProcess: { pid: workerPid },
+        runnerProcess: { pid: driverPid }
+      }
+    : overrides.driverOnly
+      ? { runnerProcess: { pid: driverPid } }
+      : {};
   if (mutantId === 'T16') {
     rawObservations.semanticMutation = { dimension: 'runtimeVersion', before: 'v1', after: 'v2' };
   }
+  const observedWorkerPids = overrides.omitWorkerFromCleanup
+    ? [driverPid]
+    : withWorkerPid
+      ? [workerPid, driverPid]
+      : overrides.driverOnly
+        ? [driverPid]
+        : [];
 
   return {
     schemaVersion: 1,
@@ -53,7 +65,11 @@ function record(overrides = {}) {
       rawObservations,
       acceptanceChecks: { noDuplicate: true, recoveryObserved: true }
     },
-    cleanup: { status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true },
+    cleanup: {
+      status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
+      observedWorkerPids,
+      liveObservedWorkerPids: overrides.liveWorker ? [workerPid] : []
+    },
     artifacts: [{ name: 'raw.json', sha256: 'dddddddddddddddd' }], verdict: 'PASS'
   };
 }
@@ -150,6 +166,26 @@ test('benchmark eligibility rejects driver PID as a substitute for explicit work
   assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
+test('benchmark eligibility rejects worker PID omitted from cleanup observation', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T12', omitWorkerFromCleanup: true })],
+    suite(1, ['T12']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /cleanup evidence omitted explicit worker process PIDs/);
+});
+
+test('benchmark eligibility rejects worker PID reported alive after cleanup', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T16', liveWorker: true })],
+    suite(1, ['T16']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /still alive/);
+});
+
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
   const booleanOnlySupport = {
     'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
@@ -159,7 +195,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and explicit worker PID provenance', () => {
+test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
