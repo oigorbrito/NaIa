@@ -1,4 +1,5 @@
 import { createDbosFormalLifecycle } from './formal-dbos-lifecycle.mjs';
+import { createRestateFormalLifecycle } from './formal-restate-lifecycle.mjs';
 import { createFormalRuntimeLifecycle as createTemporalFormalRuntimeLifecycle } from './formal-runtime-lifecycle.mjs';
 
 export function createFormalRuntimeLifecycle({
@@ -10,6 +11,9 @@ export function createFormalRuntimeLifecycle({
 } = {}) {
   if (candidateName === 'DBOS TypeScript') {
     return createDbosFormalLifecycle({ repositoryRoot, env, timeoutMs, operations });
+  }
+  if (candidateName === 'Restate') {
+    return createRestateFormalLifecycle({ repositoryRoot, env, timeoutMs, operations });
   }
   return createTemporalFormalRuntimeLifecycle({ candidateName, repositoryRoot, env, timeoutMs, operations });
 }
