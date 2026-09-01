@@ -1,4 +1,5 @@
 import { evaluateT11Evidence } from './t11-evaluator.mjs';
+import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 export function t11EvidenceToRunResult(evidence, spec, setup) {
   const evaluation = evaluateT11Evidence(evidence);
@@ -6,6 +7,10 @@ export function t11EvidenceToRunResult(evidence, spec, setup) {
     evidence?.cancelAuthority?.durable === true &&
     evidence?.crash?.injected === true &&
     evidence?.recovery?.attempted === true;
+  const workerProcessPids = normalizeWorkerProcessPids(
+    evidence?.rawNativeEvidence?.workerA?.pid,
+    evidence?.rawNativeEvidence?.workerB?.pid
+  );
 
   return {
     blocked: false,
@@ -23,6 +28,7 @@ export function t11EvidenceToRunResult(evidence, spec, setup) {
       objectiveId: evidence?.objectiveIdentity ?? null
     },
     rawObservations: {
+      workerProcessPids,
       t11Evidence: evidence,
       t11Evaluation: evaluation,
       setupIdentity: {
