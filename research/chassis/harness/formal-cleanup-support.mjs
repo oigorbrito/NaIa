@@ -1,4 +1,5 @@
 import { currentLifecycleQualificationSha256 } from './formal-lifecycle-qualification-provenance.mjs';
+import { executionRefRepositoryRevision, gitRevisionValid } from './repository-provenance.mjs';
 
 export const REQUIRED_FORMAL_CLEANUP_PHASES = Object.freeze(['preRunCleanup', 'postRunCleanup']);
 
@@ -11,7 +12,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-runtime-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes are recorded.'
+    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes plus the exact Git repository revision are recorded.'
   }),
   'DBOS TypeScript': Object.freeze({
     preRunCleanup: false,
@@ -19,7 +20,7 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     implementation: 'research/chassis/harness/formal-dbos-lifecycle.mjs',
     status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
     verificationEvidence: UNVERIFIED_EVIDENCE,
-    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes are recorded.'
+    note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes plus the exact Git repository revision are recorded.'
   }),
   Restate: Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null }),
   'Trigger.dev': Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null })
@@ -41,9 +42,17 @@ export function expectedLifecycleExperimentId(candidateName) {
 export function runtimeVerificationEvidenceValid(evidence, candidateName = null) {
   const expectedExperimentId = candidateName ? expectedLifecycleExperimentId(candidateName) : null;
   const currentQualificationSha = candidateName ? currentLifecycleQualificationSha256(candidateName) : null;
+  const executionRevision = executionRefRepositoryRevision(evidence?.executionRef);
+  const repositoryRevision = gitRevisionValid(evidence?.repositoryRevision)
+    ? String(evidence.repositoryRevision).trim().toLowerCase()
+    : null;
+
   return Boolean(
     evidence &&
     nonEmpty(evidence.executionRef) &&
+    executionRevision &&
+    repositoryRevision &&
+    executionRevision === repositoryRevision &&
     nonEmpty(evidence.experimentId) &&
     (!expectedExperimentId || evidence.experimentId === expectedExperimentId) &&
     evidence.mutantId === 'T5' &&
