@@ -13,11 +13,22 @@ function preRunCleanupReceiptValid(receipt) {
   return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt?.[key] === true);
 }
 
+function sha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+}
+
 export function benchmarkRepositoryRevisions(records) {
   return [...new Set((records ?? [])
     .map((record) => record?.setup?.environment?.repositoryProvenance)
     .filter((value) => repositoryProvenanceReady(value))
     .map((value) => String(value.revision).toLowerCase()))].sort();
+}
+
+export function benchmarkHarnessSha256s(records) {
+  return [...new Set((records ?? [])
+    .map((record) => record?.setup?.harnessSha256)
+    .filter((value) => sha256(value))
+    .map((value) => String(value).toLowerCase()))].sort();
 }
 
 export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
@@ -32,6 +43,11 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
   const repositoryRevisions = benchmarkRepositoryRevisions(records);
   if (repositoryRevisions.length > 1) {
     errors.push(`${candidate ?? 'unknown candidate'}: formal benchmark records span multiple Git repository revisions: ${repositoryRevisions.join(', ')}`);
+  }
+
+  const harnessSha256s = benchmarkHarnessSha256s(records);
+  if (harnessSha256s.length > 1) {
+    errors.push(`${candidate ?? 'unknown candidate'}: formal benchmark records span multiple harness identities: ${harnessSha256s.join(', ')}`);
   }
 
   const mutants = new Map((faultSuite?.mutants ?? []).map((mutant) => [mutant.id, mutant]));
@@ -58,6 +74,9 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       const lifecycle = environment.formalRuntimeLifecycle;
       if (!repositoryProvenanceReady(environment.repositoryProvenance)) {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks verified clean Git repository revision provenance`);
+      }
+      if (!sha256(record?.setup?.harnessSha256)) {
+        errors.push(`${mutantId}: repetition ${record.repetition} lacks a valid formal harness SHA-256 identity`);
       }
       if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
