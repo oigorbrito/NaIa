@@ -53,6 +53,13 @@ const T5_DRIVERS = Object.freeze({
     blocker: 'DBOS_T5_RUNTIME_PREREQUISITE_UNAVAILABLE',
     timeoutReason: 'DBOS_T5_DRIVER_TIMEOUT',
     invalidReason: 'DBOS_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  },
+  Restate: {
+    relativePath: ['research', 'chassis', 'adapters', 'restate-ts', 't5-two-worker-driver.mjs'],
+    tempPrefix: 'naia-restate-t5-',
+    blocker: 'RESTATE_T5_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'RESTATE_T5_DRIVER_TIMEOUT',
+    invalidReason: 'RESTATE_T5_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
   }
 });
 

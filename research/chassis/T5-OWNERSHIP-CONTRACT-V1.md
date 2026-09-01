@@ -1,12 +1,12 @@
 # T5 Ownership / Fencing Contract V1
 
-Status: CONTROL_VALIDATED / TEMPORAL_AND_DBOS_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
+Status: CONTROL_VALIDATED / TEMPORAL_DBOS_RESTATE_EXECUTORS_IMPLEMENTED_NOT_RUNTIME_VERIFIED
 
 T5 tests `concurrent_worker_ownership_race`: after authority has moved from worker A to worker B, A must be unable to publish a result while B is the current owner, even before B has completed.
 
 This is deliberately distinct from T12 (`stale_completion_after_new_owner`). T12 may test a late completion after the new owner has already committed. T5 instead tests the live ownership window itself. Terminal-state immutability is not sufficient T5 evidence.
 
-The contract is observational. A candidate is not required to expose a numeric fencing token or use a particular locking algorithm. Candidate-native workflow/task/run identities, attempt generations, epochs, leases, task tokens, journal positions, database ownership records, or equivalent evidence are admissible when they prove the same authority transition.
+The contract is observational. A candidate is not required to expose a numeric fencing token or use a particular locking algorithm. Candidate-native workflow/task/run identities, attempt generations, epochs, leases, task tokens, journal positions, database ownership records, deployment identities, or equivalent evidence are admissible when they prove the same authority transition.
 
 ## Engineering basis
 
@@ -88,6 +88,8 @@ If two worker boundaries cannot be established, takeover cannot be induced, stal
 Temporal may use distinct Worker process identities plus candidate-native activity task tokens and native stale-token rejection.
 
 DBOS may use distinct executor process identities plus candidate-native workflow `executorId`/recovery state. The public custom `DLogger` warning emitted after `recordWorkflowOutput()` refuses an outcome is admissible as the native stale-write disposition, provided independent status still proves worker B remains current before B completes. Internal DBOS debug hooks are not admissible benchmark instrumentation.
+
+Restate may use two distinct service endpoint process identities plus two concrete deployment IDs for one durable invocation. A candidate-native pause followed by `resume?deployment=latest` may establish the A→B authority transition when B is independently observed handling the same durable objective. The old A handler must remain held until B is current. Releasing A counts as an actual stale submission only when the harness observes the correlated A service-protocol HTTP response reach its transport `finish` after release. If A's old request was already closed, `staleCompletion.attempted` must remain false and the run is not T5-complete. While B remains explicitly held, the ingress output endpoint must independently report `NotReady` after A's stale transport attempt; only then may the driver classify A as non-authoritative before releasing B. Final output must originate from deployment B. Upstream fencing-token source/tests justify the design but do not substitute for this runtime sequence.
 
 ## Prohibited adaptations
 
