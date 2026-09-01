@@ -39,13 +39,38 @@ const verifiedSupport = {
   }
 };
 
-function passPreRunReceipt() {
+function passPreRunReceipt(overrides = {}) {
   return {
     status: 'PASS',
     workerCleanup: true,
     durableStateCleanup: true,
     oracleCleanup: true,
-    temporaryResourcesCleanup: true
+    temporaryResourcesCleanup: true,
+    cliSha256: '9'.repeat(64),
+    versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
+    expectedProfile: {
+      sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
+    },
+    observedPlatform: { platform: 'linux', arch: 'x64' },
+    workspace: '/tmp/fixture',
+    address: '127.0.0.1:7233',
+    serverPid: 321,
+    taskQueues: { NAIA_TEMPORAL_TASK_QUEUE: 'dynamic-fixture-queue' },
+    ...overrides
+  };
+}
+
+function dependencyIdentity(overrides = {}) {
+  return {
+    manifestPath: '/fixture/research/chassis/adapters/temporal-ts/package.json',
+    manifestSha256: '8'.repeat(64),
+    packages: [{
+      package: '@temporalio/worker',
+      expectedVersion: '1.23.0',
+      declaredVersion: '1.23.0',
+      installedVersion: overrides.installedVersion ?? '1.23.0',
+      installedPackageJson: '/fixture/node_modules/@temporalio/worker/package.json'
+    }]
   };
 }
 
@@ -96,17 +121,28 @@ function record(overrides = {}) {
     repetition: overrides.repetition ?? 1,
     randomSeed: overrides.randomSeed ?? 1001,
     setup: {
-      status: 'READY', candidateVersion: '1.23.0', adapterSha256: 'aaaaaaaaaaaaaaaa', harnessSha256: 'bbbbbbbbbbbbbbbb',
+      status: 'READY',
+      candidateVersion: '1.23.0',
+      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
+      adapterSha256: 'a'.repeat(64),
+      harnessSha256: overrides.harnessSha256 ?? 'b'.repeat(64),
+      dependencyIdentity: dependencyIdentity({ installedVersion: overrides.installedVersion }),
       environment: {
-        os: 'linux', arch: 'x64', runtime: 'node 22',
+        os: overrides.os ?? 'linux 6.11.0',
+        arch: overrides.arch ?? 'x64',
+        runtime: overrides.runtime ?? 'node v22.16.0',
+        packageManager: null,
         repositoryProvenance,
         formalPromotionPolicy: promotionPolicy,
         formalLifecycleQualification: qualification,
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
       },
-      parameters: {},
+      parameters: {
+        mode: 'local-process',
+        workerAuthorityBoundary: 'Temporal worker process'
+      },
       cleanupVerifiedBeforeRun: true,
-      preRunCleanupReceipt: overrides.missingPreRunReceipt ? null : passPreRunReceipt()
+      preRunCleanupReceipt: overrides.missingPreRunReceipt ? null : passPreRunReceipt(overrides.receiptOverrides)
     },
     run: {
       startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
@@ -119,7 +155,7 @@ function record(overrides = {}) {
       observedWorkerPids,
       liveObservedWorkerPids: overrides.liveWorker ? [workerPid] : []
     },
-    artifacts: [{ name: 'raw.json', sha256: 'dddddddddddddddd' }], verdict: 'PASS'
+    artifacts: [{ name: 'raw.json', sha256: 'd'.repeat(64) }], verdict: 'PASS'
   };
 }
 
@@ -233,6 +269,27 @@ test('benchmark eligibility rejects READY record without complete pre-run cleanu
   );
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /lacks complete PASS pre-run cleanup receipt/);
+  assert.match(result.errors.join('\n'), /formal environment identity/);
+});
+
+test('benchmark eligibility rejects mixed Node runtime identity even with one Git revision and one harness', () => {
+  const records = [
+    record({ experimentId: 'T7-1', mutantId: 'T7', repetition: 1, runtime: 'node v22.16.0' }),
+    record({ experimentId: 'T7-2', mutantId: 'T7', repetition: 2, runtime: 'node v24.0.0', pid: 8802 })
+  ];
+  const result = benchmarkEligible(records, suite(2, ['T7']), verifiedSupport);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /multiple common execution environment identities/);
+});
+
+test('benchmark eligibility rejects candidate dependency drift before treating it as replication', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', installedVersion: '1.24.0' })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /expected, declared and installed versions must match exactly/);
 });
 
 test('benchmark eligibility rejects injected critical record without explicit worker PID provenance', () => {
@@ -316,7 +373,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, verified Git revision, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, verified Git revision, stable formal environment, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
