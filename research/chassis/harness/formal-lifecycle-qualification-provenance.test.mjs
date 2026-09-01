@@ -32,20 +32,30 @@ function recordView(provenance) {
   };
 }
 
-test('Temporal and DBOS lifecycle qualification bundles are candidate-specific and include frozen dependency graphs', () => {
+test('Temporal and DBOS lifecycle qualification bundles are candidate-specific and include actual T5 schema, policy and frozen dependency graph', () => {
   const temporal = FORMAL_LIFECYCLE_QUALIFICATION_FILES['Temporal TypeScript'];
   const dbos = FORMAL_LIFECYCLE_QUALIFICATION_FILES['DBOS TypeScript'];
+
+  for (const files of [temporal, dbos]) {
+    assert.ok(files.includes('research/chassis/harness/experiment-record-schema-validator.mjs'));
+    assert.ok(files.includes('research/chassis/harness/formal-promotion-policy.mjs'));
+    assert.ok(files.includes('research/chassis/formal-promotion-policy.v1.json'));
+    assert.ok(files.includes('research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'));
+    assert.ok(files.includes('research/chassis/harness/formal-lifecycle-promotion-review.mjs'));
+    assert.equal(files.includes('research/chassis/harness/experiment-record-validator.mjs'), false);
+    assert.equal(files.includes('research/chassis/harness/formal-cleanup-support.mjs'), false);
+    assert.equal(new Set(files).size, files.length);
+  }
 
   assert.ok(temporal.includes('research/chassis/harness/formal-runtime-lifecycle.mjs'));
   assert.ok(temporal.includes('research/chassis/adapters/temporal-ts/package-lock.json'));
   assert.ok(temporal.includes('research/chassis/adapters/temporal-ts/t5-two-worker-driver.mjs'));
+  assert.equal(temporal.includes('research/chassis/harness/formal-dbos-lifecycle.mjs'), false);
+
   assert.ok(dbos.includes('research/chassis/harness/formal-dbos-lifecycle.mjs'));
   assert.ok(dbos.includes('research/chassis/adapters/dbos-ts/package-lock.json'));
   assert.ok(dbos.includes('research/chassis/adapters/dbos-ts/t5-two-worker-driver.mjs'));
-  assert.ok(temporal.includes('research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'));
-  assert.ok(dbos.includes('research/chassis/harness/formal-lifecycle-promotion-review.mjs'));
-  assert.equal(temporal.includes('research/chassis/harness/formal-cleanup-support.mjs'), false);
-  assert.equal(dbos.includes('research/chassis/harness/formal-cleanup-support.mjs'), false);
+  assert.equal(dbos.includes('research/chassis/harness/formal-runtime-lifecycle.mjs'), false);
 });
 
 test('qualification aggregate changes when an included runtime file changes', async (t) => {
@@ -59,6 +69,26 @@ test('qualification aggregate changes when an included runtime file changes', as
 
   assert.equal(before.profile, FORMAL_LIFECYCLE_QUALIFICATION_PROFILE);
   assert.notEqual(before.aggregateSha256, after.aggregateSha256);
+});
+
+test('qualification aggregate changes when isolated record schema or frozen promotion policy changes', async (t) => {
+  const root = await syntheticRepository('DBOS TypeScript');
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const before = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  await writeFile(
+    path.join(root, 'research/chassis/harness/experiment-record-schema-validator.mjs'),
+    'fixture:changed-record-schema\n'
+  );
+  const schemaChanged = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  assert.notEqual(before.aggregateSha256, schemaChanged.aggregateSha256);
+
+  await writeFile(
+    path.join(root, 'research/chassis/formal-promotion-policy.v1.json'),
+    'fixture:changed-frozen-policy\n'
+  );
+  const policyChanged = computeLifecycleQualificationProvenance(root, 'DBOS TypeScript');
+  assert.notEqual(schemaChanged.aggregateSha256, policyChanged.aggregateSha256);
 });
 
 test('qualification aggregate is stable when only mutable cleanup support registry changes', async (t) => {
