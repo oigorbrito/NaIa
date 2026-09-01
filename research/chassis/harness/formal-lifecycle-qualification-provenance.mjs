@@ -53,6 +53,16 @@ export const FORMAL_LIFECYCLE_QUALIFICATION_FILES = Object.freeze({
     'research/chassis/adapters/dbos-ts/t5-two-worker-driver.mjs',
     'research/chassis/adapters/dbos-ts/t5-worker-process.mjs',
     'research/chassis/adapters/dbos-ts/t5-workflow.mjs'
+  ]),
+  Restate: Object.freeze([
+    ...COMMON_FILES,
+    'research/chassis/harness/formal-restate-lifecycle.mjs',
+    'research/chassis/adapters/restate-ts/package.json',
+    'research/chassis/adapters/restate-ts/package-lock.json',
+    'research/chassis/adapters/restate-ts/adapter.mjs',
+    'research/chassis/adapters/restate-ts/t5-two-worker-driver.mjs',
+    'research/chassis/adapters/restate-ts/t5-service-process.mjs',
+    'research/chassis/adapters/restate-ts/t5-workflow.mjs'
   ])
 });
 
