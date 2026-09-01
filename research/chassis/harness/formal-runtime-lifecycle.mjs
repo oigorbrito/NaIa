@@ -4,6 +4,7 @@ import { mkdtemp, rm, access, readFile } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { assessWorkerPidCleanup } from './formal-worker-pid-provenance.mjs';
 
 export const TEMPORAL_FORMAL_PROFILE = Object.freeze({
   sdkVersion: '1.23.0',
@@ -331,8 +332,14 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
   }
 
   async function cleanupHook(_spec, setup, run) {
-    const observedPids = [...collectObservedPids(run?.rawObservations ?? {})];
-    const liveObservedPids = observedPids.filter((pid) => ops.pidAlive(pid));
+    const pidCleanup = assessWorkerPidCleanup({
+      setupStatus: setup?.status,
+      mutantId: state.spec?.mutantId,
+      run,
+      pidAlive: ops.pidAlive
+    });
+    const observedPids = pidCleanup.observedPids;
+    const liveObservedPids = pidCleanup.liveObservedPids;
 
     let serverCleanup = true;
     if (state.server) {
@@ -354,7 +361,7 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
     }
 
     const sqliteCleanup = state.sqlitePath ? !(await ops.pathExists(state.sqlitePath)) : true;
-    const workerCleanup = liveObservedPids.length === 0;
+    const workerCleanup = pidCleanup.workerCleanup;
     const durableStateCleanup = serverCleanup && sqliteCleanup && workspaceCleanup;
     const oracleCleanup = setup?.status === 'BLOCKED_SETUP' || !mutantUsesProcessScopedOracle(state.spec?.mutantId) || runnerBoundarySettled(run);
     const temporaryResourcesCleanup = workspaceCleanup;
@@ -367,6 +374,9 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
       oracleCleanup,
       temporaryResourcesCleanup,
       candidateLifecycle: 'Temporal TypeScript isolated formal runtime',
+      workerPidProvenanceRequired: pidCleanup.provenanceRequired,
+      workerPidProvenanceObserved: pidCleanup.provenanceObserved,
+      workerProcessPids: pidCleanup.workerProcessPids,
       observedWorkerPids: observedPids,
       liveObservedWorkerPids,
       temporalServerPid: state.server?.pid ?? null,
