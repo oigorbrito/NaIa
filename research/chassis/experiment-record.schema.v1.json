@@ -46,7 +46,8 @@
           "additionalProperties": true
         },
         "parameters": {"type": "object"},
-        "cleanupVerifiedBeforeRun": {"type": "boolean"}
+        "cleanupVerifiedBeforeRun": {"type": "boolean"},
+        "preRunCleanupReceipt": {"type": ["object", "null"]}
       },
       "additionalProperties": true
     },
