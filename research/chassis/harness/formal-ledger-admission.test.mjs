@@ -3,12 +3,28 @@ import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
 
-function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupStatus = 'PASS', withWorkerPid = true, driverOnly = false } = {}) {
+function record({
+  lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
+  cleanupStatus = 'PASS',
+  withWorkerPid = true,
+  driverOnly = false,
+  omitWorkerFromCleanup = false,
+  liveWorker = false
+} = {}) {
+  const workerPid = 7701;
+  const driverPid = 7799;
   const rawObservations = driverOnly
-    ? { runnerProcess: { pid: 7799 } }
+    ? { runnerProcess: { pid: driverPid } }
     : withWorkerPid
-      ? { workerProcessPids: [7701], workerA: { pid: 7701 }, runnerProcess: { pid: 7799 } }
+      ? { workerProcessPids: [workerPid], workerA: { pid: workerPid }, runnerProcess: { pid: driverPid } }
       : {};
+  const observedWorkerPids = omitWorkerFromCleanup
+    ? [driverPid]
+    : withWorkerPid && !driverOnly
+      ? [workerPid, driverPid]
+      : driverOnly
+        ? [driverPid]
+        : [];
   return {
     schemaVersion: 1,
     experimentId: 'temporal-typescript-t5-001',
@@ -64,7 +80,9 @@ function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupS
       workerCleanup: cleanupStatus === 'PASS',
       durableStateCleanup: cleanupStatus === 'PASS',
       oracleCleanup: cleanupStatus === 'PASS',
-      temporaryResourcesCleanup: cleanupStatus === 'PASS'
+      temporaryResourcesCleanup: cleanupStatus === 'PASS',
+      observedWorkerPids,
+      liveObservedWorkerPids: liveWorker ? [workerPid] : []
     },
     artifacts: [{ name: 'evidence.json', path: null, sha256: 'c'.repeat(64) }],
     verdict: 'PASS',
@@ -154,7 +172,25 @@ test('formal ledger admission rejects driver PID as a substitute for worker PID 
   assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
 });
 
-test('formal ledger admission opens only when lifecycle, explicit worker PID provenance and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission rejects explicit worker PID omitted from cleanup observation', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', omitWorkerFromCleanup: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /cleanup evidence omitted explicit worker process PIDs: 7701/);
+});
+
+test('formal ledger admission rejects explicit worker PID reported alive after cleanup', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', liveWorker: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /still alive: 7701/);
+});
+
+test('formal ledger admission opens only when lifecycle, explicit worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -169,21 +205,7 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility rejects runtime-verified record with missing explicit worker PID provenance', () => {
-  const faultSuite = {
-    mutants: [{ id: 'T5', minRepetitions: 1 }],
-    benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
-  };
-  const result = benchmarkEligible(
-    [record({ lifecycleStatus: 'RUNTIME_VERIFIED', withWorkerPid: false })],
-    faultSuite,
-    verifiedSupport
-  );
-  assert.equal(result.eligible, false);
-  assert.match(result.errors.join('\n'), /lacks explicit worker process PID provenance/);
-});
-
-test('benchmark eligibility accepts the same valid critical record only after lifecycle, explicit worker PID provenance and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after lifecycle, explicit worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
