@@ -40,6 +40,15 @@ test('T5 bridge exposes transient stale authority as failed acceptance while fau
   assert.equal(run.acceptanceChecks.finalAuthorityIsNew, true);
 });
 
+test('T5 injection classification stays true when only a semantic acceptance observation fails', () => {
+  const evidence = controlResultToT5Evidence(executeDeterministicT5Control({ unsafe: false }));
+  evidence.deterministicScheduleObserved = false;
+  const run = t5EvidenceToRunResult(evidence, spec, setup);
+  assert.equal(run.fault.injected, true);
+  assert.equal(run.acceptanceChecks.deterministicScheduleObserved, false);
+  assert.equal(Object.values(run.acceptanceChecks).every(Boolean), false);
+});
+
 test('T5 bridge refuses a stale attempt that happened only after B completion', () => {
   const evidence = controlResultToT5Evidence(executeDeterministicT5Control({ unsafe: false }));
   evidence.staleCompletion.attemptedBeforeNewCompletion = false;
