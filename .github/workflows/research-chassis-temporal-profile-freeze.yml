@@ -1,0 +1,86 @@
+name: Research Chassis Temporal Profile Freeze
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-temporal-profile-freeze.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TEMPORAL_CLI_VERSION: '1.8.1'
+      TEMPORAL_CLI_ARCHIVE: 'temporal_cli_1.8.1_linux_amd64.tar.gz'
+      TEMPORAL_CLI_SHA256: 'b94417b9a8760b30217f4b881dabce4b16a76a38b5e99e2eca3ce358b8030f06'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Freeze exact Temporal dependency graph and runtime identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/naia-temporal-profile-freeze"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/bin" "$OUT/evidence"
+
+          cd research/chassis/adapters/temporal-ts
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cp package-lock.json "$OUT/evidence/package-lock.json"
+          sha256sum package-lock.json | tee "$OUT/evidence/package-lock.sha256"
+          node --input-type=module <<'NODE' | tee "$OUT/evidence/sdk-lock-validation.txt"
+          import { readFile } from 'node:fs/promises';
+          const lock = JSON.parse(await readFile('package-lock.json','utf8'));
+          const expected = {
+            '@temporalio/activity':'1.23.0',
+            '@temporalio/client':'1.23.0',
+            '@temporalio/worker':'1.23.0',
+            '@temporalio/workflow':'1.23.0'
+          };
+          for (const [name,version] of Object.entries(expected)) {
+            const actual = lock.packages?.[`node_modules/${name}`]?.version;
+            console.log(`${name}=${actual}`);
+            if (actual !== version) process.exitCode = 2;
+          }
+          NODE
+
+          cd "$OUT/bin"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            -o "$TEMPORAL_CLI_ARCHIVE" \
+            "https://github.com/temporalio/cli/releases/download/v${TEMPORAL_CLI_VERSION}/${TEMPORAL_CLI_ARCHIVE}"
+          printf '%s  %s\n' "$TEMPORAL_CLI_SHA256" "$TEMPORAL_CLI_ARCHIVE" \
+            | sha256sum --check --strict | tee "$OUT/evidence/temporal-cli-checksum.txt"
+          tar -xzf "$TEMPORAL_CLI_ARCHIVE"
+          chmod +x temporal
+          ./temporal --version | tee "$OUT/evidence/temporal-cli-version.txt"
+          ./temporal server start-dev --help > "$OUT/evidence/start-dev-help.txt"
+          grep -F -- '--db-filename' "$OUT/evidence/start-dev-help.txt" | tee "$OUT/evidence/db-filename-support.txt"
+
+          {
+            echo "profile_status=FROZEN_BEFORE_OUTCOMES"
+            echo "formal_ledger=false"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "temporal_cli_version=$TEMPORAL_CLI_VERSION"
+            echo "temporal_cli_archive=$TEMPORAL_CLI_ARCHIVE"
+            echo "temporal_cli_sha256=$TEMPORAL_CLI_SHA256"
+            echo "temporal_sdk_version=1.23.0"
+          } > "$OUT/evidence/profile-manifest.txt"
+
+      - name: Upload frozen profile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-profile-freeze-${{ github.sha }}
+          path: ${{ runner.temp }}/naia-temporal-profile-freeze/evidence/
+          if-no-files-found: error
+          retention-days: 30
