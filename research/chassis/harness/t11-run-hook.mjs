@@ -18,6 +18,13 @@ const T11_DRIVERS = Object.freeze({
     blocker: 'TEMPORAL_T11_RUNTIME_PREREQUISITE_UNAVAILABLE',
     timeoutReason: 'TEMPORAL_T11_DRIVER_TIMEOUT',
     invalidReason: 'TEMPORAL_T11_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
+  },
+  Restate: {
+    relativePath: ['research', 'chassis', 'adapters', 'restate-ts', 't11-driver.mjs'],
+    tempPrefix: 'naia-restate-t11-',
+    blocker: 'RESTATE_T11_RUNTIME_PREREQUISITE_UNAVAILABLE',
+    timeoutReason: 'RESTATE_T11_DRIVER_TIMEOUT',
+    invalidReason: 'RESTATE_T11_DRIVER_DID_NOT_EMIT_VALID_EVIDENCE'
   }
 });
 
