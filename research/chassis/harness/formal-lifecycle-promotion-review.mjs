@@ -8,6 +8,10 @@ import {
   lifecycleQualificationRecordProvenanceValid
 } from './formal-lifecycle-qualification-provenance.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
+import {
+  executionRefRepositoryRevision,
+  repositoryProvenanceReady
+} from './repository-provenance.mjs';
 
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
@@ -35,9 +39,17 @@ export function reviewLifecyclePromotion({
   const normalizedExecutionRef = String(executionRef ?? '').trim();
   const normalizedHarnessSha256 = String(currentHarnessSha256 ?? '').trim().toLowerCase();
   const normalizedLifecycleQualificationSha256 = String(currentLifecycleQualificationSha256 ?? '').trim().toLowerCase();
+  const executionRevision = executionRefRepositoryRevision(normalizedExecutionRef);
+  const repositoryProvenance = record?.setup?.environment?.repositoryProvenance ?? null;
+  const recordRevision = repositoryProvenanceReady(repositoryProvenance)
+    ? String(repositoryProvenance.revision).toLowerCase()
+    : null;
 
   const checks = {
     executionRefPresent: nonEmpty(normalizedExecutionRef),
+    executionRefRepositoryRevisionPresent: Boolean(executionRevision),
+    recordRepositoryRevisionVerified: Boolean(recordRevision),
+    executionRefRepositoryRevisionMatchesRecord: Boolean(executionRevision && recordRevision && executionRevision === recordRevision),
     currentHarnessSha256Valid: sha256Value(normalizedHarnessSha256),
     recordHarnessMatchesCurrent:
       sha256Value(record?.setup?.harnessSha256) &&
@@ -61,6 +73,7 @@ export function reviewLifecyclePromotion({
   const verificationEvidence = eligibleForSupportPromotion
     ? {
         executionRef: normalizedExecutionRef,
+        repositoryRevision: recordRevision,
         experimentId: record.experimentId,
         mutantId: record.mutantId,
         repetition: record.repetition,
@@ -76,6 +89,7 @@ export function reviewLifecyclePromotion({
     schemaVersion: 1,
     candidate: record?.candidate ?? null,
     experimentId: record?.experimentId ?? null,
+    repositoryRevision: recordRevision,
     candidateSemanticVerdict: record?.verdict ?? null,
     candidateSemanticVerdictDoesNotControlLifecyclePromotion: true,
     checks,
