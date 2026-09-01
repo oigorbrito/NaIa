@@ -1,6 +1,32 @@
 const EXPECTED_DECISION = 'NOT_SELECTED';
 const EXPECTED_REVISION_POLICY = 'single-verified-git-revision-per-formal-ledger';
 const EXPECTED_ENVIRONMENT_POLICY = 'single-common-runtime-and-candidate-profile-per-formal-ledger';
+const EXPECTED_AMENDMENT_DATE = '2026-09-01';
+const EXPECTED_A001_CONSTRAINT = 'The T5/r1 lifecycle qualification support may originate from an earlier verified revision only while its candidate lifecycle-qualification hash remains current; every record admitted to one formal benchmark ledger must otherwise share one verified Git repository revision.';
+const EXPECTED_A002_CONSTRAINT = 'Every READY record in one formal ledger must share one canonical common execution environment identity for OS, architecture, Node runtime and recorded package-manager identity; within each candidate, every READY record must also share one canonical candidate profile derived from candidate/source identity, adapter SHA-256, manifest and exact installed dependency versions, declared mode/authority boundary, lifecycle-qualification SHA-256 and stable observed native runtime identity. Dynamic workspace paths, ports, task queues, process IDs, container IDs and database URLs are excluded from identity.';
+const EXPECTED_REQUIRED_RECORD_FIELDS = Object.freeze([
+  'experimentId',
+  'candidate',
+  'mutantId',
+  'repetition',
+  'setup.candidateVersion',
+  'setup.candidateSourceRef',
+  'setup.adapterSha256',
+  'setup.harnessSha256',
+  'setup.dependencyIdentity',
+  'setup.environment',
+  'setup.parameters',
+  'setup.preRunCleanupReceipt',
+  'run.startedAt',
+  'run.finishedAt',
+  'run.fault',
+  'run.workload',
+  'run.rawObservations',
+  'run.acceptanceChecks',
+  'cleanup',
+  'artifacts',
+  'verdict'
+]);
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -26,13 +52,13 @@ function amendmentById(protocol, id, errors) {
   return amendment ?? null;
 }
 
-function validateCommonAmendment(amendment, id, expectedPolicy, errors) {
+function validateCommonAmendment(amendment, id, expectedPolicy, expectedConstraint, errors) {
   if (!amendment) return;
   if (amendment.status !== 'FROZEN_BEFORE_FORMAL_EXECUTION') errors.push(`${id}: status must be FROZEN_BEFORE_FORMAL_EXECUTION`);
   if (amendment.policy !== expectedPolicy) errors.push(`${id}: policy must equal ${expectedPolicy}`);
-  if (!nonEmpty(amendment.date)) errors.push(`${id}: date is required`);
+  if (amendment.date !== EXPECTED_AMENDMENT_DATE) errors.push(`${id}: date must remain ${EXPECTED_AMENDMENT_DATE}`);
   if (!nonEmpty(amendment.reason)) errors.push(`${id}: reason is required`);
-  if (!nonEmpty(amendment.constraint)) errors.push(`${id}: constraint is required`);
+  if (amendment.constraint !== expectedConstraint) errors.push(`${id}: frozen constraint text changed`);
   if (amendment.outcomeDriven !== false) errors.push(`${id}: outcomeDriven must be false`);
   if (amendment.changesSemanticVerdicts !== false) errors.push(`${id}: changesSemanticVerdicts must be false`);
   if (amendment.changesRepetitionThreshold !== false) errors.push(`${id}: changesRepetitionThreshold must be false`);
@@ -47,13 +73,24 @@ function validatePreExecutionAmendments(protocol, errors) {
   }
 
   const revision = amendmentById(protocol, 'A001', errors);
-  validateCommonAmendment(revision, 'A001', EXPECTED_REVISION_POLICY, errors);
+  validateCommonAmendment(revision, 'A001', EXPECTED_REVISION_POLICY, EXPECTED_A001_CONSTRAINT, errors);
   if (revision && revision.lifecycleQualificationMayPrecedeBenchmarkRevision !== true) {
     errors.push('A001: lifecycleQualificationMayPrecedeBenchmarkRevision must be true');
   }
 
   const environment = amendmentById(protocol, 'A002', errors);
-  validateCommonAmendment(environment, 'A002', EXPECTED_ENVIRONMENT_POLICY, errors);
+  validateCommonAmendment(environment, 'A002', EXPECTED_ENVIRONMENT_POLICY, EXPECTED_A002_CONSTRAINT, errors);
+}
+
+function validateRequiredRecordFields(protocol, errors) {
+  const actual = protocol?.requiredRecordFields;
+  if (!Array.isArray(actual)) {
+    errors.push('requiredRecordFields must be an array');
+    return;
+  }
+  if (JSON.stringify(actual) !== JSON.stringify(EXPECTED_REQUIRED_RECORD_FIELDS)) {
+    errors.push('requiredRecordFields must remain the frozen formal record contract');
+  }
 }
 
 export function validateExperimentProtocol(protocol, faultSuite) {
@@ -107,6 +144,7 @@ export function validateExperimentProtocol(protocol, faultSuite) {
   if (protocol.executionOrder?.policy !== 'round-robin-by-repetition') errors.push('executionOrder.policy must be round-robin-by-repetition');
   if (!nonEmpty(protocol.executionOrder?.sequence)) errors.push('executionOrder.sequence is required');
   validatePreExecutionAmendments(protocol, errors);
+  validateRequiredRecordFields(protocol, errors);
 
   return {
     valid: errors.length === 0,
