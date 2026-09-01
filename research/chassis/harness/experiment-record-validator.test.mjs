@@ -19,6 +19,16 @@ const verifiedSupport = {
   }
 };
 
+function passPreRunReceipt() {
+  return {
+    status: 'PASS',
+    workerCleanup: true,
+    durableStateCleanup: true,
+    oracleCleanup: true,
+    temporaryResourcesCleanup: true
+  };
+}
+
 function record(overrides = {}) {
   const mutantId = overrides.mutantId ?? 'T7';
   const workerPid = overrides.pid ?? 8801;
@@ -57,7 +67,9 @@ function record(overrides = {}) {
         os: 'linux', arch: 'x64', runtime: 'node 22',
         formalRuntimeLifecycle: { candidate: overrides.candidate ?? 'Temporal TypeScript', status: 'RUNTIME_VERIFIED' }
       },
-      parameters: {}, cleanupVerifiedBeforeRun: true
+      parameters: {},
+      cleanupVerifiedBeforeRun: true,
+      preRunCleanupReceipt: overrides.missingPreRunReceipt ? null : passPreRunReceipt()
     },
     run: {
       startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
@@ -146,6 +158,16 @@ test('benchmark eligibility rejects duplicate repetitions presented as replicati
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
 });
 
+test('benchmark eligibility rejects READY record without complete pre-run cleanup receipt', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', missingPreRunReceipt: true })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks complete PASS pre-run cleanup receipt/);
+});
+
 test('benchmark eligibility rejects injected critical record without explicit worker PID provenance', () => {
   const result = benchmarkEligible(
     [record({ mutantId: 'T7', withWorkerPid: false })],
@@ -195,7 +217,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
