@@ -5,6 +5,7 @@ import { executeCandidateExperiment, loadExperimentContext } from './candidate-e
 import { candidateByName } from './candidate-setup.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
+import { lifecycleQualificationRecordProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle-router.mjs';
 
@@ -39,10 +40,6 @@ export async function runFormalSingle({
     throw new Error(`FORMAL_EXECUTOR_NOT_DECLARED_FOR_CANDIDATE:${candidateName}/${mutantId}`);
   }
 
-  // The lifecycle and run hook intentionally share one mutable, per-experiment
-  // environment object. A lifecycle may publish only experiment-owned runtime
-  // coordinates (for example an isolated Temporal address/task queues) after
-  // pre-run cleanup succeeds, without mutating the caller's process.env.
   const runtimeEnv = { ...env };
   const lifecycle = lifecycleFactory({
     candidateName,
@@ -55,6 +52,7 @@ export async function runFormalSingle({
     ...Object.keys(runtimeEnv).filter((name) => name.startsWith('NAIA_') || name.startsWith('TEMPORAL_') || name.startsWith('DBOS_') || name.startsWith('RESTATE_') || name.startsWith('TRIGGER_')),
     ...(lifecycle?.declaredEnvNames ?? [])
   ])].sort();
+  const lifecycleQualification = lifecycleQualificationRecordProvenance(repositoryRoot, candidateName);
 
   const result = await executeCandidateExperiment({
     repositoryRoot,
@@ -68,6 +66,7 @@ export async function runFormalSingle({
       packageManager: runtimeEnv.npm_config_user_agent ?? null,
       requiredEnvNames: declaredEnvNames,
       formalPromotionPolicy: formalPromotionPolicyProvenance(),
+      formalLifecycleQualification: lifecycleQualification,
       formalRuntimeLifecycle: lifecycle
         ? { candidate: lifecycle.candidateName, status: lifecycle.status }
         : null
