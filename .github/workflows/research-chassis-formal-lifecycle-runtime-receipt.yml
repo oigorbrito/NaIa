@@ -1,0 +1,254 @@
+name: Research Chassis Formal Lifecycle Runtime Receipt
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-formal-lifecycle-runtime-receipt.yml'
+      - 'research/chassis/harness/formal-runtime-lifecycle.mjs'
+      - 'research/chassis/harness/formal-dbos-lifecycle.mjs'
+      - 'research/chassis/harness/formal-runtime-lifecycle-router.mjs'
+      - 'research/chassis/harness/formal-single-run.mjs'
+      - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
+      - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
+      - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
+      - 'research/chassis/harness/common-runner-run-hook.mjs'
+      - 'research/chassis/harness/t5-record-bridge.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  temporal-t5-r1-lifecycle-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TEMPORAL_CLI_VERSION: '1.8.1'
+      TEMPORAL_CLI_ARCHIVE: 'temporal_cli_1.8.1_linux_amd64.tar.gz'
+      TEMPORAL_CLI_SHA256: 'b94417b9a8760b30217f4b881dabce4b16a76a38b5e99e2eca3ce358b8030f06'
+      TEMPORAL_LOCK_SHA256: '70577d13ae243d0f5b0f7f1c7933655af7ac8a238c0b2238c474bb055641235f'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Execute controlled Temporal T5/r1 lifecycle qualification
+        shell: bash
+        run: |
+          set +e
+          EVIDENCE="$RUNNER_TEMP/naia-temporal-lifecycle-receipt"
+          rm -rf "$EVIDENCE"
+          mkdir -p "$EVIDENCE/bin"
+          CLASSIFICATION="$EVIDENCE/classification.txt"
+          echo 'NOT_RUN' > "$CLASSIFICATION"
+          {
+            echo 'scope=LOCAL TEST HARNESS'
+            echo 'repository=OWN REPOSITORY'
+            echo 'fault_injection=CONTROLLED FAULT INJECTION'
+            echo 'third_party_target=NO THIRD-PARTY TARGET'
+            echo 'credential_bypass=NO CREDENTIAL BYPASS'
+            echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
+            echo 'formal_ledger=false'
+            echo 'benchmark_promotion_allowed=false'
+            echo 'candidate=Temporal TypeScript'
+            echo 'mutant=T5'
+            echo 'repetition=1'
+            echo "head_sha=$GITHUB_SHA"
+            echo "node=$(node --version)"
+          } > "$EVIDENCE/runtime-manifest.txt"
+
+          LOCK='research/chassis/adapters/temporal-ts/package-lock.json'
+          OBSERVED_LOCK=$(sha256sum "$LOCK" | awk '{print $1}')
+          echo "$OBSERVED_LOCK" > "$EVIDENCE/package-lock.sha256"
+          if [ "$OBSERVED_LOCK" != "$TEMPORAL_LOCK_SHA256" ]; then
+            echo 'BLOCKED_PROFILE_IDENTITY_MISMATCH' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          (cd research/chassis/adapters/temporal-ts && npm ci --ignore-scripts --no-audit --no-fund) \
+            > "$EVIDENCE/npm-ci.stdout.log" 2> "$EVIDENCE/npm-ci.stderr.log"
+          NPM_CODE=$?
+          echo "$NPM_CODE" > "$EVIDENCE/npm-ci.exit-code.txt"
+          if [ "$NPM_CODE" -ne 0 ]; then
+            echo 'BLOCKED_NPM_INSTALL' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          cd "$EVIDENCE/bin"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            -o "$TEMPORAL_CLI_ARCHIVE" \
+            "https://github.com/temporalio/cli/releases/download/v${TEMPORAL_CLI_VERSION}/${TEMPORAL_CLI_ARCHIVE}" \
+            > "$EVIDENCE/temporal-cli-download.stdout.log" 2> "$EVIDENCE/temporal-cli-download.stderr.log"
+          CURL_CODE=$?
+          if [ "$CURL_CODE" -ne 0 ]; then
+            echo 'BLOCKED_TEMPORAL_CLI_DOWNLOAD' > "$CLASSIFICATION"
+            exit 0
+          fi
+          printf '%s  %s\n' "$TEMPORAL_CLI_SHA256" "$TEMPORAL_CLI_ARCHIVE" | sha256sum --check --strict \
+            > "$EVIDENCE/temporal-cli-checksum.txt" 2>&1
+          CHECKSUM_CODE=$?
+          if [ "$CHECKSUM_CODE" -ne 0 ]; then
+            echo 'BLOCKED_PROFILE_IDENTITY_MISMATCH' > "$CLASSIFICATION"
+            exit 0
+          fi
+          tar -xzf "$TEMPORAL_CLI_ARCHIVE"
+          chmod +x temporal
+          ./temporal --version > "$EVIDENCE/temporal-cli-version.txt" 2>&1
+          echo "NAIA_TEMPORAL_CLI=$EVIDENCE/bin/temporal" >> "$GITHUB_ENV"
+          export NAIA_TEMPORAL_CLI="$EVIDENCE/bin/temporal"
+          cd "$GITHUB_WORKSPACE"
+
+          node --test \
+            research/chassis/harness/formal-runtime-lifecycle.test.mjs \
+            research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-single-run.test.mjs \
+            research/chassis/harness/formal-ledger-admission.test.mjs \
+            > "$EVIDENCE/targeted-tests.tap" 2>&1
+          TEST_CODE=$?
+          echo "$TEST_CODE" > "$EVIDENCE/targeted-tests.exit-code.txt"
+          if [ "$TEST_CODE" -ne 0 ]; then
+            echo 'HARNESS_VALIDATION_FAIL' > "$CLASSIFICATION"
+            exit 1
+          fi
+
+          node research/chassis/harness/formal-single-run.mjs \
+            --candidate 'Temporal TypeScript' \
+            --mutant T5 \
+            --repetition 1 \
+            --timeout-ms 30000 \
+            --output "$EVIDENCE/record.json" \
+            > "$EVIDENCE/formal-single-run.stdout.json" 2> "$EVIDENCE/formal-single-run.stderr.log"
+          SINGLE_CODE=$?
+          echo "$SINGLE_CODE" > "$EVIDENCE/formal-single-run.exit-code.txt"
+          if [ ! -s "$EVIDENCE/record.json" ]; then
+            echo 'LIFECYCLE_RECEIPT_NOT_OBTAINED' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          node research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs "$EVIDENCE/record.json" \
+            > "$EVIDENCE/runtime-receipt-validation.json" 2> "$EVIDENCE/runtime-receipt-validation.stderr.log"
+          VALIDATOR_CODE=$?
+          echo "$VALIDATOR_CODE" > "$EVIDENCE/runtime-receipt-validation.exit-code.txt"
+          if [ "$VALIDATOR_CODE" -eq 0 ]; then
+            echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
+          else
+            echo 'LIFECYCLE_RECEIPT_NOT_VERIFIED' > "$CLASSIFICATION"
+          fi
+          exit 0
+
+      - name: Upload Temporal lifecycle qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-formal-lifecycle-receipt-${{ github.sha }}
+          path: ${{ runner.temp }}/naia-temporal-lifecycle-receipt/
+          if-no-files-found: warn
+          retention-days: 30
+
+  dbos-t5-r1-lifecycle-receipt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DBOS_LOCK_SHA256: '621b1df5b98197c663083492a82cbe741f46d021be45e9e91991fa3cc1f94d7c'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Execute controlled DBOS T5/r1 lifecycle qualification
+        shell: bash
+        run: |
+          set +e
+          EVIDENCE="$RUNNER_TEMP/naia-dbos-lifecycle-receipt"
+          rm -rf "$EVIDENCE"
+          mkdir -p "$EVIDENCE"
+          CLASSIFICATION="$EVIDENCE/classification.txt"
+          echo 'NOT_RUN' > "$CLASSIFICATION"
+          {
+            echo 'scope=LOCAL TEST HARNESS'
+            echo 'repository=OWN REPOSITORY'
+            echo 'fault_injection=CONTROLLED FAULT INJECTION'
+            echo 'third_party_target=NO THIRD-PARTY TARGET'
+            echo 'credential_bypass=NO CREDENTIAL BYPASS'
+            echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
+            echo 'formal_ledger=false'
+            echo 'benchmark_promotion_allowed=false'
+            echo 'candidate=DBOS TypeScript'
+            echo 'mutant=T5'
+            echo 'repetition=1'
+            echo "head_sha=$GITHUB_SHA"
+            echo "node=$(node --version)"
+            echo "docker=$(docker --version 2>&1)"
+          } > "$EVIDENCE/runtime-manifest.txt"
+
+          LOCK='research/chassis/adapters/dbos-ts/package-lock.json'
+          OBSERVED_LOCK=$(sha256sum "$LOCK" | awk '{print $1}')
+          echo "$OBSERVED_LOCK" > "$EVIDENCE/package-lock.sha256"
+          if [ "$OBSERVED_LOCK" != "$DBOS_LOCK_SHA256" ]; then
+            echo 'BLOCKED_PROFILE_IDENTITY_MISMATCH' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          (cd research/chassis/adapters/dbos-ts && npm ci --ignore-scripts --no-audit --no-fund) \
+            > "$EVIDENCE/npm-ci.stdout.log" 2> "$EVIDENCE/npm-ci.stderr.log"
+          NPM_CODE=$?
+          echo "$NPM_CODE" > "$EVIDENCE/npm-ci.exit-code.txt"
+          if [ "$NPM_CODE" -ne 0 ]; then
+            echo 'BLOCKED_NPM_INSTALL' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          node --test \
+            research/chassis/harness/formal-dbos-lifecycle.test.mjs \
+            research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-single-run.test.mjs \
+            research/chassis/harness/formal-ledger-admission.test.mjs \
+            > "$EVIDENCE/targeted-tests.tap" 2>&1
+          TEST_CODE=$?
+          echo "$TEST_CODE" > "$EVIDENCE/targeted-tests.exit-code.txt"
+          if [ "$TEST_CODE" -ne 0 ]; then
+            echo 'HARNESS_VALIDATION_FAIL' > "$CLASSIFICATION"
+            exit 1
+          fi
+
+          node research/chassis/harness/formal-single-run.mjs \
+            --candidate 'DBOS TypeScript' \
+            --mutant T5 \
+            --repetition 1 \
+            --timeout-ms 30000 \
+            --output "$EVIDENCE/record.json" \
+            > "$EVIDENCE/formal-single-run.stdout.json" 2> "$EVIDENCE/formal-single-run.stderr.log"
+          SINGLE_CODE=$?
+          echo "$SINGLE_CODE" > "$EVIDENCE/formal-single-run.exit-code.txt"
+          if [ ! -s "$EVIDENCE/record.json" ]; then
+            echo 'LIFECYCLE_RECEIPT_NOT_OBTAINED' > "$CLASSIFICATION"
+            exit 0
+          fi
+
+          node research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs "$EVIDENCE/record.json" \
+            > "$EVIDENCE/runtime-receipt-validation.json" 2> "$EVIDENCE/runtime-receipt-validation.stderr.log"
+          VALIDATOR_CODE=$?
+          echo "$VALIDATOR_CODE" > "$EVIDENCE/runtime-receipt-validation.exit-code.txt"
+          if [ "$VALIDATOR_CODE" -eq 0 ]; then
+            echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
+          else
+            echo 'LIFECYCLE_RECEIPT_NOT_VERIFIED' > "$CLASSIFICATION"
+          fi
+          exit 0
+
+      - name: Upload DBOS lifecycle qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbos-formal-lifecycle-receipt-${{ github.sha }}
+          path: ${{ runner.temp }}/naia-dbos-lifecycle-receipt/
+          if-no-files-found: warn
+          retention-days: 30
