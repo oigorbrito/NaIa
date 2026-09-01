@@ -78,9 +78,11 @@ async function status() {
   await launch();
   try {
     const native = await DBOS.getWorkflowStatus(objectiveId);
+    const nativeState = native?.status ?? 'UNKNOWN';
+    const state = nativeState === 'SUCCESS' ? 'COMPLETED' : nativeState;
     console.log(JSON.stringify({
       objectiveId,
-      state: native?.status ?? 'UNKNOWN',
+      state,
       currentAuthority: native?.executorId ?? 'unknown',
       operationId: operationId ?? null,
       native
