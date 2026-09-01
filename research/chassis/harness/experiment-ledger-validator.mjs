@@ -3,12 +3,23 @@ import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
+const CLEANUP_DIMENSIONS = Object.freeze([
+  'workerCleanup',
+  'durableStateCleanup',
+  'oracleCleanup',
+  'temporaryResourcesCleanup'
+]);
+
 function sameIdentity(record, spec) {
   return record?.experimentId === spec.experimentId
     && record?.candidate === spec.candidate
     && record?.mutantId === spec.mutantId
     && record?.repetition === spec.repetition
     && record?.randomSeed === spec.randomSeed;
+}
+
+function preRunCleanupReceiptValid(receipt) {
+  return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt?.[key] === true);
 }
 
 export function validateRecordAgainstSpec(record, spec) {
@@ -26,20 +37,24 @@ export function validateRecordAgainstSpec(record, spec) {
   return { valid: errors.length === 0, errors };
 }
 
-export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
+export function auditStoredFormalRecord(record) {
   const errors = [];
-  const candidate = record?.candidate;
-  if (!candidate || !formalCleanupSupportsCandidate(cleanupSupport, candidate)) {
-    errors.push(`${candidate ?? 'unknown candidate'}: formal cleanup support is not runtime-verified`);
-  }
+  const schema = validateExperimentRecord(record);
+  if (!schema.valid) errors.push(...schema.errors.map((error) => `record: ${error}`));
 
+  const candidate = record?.candidate ?? 'unknown candidate';
   const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
-  if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
-    errors.push(`${candidate ?? 'unknown candidate'}: record lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
+  if (!lifecycle || lifecycle.candidate !== record?.candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
+    errors.push(`${candidate}: stored formal record lacks immutable RUNTIME_VERIFIED lifecycle provenance`);
   }
 
-  if (record?.setup?.status === 'READY' && record?.cleanup?.status !== 'PASS') {
-    errors.push(`${candidate ?? 'unknown candidate'}: READY formal execution requires cleanup.status=PASS`);
+  if (record?.setup?.status === 'READY') {
+    if (!preRunCleanupReceiptValid(record?.setup?.preRunCleanupReceipt)) {
+      errors.push(`${candidate}: READY stored formal record lacks a complete PASS pre-run cleanup receipt`);
+    }
+    if (record?.cleanup?.status !== 'PASS') {
+      errors.push(`${candidate}: READY stored formal record requires cleanup.status=PASS`);
+    }
   }
 
   const pidEvidence = validateWorkerPidCleanupEvidence({
@@ -48,9 +63,30 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
     run: record?.run,
     cleanup: record?.cleanup
   });
-  for (const error of pidEvidence.errors) {
-    errors.push(`${candidate ?? 'unknown candidate'}: ${error}`);
+  for (const error of pidEvidence.errors) errors.push(`${candidate}: ${error}`);
+
+  return { valid: errors.length === 0, errors };
+}
+
+export function auditStoredFormalLedger(records) {
+  if (!Array.isArray(records)) return { valid: false, recordCount: 0, errors: ['records must be an array'] };
+  const errors = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const audit = auditStoredFormalRecord(records[index]);
+    for (const error of audit.errors) errors.push(`ledger index ${index}: ${error}`);
   }
+  return { valid: errors.length === 0, recordCount: records.length, errors };
+}
+
+export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
+  const errors = [];
+  const candidate = record?.candidate;
+  if (!candidate || !formalCleanupSupportsCandidate(cleanupSupport, candidate)) {
+    errors.push(`${candidate ?? 'unknown candidate'}: formal cleanup support is not runtime-verified`);
+  }
+
+  const immutable = auditStoredFormalRecord(record);
+  errors.push(...immutable.errors);
 
   return { valid: errors.length === 0, errors };
 }
@@ -96,19 +132,37 @@ export function validateExecutionLedger(records, protocol, faultSuite, { allowPr
   };
 }
 
-export function appendRecordToLedger(records, record, protocol, faultSuite) {
+export function appendRecordToLedger(
+  records,
+  record,
+  protocol,
+  faultSuite,
+  { cleanupSupport = FORMAL_CLEANUP_SUPPORT } = {}
+) {
   const current = validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
   if (!current.valid) throw new Error(`existing ledger is invalid: ${current.errors.join('; ')}`);
+
+  const currentFormalAudit = auditStoredFormalLedger(records);
+  if (!currentFormalAudit.valid) {
+    throw new Error(`existing formal ledger immutable provenance is invalid: ${currentFormalAudit.errors.join('; ')}`);
+  }
+
   if (!current.nextExpectedExperiment) throw new Error('preregistered ledger is already complete');
 
   const validation = validateRecordAgainstSpec(record, current.nextExpectedExperiment);
   if (!validation.valid) throw new Error(`record is not the next preregistered experiment: ${validation.errors.join('; ')}`);
 
-  const admission = formalLedgerAdmission(record);
+  const admission = formalLedgerAdmission(record, cleanupSupport);
   if (!admission.valid) throw new Error(`record is not eligible for formal ledger admission: ${admission.errors.join('; ')}`);
 
   const next = [...records, record];
   const nextValidation = validateExecutionLedger(next, protocol, faultSuite, { allowPrefix: true });
   if (!nextValidation.valid) throw new Error(`appended ledger is invalid: ${nextValidation.errors.join('; ')}`);
-  return { records: next, validation: nextValidation };
+
+  const nextFormalAudit = auditStoredFormalLedger(next);
+  if (!nextFormalAudit.valid) {
+    throw new Error(`appended formal ledger immutable provenance is invalid: ${nextFormalAudit.errors.join('; ')}`);
+  }
+
+  return { records: next, validation: nextValidation, formalAudit: nextFormalAudit };
 }
