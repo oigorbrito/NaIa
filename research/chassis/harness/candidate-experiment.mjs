@@ -96,6 +96,7 @@ export async function executeCandidateExperiment({
   cleanupHook,
   artifactHook,
   environment,
+  repositoryProvenance = null,
   env = process.env
 }) {
   const context = await loadExperimentContext(repositoryRoot);
@@ -120,7 +121,14 @@ export async function executeCandidateExperiment({
         }
       }
 
-      const inspected = await inspectCandidateSetup({ candidate, repositoryRoot, harnessPath, env, formalProvenance: true });
+      const inspected = await inspectCandidateSetup({
+        candidate,
+        repositoryRoot,
+        harnessPath,
+        env,
+        formalProvenance: true,
+        repositoryProvenance
+      });
       if (inspected.status !== 'READY') {
         return {
           ...inspected,
