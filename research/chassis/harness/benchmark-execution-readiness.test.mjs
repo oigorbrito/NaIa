@@ -12,7 +12,14 @@ async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
 }
 
-test('current gate records DBOS and Temporal full structural coverage plus Restate T16 while keeping remaining Restate and Trigger gaps explicit', async () => {
+function completeCleanupSupport(candidates) {
+  return Object.fromEntries(candidates.map((candidate) => [candidate.candidate, {
+    preRunCleanup: true,
+    postRunCleanup: true
+  }]));
+}
+
+test('current gate records executor gaps and keeps formal cleanup unavailable until concrete cleanup hooks exist', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const result = assessBenchmarkExecutionReadiness(protocol, plan);
@@ -54,9 +61,14 @@ test('current gate records DBOS and Temporal full structural coverage plus Resta
       supportedModes: ['local-process'], supportedCandidates: ['Temporal TypeScript', 'DBOS TypeScript', 'Restate']
     }
   ]);
+  assert.deepEqual(result.unsupportedCleanupCandidates, plan.candidates.map((candidate) => ({
+    candidate: candidate.candidate,
+    mode: candidate.mode,
+    missingPhases: ['preRunCleanup', 'postRunCleanup']
+  })));
 });
 
-test('readiness opens only when every critical mutant supports every candidate', async () => {
+test('readiness opens only when every critical mutant and cleanup phase supports every candidate', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   const completeSupport = Object.fromEntries(protocol.criticalMutants.map((mutantId) => [mutantId, {
@@ -64,13 +76,15 @@ test('readiness opens only when every critical mutant supports every candidate',
     candidates: null,
     fault: `fixture-${mutantId}`
   }]));
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
 
-  const result = assessBenchmarkExecutionReadiness(protocol, plan, completeSupport);
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, completeSupport, cleanupSupport);
   assert.equal(result.ready, true);
   assert.equal(result.status, 'BENCHMARK_EXECUTION_READY');
   assert.deepEqual(result.unsupportedMutants, []);
   assert.deepEqual(result.unsupportedCandidateMutants, []);
-  assert.equal(assertBenchmarkExecutionReady(protocol, plan, completeSupport).ready, true);
+  assert.deepEqual(result.unsupportedCleanupCandidates, []);
+  assert.equal(assertBenchmarkExecutionReady(protocol, plan, completeSupport, cleanupSupport).ready, true);
 });
 
 test('candidate allowlist is enforced independently of execution mode', () => {
@@ -83,17 +97,23 @@ test('candidate allowlist is enforced independently of execution mode', () => {
     ]
   };
   const support = { T5: { modes: ['local-process'], candidates: ['Temporal TypeScript'] } };
-  const result = assessBenchmarkExecutionReadiness(protocol, plan, support);
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCandidateMutants.length, 1);
   assert.equal(result.unsupportedCandidateMutants[0].candidate, 'DBOS TypeScript');
+  assert.deepEqual(result.unsupportedCleanupCandidates, []);
 });
 
-test('assertBenchmarkExecutionReady fails closed with explicit remaining candidate gaps', async () => {
+test('assertBenchmarkExecutionReady fails closed with explicit remaining candidate and cleanup gaps', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const plan = await json('critical-mutant-plan.v1.json');
   assert.throws(
     () => assertBenchmarkExecutionReady(protocol, plan),
     /Restate\/T5: formal executor not implemented for candidate\/mode/
+  );
+  assert.throws(
+    () => assertBenchmarkExecutionReady(protocol, plan),
+    /Temporal TypeScript: formal cleanup not implemented for preRunCleanup,postRunCleanup/
   );
 });

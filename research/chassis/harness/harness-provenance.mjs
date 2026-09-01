@@ -17,6 +17,7 @@ export const FORMAL_HARNESS_FILES = Object.freeze([
   'research/chassis/harness/experiment-record-validator.mjs',
   'research/chassis/harness/external-oracle.mjs',
   'research/chassis/harness/fault-barrier.mjs',
+  'research/chassis/harness/formal-cleanup-support.mjs',
   'research/chassis/harness/formal-executor-support.mjs',
   'research/chassis/harness/formal-single-run.mjs',
   'research/chassis/harness/harness-provenance.mjs',

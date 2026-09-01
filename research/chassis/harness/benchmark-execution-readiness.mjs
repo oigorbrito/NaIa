@@ -1,6 +1,12 @@
+import { FORMAL_CLEANUP_SUPPORT, missingFormalCleanupPhases } from './formal-cleanup-support.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
-export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, support = FORMAL_EXECUTOR_SUPPORT) {
+export function assessBenchmarkExecutionReadiness(
+  protocol,
+  criticalPlan,
+  support = FORMAL_EXECUTOR_SUPPORT,
+  cleanupSupport = FORMAL_CLEANUP_SUPPORT
+) {
   const errors = [];
   const criticalMutants = protocol?.criticalMutants ?? [];
   const plannedCritical = criticalPlan?.criticalMutants ?? [];
@@ -11,8 +17,18 @@ export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, suppor
 
   const unsupportedMutants = criticalMutants.filter((mutantId) => !support?.[mutantId]);
   const unsupportedCandidateMutants = [];
+  const unsupportedCleanupCandidates = [];
 
   for (const candidate of criticalPlan?.candidates ?? []) {
+    const missingCleanupPhases = missingFormalCleanupPhases(cleanupSupport, candidate.candidate);
+    if (missingCleanupPhases.length > 0) {
+      unsupportedCleanupCandidates.push({
+        candidate: candidate.candidate,
+        mode: candidate.mode,
+        missingPhases: missingCleanupPhases
+      });
+    }
+
     for (const mutantId of criticalMutants) {
       const implementation = support?.[mutantId];
       if (!implementation) continue;
@@ -28,24 +44,34 @@ export function assessBenchmarkExecutionReadiness(protocol, criticalPlan, suppor
     }
   }
 
-  const ready = errors.length === 0 && unsupportedMutants.length === 0 && unsupportedCandidateMutants.length === 0;
+  const ready = errors.length === 0
+    && unsupportedMutants.length === 0
+    && unsupportedCandidateMutants.length === 0
+    && unsupportedCleanupCandidates.length === 0;
   return {
     ready,
     status: ready ? 'BENCHMARK_EXECUTION_READY' : 'BENCHMARK_EXECUTION_NOT_READY',
     criticalMutants: [...criticalMutants],
     unsupportedMutants,
     unsupportedCandidateMutants,
+    unsupportedCleanupCandidates,
     errors
   };
 }
 
-export function assertBenchmarkExecutionReady(protocol, criticalPlan, support = FORMAL_EXECUTOR_SUPPORT) {
-  const assessment = assessBenchmarkExecutionReadiness(protocol, criticalPlan, support);
+export function assertBenchmarkExecutionReady(
+  protocol,
+  criticalPlan,
+  support = FORMAL_EXECUTOR_SUPPORT,
+  cleanupSupport = FORMAL_CLEANUP_SUPPORT
+) {
+  const assessment = assessBenchmarkExecutionReadiness(protocol, criticalPlan, support, cleanupSupport);
   if (!assessment.ready) {
     const reasons = [
       ...assessment.errors,
       ...assessment.unsupportedMutants.map((mutantId) => `${mutantId}: formal executor not implemented`),
-      ...assessment.unsupportedCandidateMutants.map((entry) => `${entry.candidate}/${entry.mutantId}: formal executor not implemented for candidate/mode`)
+      ...assessment.unsupportedCandidateMutants.map((entry) => `${entry.candidate}/${entry.mutantId}: formal executor not implemented for candidate/mode`),
+      ...assessment.unsupportedCleanupCandidates.map((entry) => `${entry.candidate}: formal cleanup not implemented for ${entry.missingPhases.join(',')}`)
     ];
     throw new Error(`benchmark execution gate closed: ${reasons.join('; ')}`);
   }
