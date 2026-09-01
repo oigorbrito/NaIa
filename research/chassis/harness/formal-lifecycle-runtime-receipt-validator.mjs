@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { explicitWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
+import { repositoryProvenanceReady } from './repository-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
   'workerCleanup',
@@ -45,8 +46,9 @@ export function validateRuntimeLifecycleReceipt(record) {
   const schema = validateExperimentRecord(record);
   const preRun = record?.setup?.preRunCleanupReceipt ?? null;
   const cleanup = record?.cleanup ?? null;
-  const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle ?? null;
-  const lifecycleQualification = record?.setup?.environment?.formalLifecycleQualification ?? null;
+  const environment = record?.setup?.environment ?? {};
+  const lifecycle = environment.formalRuntimeLifecycle ?? null;
+  const lifecycleQualification = environment.formalLifecycleQualification ?? null;
   const workerProcessPids = explicitWorkerProcessPids(record?.run);
   const observedWorkerPids = cleanup?.observedWorkerPids ?? [];
   const liveObservedWorkerPids = cleanup?.liveObservedWorkerPids ?? [];
@@ -59,6 +61,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     firstRepetition: record?.repetition === 1,
     setupReady: record?.setup?.status === 'READY',
     cleanupVerifiedBeforeRun: record?.setup?.cleanupVerifiedBeforeRun === true,
+    repositoryRevisionVerified: repositoryProvenanceReady(environment.repositoryProvenance),
     lifecycleDeclared: lifecycle?.candidate === record?.candidate,
     lifecycleStateIsPrePromotionOrVerified: ['IMPLEMENTED_NOT_RUNTIME_VERIFIED', 'RUNTIME_VERIFIED'].includes(lifecycle?.status),
     lifecycleQualificationBundleCurrent: lifecycleQualificationRecordProvenanceValid(lifecycleQualification, record?.candidate),
@@ -82,6 +85,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     candidate: record?.candidate ?? null,
     mutantId: record?.mutantId ?? null,
     repetition: record?.repetition ?? null,
+    repositoryRevision: environment.repositoryProvenance?.revision ?? null,
     candidateVerdict: record?.verdict ?? null,
     candidateVerdictIgnoredForLifecycleVerification: true,
     workerProcessPids,
