@@ -4,6 +4,10 @@ function validPid(value) {
   return Number.isInteger(value) && value > 0 && value !== process.pid;
 }
 
+export function normalizeWorkerProcessPids(...values) {
+  return [...new Set(values.flat(Infinity).filter(validPid))];
+}
+
 export function collectObservedPids(value, output = new Set()) {
   if (!value || typeof value !== 'object') return output;
   if (validPid(value.pid)) output.add(value.pid);
@@ -16,9 +20,7 @@ export function collectObservedPids(value, output = new Set()) {
 }
 
 export function explicitWorkerProcessPids(run) {
-  const values = run?.rawObservations?.workerProcessPids;
-  if (!Array.isArray(values)) return [];
-  return [...new Set(values.filter(validPid))];
+  return normalizeWorkerProcessPids(run?.rawObservations?.workerProcessPids ?? []);
 }
 
 export function workerPidProvenanceRequired({ setupStatus, mutantId, run }) {
