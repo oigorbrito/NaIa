@@ -75,7 +75,7 @@
       "runtime_status": "BLOCKED_B001",
       "blocker": "B001",
       "required_env": [],
-      "expected_commands": ["start","resume","status","cancel"],
+      "expected_commands": ["start","resume","status"],
       "fault_injection_compatibility": "Structural formal executors are declared for all six critical mutants T5/T7/T8/T11/T12/T16. Dedicated T5/T11/T12/T16 drivers are implemented but remain runtime-unverified under B001; T15 remains noncritical qualification evidence",
       "operation_identity_strategy": "workflow ID=objectiveId and operationId is invariant across retry/restart; T11 preserves workflow/invocation identity across cancellation and recovery challenge; T16 preserves objective identity while intentionally mutating Restate deploymentId A->B",
       "worker_authority_boundary": "local endpoint executes user code while Restate server owns durable invocation authority; T11 kills endpoint A only after durable cancellation is independently observed and starts distinct deployment B for recovery challenge; T12/T16 keep the server alive while swapping separately registered endpoint deployments"
