@@ -13,12 +13,12 @@ function temporalRecord(overrides = {}) {
     setup: {
       status: 'READY',
       candidateVersion: overrides.candidateVersion ?? '1.23.0',
-      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
+      candidateSourceRef: overrides.candidateSourceRef ?? 'temporalio/sdk-typescript v1.23.0',
       adapterSha256: overrides.adapterSha256 ?? 'b'.repeat(64),
       harnessSha256: 'c'.repeat(64),
       dependencyIdentity: {
         manifestPath: overrides.manifestPath ?? '/runner/a/research/chassis/adapters/temporal-ts/package.json',
-        manifestSha256: 'd'.repeat(64),
+        manifestSha256: overrides.manifestSha256 ?? 'd'.repeat(64),
         packages: [{
           package: '@temporalio/worker',
           expectedVersion: '1.23.0',
@@ -31,12 +31,12 @@ function temporalRecord(overrides = {}) {
         os: overrides.os ?? 'linux 6.11.0',
         arch: overrides.arch ?? 'x64',
         runtime: overrides.runtime ?? 'node v22.16.0',
-        packageManager: overrides.packageManager ?? null,
-        formalLifecycleQualification: { sha256: SHA }
+        packageManager: Object.prototype.hasOwnProperty.call(overrides, 'packageManager') ? overrides.packageManager : null,
+        formalLifecycleQualification: { sha256: overrides.lifecycleQualificationSha256 ?? SHA }
       },
       parameters: {
-        mode: 'local-process',
-        workerAuthorityBoundary: 'Temporal worker process'
+        mode: overrides.mode ?? 'local-process',
+        workerAuthorityBoundary: overrides.workerAuthorityBoundary ?? 'Temporal worker process'
       },
       preRunCleanupReceipt: {
         status: 'PASS',
@@ -44,12 +44,12 @@ function temporalRecord(overrides = {}) {
         durableStateCleanup: true,
         oracleCleanup: true,
         temporaryResourcesCleanup: true,
-        cliSha256: 'e'.repeat(64),
-        versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2',
-        expectedProfile: {
+        cliSha256: overrides.cliSha256 ?? 'e'.repeat(64),
+        versionOutput: overrides.versionOutput ?? 'Temporal CLI 1.8.1 Server 1.31.2',
+        expectedProfile: overrides.expectedProfile ?? {
           sdkVersion: '1.23.0', cliVersion: '1.8.1', serverVersion: '1.31.2', platform: 'linux', arch: 'x64'
         },
-        observedPlatform: { platform: 'linux', arch: 'x64' },
+        observedPlatform: overrides.observedPlatform ?? { platform: 'linux', arch: 'x64' },
         workspace: overrides.workspace ?? '/tmp/run-a',
         address: overrides.address ?? '127.0.0.1:7233',
         serverPid: overrides.serverPid ?? 111,
@@ -126,14 +126,39 @@ test('dynamic paths ports PIDs queues and container identities do not change can
   assert.equal(dbosA.candidateProfileSha256, dbosB.candidateProfileSha256);
 });
 
-test('Node OS or architecture drift changes common execution environment identity', () => {
+test('Node OS architecture or package-manager drift changes common execution environment identity', () => {
   const base = deriveFormalEnvironmentIdentity(temporalRecord());
   const nodeChanged = deriveFormalEnvironmentIdentity(temporalRecord({ runtime: 'node v24.0.0' }));
   const osChanged = deriveFormalEnvironmentIdentity(temporalRecord({ os: 'linux 6.12.0' }));
   const archChanged = deriveFormalEnvironmentIdentity(temporalRecord({ arch: 'arm64' }));
+  const packageManagerChanged = deriveFormalEnvironmentIdentity(temporalRecord({ packageManager: 'npm/10.9.2 node/v22.16.0 linux x64' }));
   assert.notEqual(base.commonSha256, nodeChanged.commonSha256);
   assert.notEqual(base.commonSha256, osChanged.commonSha256);
   assert.notEqual(base.commonSha256, archChanged.commonSha256);
+  assert.notEqual(base.commonSha256, packageManagerChanged.commonSha256);
+});
+
+test('every frozen candidate profile dimension contributes to candidate profile identity', () => {
+  const base = deriveFormalEnvironmentIdentity(temporalRecord());
+  const variants = [
+    temporalRecord({ candidateVersion: '1.23.1' }),
+    temporalRecord({ candidateSourceRef: 'temporalio/sdk-typescript v1.23.1' }),
+    temporalRecord({ adapterSha256: '9'.repeat(64) }),
+    temporalRecord({ manifestSha256: '8'.repeat(64) }),
+    temporalRecord({ mode: 'different-mode' }),
+    temporalRecord({ workerAuthorityBoundary: 'different authority boundary' }),
+    temporalRecord({ lifecycleQualificationSha256: '7'.repeat(64) }),
+    temporalRecord({ cliSha256: '6'.repeat(64) }),
+    temporalRecord({ versionOutput: 'Temporal CLI 1.8.1 Server 1.31.2 build-different' }),
+    temporalRecord({ observedPlatform: { platform: 'linux', arch: 'x64', variant: 'different' } })
+  ];
+
+  assert.equal(base.valid, true, base.errors.join('\n'));
+  for (const variant of variants) {
+    const identity = deriveFormalEnvironmentIdentity(variant);
+    assert.equal(identity.valid, true, identity.errors.join('\n'));
+    assert.notEqual(base.candidateProfileSha256, identity.candidateProfileSha256);
+  }
 });
 
 test('installed dependency or native runtime drift changes candidate profile identity', () => {
