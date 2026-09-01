@@ -1,5 +1,5 @@
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
-import { explicitWorkerProcessPids, workerPidProvenanceRequired } from './formal-worker-pid-provenance.mjs';
+import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
 const ALLOWED_VERDICTS = new Set(['PASS', 'FAIL', 'BLOCKED', 'INCONCLUSIVE', 'PARTIAL']);
 const CRITICAL_MUTANTS = new Set(['T5', 'T7', 'T8', 'T11', 'T12', 'T16']);
@@ -142,13 +142,14 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
         errors.push(`${mutantId}: repetition ${record.repetition} READY execution requires cleanup.status=PASS`);
       }
 
-      const pidProvenanceRequired = workerPidProvenanceRequired({
+      const pidEvidence = validateWorkerPidCleanupEvidence({
         setupStatus: record?.setup?.status,
         mutantId: record?.mutantId,
-        run: record?.run
+        run: record?.run,
+        cleanup: record?.cleanup
       });
-      if (pidProvenanceRequired && explicitWorkerProcessPids(record?.run).length === 0) {
-        errors.push(`${mutantId}: repetition ${record.repetition} injected critical execution lacks explicit worker process PID provenance`);
+      for (const error of pidEvidence.errors) {
+        errors.push(`${mutantId}: repetition ${record.repetition} ${error}`);
       }
     }
 
