@@ -31,6 +31,10 @@ function preRunCleanupReceiptValid(receipt) {
   return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt?.[key] === true);
 }
 
+function sha256(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+}
+
 export function validateRecordAgainstSpec(record, spec) {
   const errors = [];
   const validation = validateExperimentRecord(record);
@@ -57,6 +61,10 @@ export function auditStoredFormalRecord(record) {
 
   if (!repositoryProvenanceStructurallyValid(environment.repositoryProvenance)) {
     errors.push(`${candidate}: stored formal record lacks structurally valid Git repository provenance`);
+  }
+
+  if (!sha256(record?.setup?.harnessSha256)) {
+    errors.push(`${candidate}: stored formal record lacks structurally valid formal harness SHA-256 provenance`);
   }
 
   if (!lifecycle || lifecycle.candidate !== record?.candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
@@ -155,6 +163,26 @@ export function assessStoredFormalLedgerRepositoryRevisionConsistency(records) {
   };
 }
 
+export function assessStoredFormalLedgerHarnessConsistency(records) {
+  if (!Array.isArray(records)) {
+    return { consistent: false, recordCount: 0, harnessSha256: null, harnessSha256s: [], errors: ['records must be an array'] };
+  }
+  const harnessSha256s = [...new Set(records
+    .map((record) => record?.setup?.harnessSha256)
+    .filter((value) => sha256(value))
+    .map((value) => String(value).toLowerCase()))].sort();
+  const consistent = harnessSha256s.length <= 1;
+  return {
+    consistent,
+    recordCount: records.length,
+    harnessSha256: harnessSha256s.length === 1 ? harnessSha256s[0] : null,
+    harnessSha256s,
+    errors: consistent
+      ? []
+      : [`formal ledger prefix spans multiple harness identities: ${harnessSha256s.join(', ')}`]
+  };
+}
+
 export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   const candidate = record?.candidate;
@@ -237,6 +265,11 @@ export function appendRecordToLedger(
     throw new Error(`existing formal ledger cannot continue across repository revisions: ${currentRevisionConsistency.errors.join('; ')}`);
   }
 
+  const currentHarnessConsistency = assessStoredFormalLedgerHarnessConsistency(records);
+  if (!currentHarnessConsistency.consistent) {
+    throw new Error(`existing formal ledger cannot continue across harness identities: ${currentHarnessConsistency.errors.join('; ')}`);
+  }
+
   if (!current.nextExpectedExperiment) throw new Error('preregistered ledger is already complete');
 
   const validation = validateRecordAgainstSpec(record, current.nextExpectedExperiment);
@@ -264,11 +297,17 @@ export function appendRecordToLedger(
     throw new Error(`appended formal ledger would mix repository revisions: ${nextRevisionConsistency.errors.join('; ')}`);
   }
 
+  const nextHarnessConsistency = assessStoredFormalLedgerHarnessConsistency(next);
+  if (!nextHarnessConsistency.consistent) {
+    throw new Error(`appended formal ledger would mix harness identities: ${nextHarnessConsistency.errors.join('; ')}`);
+  }
+
   return {
     records: next,
     validation: nextValidation,
     formalAudit: nextHistoricalAudit,
     currentCompatibility: nextCompatibility,
-    repositoryRevisionConsistency: nextRevisionConsistency
+    repositoryRevisionConsistency: nextRevisionConsistency,
+    harnessConsistency: nextHarnessConsistency
   };
 }
