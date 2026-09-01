@@ -8,6 +8,7 @@ on:
       - '.github/workflows/research-chassis-restate-t11-runtime.yml'
       - 'research/chassis/adapters/restate-ts/t11-*.mjs'
       - 'research/chassis/adapters/restate-ts/package.json'
+      - 'research/chassis/adapters/restate-ts/package-lock.json'
       - 'research/chassis/harness/t11-evaluator.mjs'
   workflow_dispatch:
 
@@ -18,6 +19,10 @@ jobs:
   restate-t11-runtime-qualification:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3]
     env:
       RESTATE_VERSION: '1.7.8'
       RESTATE_SERVER_ARCHIVE: 'restate-server-x86_64-unknown-linux-musl.tar.xz'
@@ -33,18 +38,19 @@ jobs:
         with:
           node-version: '22.16.0'
           cache: 'npm'
-          cache-dependency-path: research/chassis/adapters/restate-ts/package.json
+          cache-dependency-path: research/chassis/adapters/restate-ts/package-lock.json
 
       - name: Initialize isolated qualification workspace
         shell: bash
         run: |
           set -euo pipefail
-          QUAL_DIR="$RUNNER_TEMP/naia-restate-t11-runtime"
+          QUAL_DIR="$RUNNER_TEMP/naia-restate-t11-runtime-${{ matrix.repetition }}"
           rm -rf "$QUAL_DIR"
           mkdir -p "$QUAL_DIR/bin" "$QUAL_DIR/server-work" "$QUAL_DIR/evidence"
           echo "QUAL_DIR=$QUAL_DIR" >> "$GITHUB_ENV"
           {
             echo "classification=NOT_RUN"
+            echo "repetition=${{ matrix.repetition }}"
             echo "head_sha=$GITHUB_SHA"
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
@@ -62,14 +68,14 @@ jobs:
             echo 'preexisting_processes=false' >> "$QUAL_DIR/evidence/runtime-manifest.txt"
           fi
 
-      - name: Install exact Restate TypeScript SDK dependencies
+      - name: Install locked Restate TypeScript SDK dependencies
         id: npm_install
         continue-on-error: true
         working-directory: research/chassis/adapters/restate-ts
         shell: bash
         run: |
           set -euo pipefail
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm ls --all --json > "$QUAL_DIR/evidence/npm-tree.json"
           cp package-lock.json "$QUAL_DIR/evidence/package-lock.runtime.json"
           node -e "for (const p of ['@restatedev/restate-sdk','@restatedev/restate-sdk-clients']) { const j=require('./node_modules/'+p+'/package.json'); console.log(p+'='+j.version); if (j.version !== '1.16.9') process.exitCode=2 }" | tee "$QUAL_DIR/evidence/sdk-versions.txt"
@@ -214,7 +220,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: restate-t11-runtime-qualification-${{ github.sha }}
+          name: restate-t11-runtime-qualification-${{ github.sha }}-r${{ matrix.repetition }}
           path: ${{ env.QUAL_DIR }}/evidence/
           if-no-files-found: error
           retention-days: 30
@@ -228,9 +234,10 @@ jobs:
           else
             CLASSIFICATION='INCONCLUSIVE_NO_CLASSIFICATION'
           fi
-          echo "### Restate T11 runtime qualification" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Restate T11 runtime qualification — repetition ${{ matrix.repetition }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Classification: \`$CLASSIFICATION\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Candidate: Restate server 1.7.8 / SDK 1.16.9" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Scope: controlled local fault-injection on an ephemeral GitHub runner" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scope: controlled local fault-injection on an independent ephemeral GitHub runner" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dependency installation: npm ci from committed lockfile" >> "$GITHUB_STEP_SUMMARY"
           echo "- This is qualification evidence, not formal benchmark promotion." >> "$GITHUB_STEP_SUMMARY"
