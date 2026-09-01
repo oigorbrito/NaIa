@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { explicitWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
@@ -45,6 +46,7 @@ export function validateRuntimeLifecycleReceipt(record) {
   const preRun = record?.setup?.preRunCleanupReceipt ?? null;
   const cleanup = record?.cleanup ?? null;
   const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle ?? null;
+  const lifecycleQualification = record?.setup?.environment?.formalLifecycleQualification ?? null;
   const workerProcessPids = explicitWorkerProcessPids(record?.run);
   const observedWorkerPids = cleanup?.observedWorkerPids ?? [];
   const liveObservedWorkerPids = cleanup?.liveObservedWorkerPids ?? [];
@@ -59,6 +61,7 @@ export function validateRuntimeLifecycleReceipt(record) {
     cleanupVerifiedBeforeRun: record?.setup?.cleanupVerifiedBeforeRun === true,
     lifecycleDeclared: lifecycle?.candidate === record?.candidate,
     lifecycleStateIsPrePromotionOrVerified: ['IMPLEMENTED_NOT_RUNTIME_VERIFIED', 'RUNTIME_VERIFIED'].includes(lifecycle?.status),
+    lifecycleQualificationBundleCurrent: lifecycleQualificationRecordProvenanceValid(lifecycleQualification, record?.candidate),
     preRunReceiptPass: preRun?.status === 'PASS',
     preRunCleanupDimensionsPass: allCleanupDimensionsTrue(preRun),
     intendedFaultInjected: record?.run?.fault?.injected === true,
