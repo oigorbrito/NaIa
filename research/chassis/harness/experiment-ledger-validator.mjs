@@ -1,6 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
@@ -46,6 +47,10 @@ export function auditStoredFormalRecord(record) {
   const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
   if (!lifecycle || lifecycle.candidate !== record?.candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
     errors.push(`${candidate}: stored formal record lacks immutable RUNTIME_VERIFIED lifecycle provenance`);
+  }
+
+  if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
+    errors.push(`${candidate}: stored formal record lacks current frozen promotion policy hash provenance`);
   }
 
   if (record?.setup?.status === 'READY') {
