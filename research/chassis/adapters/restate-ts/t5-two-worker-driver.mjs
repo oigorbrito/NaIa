@@ -238,9 +238,9 @@ export async function runRestateT5({
     schedule.push('stale-completion-attempted');
 
     staleTransportDisposition = await responseDisposition(serviceA, acquiredA.requestId, timeoutMs);
-    const staleTransportFinished = staleTransportDisposition.event === 't5_http_response_finished';
     outputAfterStale = await peekInvocationOutput(ingressUrl, invocationId);
     const outputStillNotReady = outputAfterStale.status === 470;
+    const staleAttemptActuallyObserved = staleAttemptEvent !== null;
     schedule.push('post-stale-authority-inspected');
 
     releaseCompletion(serviceB);
@@ -250,6 +250,10 @@ export async function runRestateT5({
       timeoutMs,
       'new authority completion attempt'
     );
+    const staleAttemptAt = Date.parse(staleAttemptEvent?.timestamp ?? '');
+    const newAttemptAt = Date.parse(newAttemptEvent?.timestamp ?? '');
+    const staleAttemptBeforeNewCompletion =
+      Number.isFinite(staleAttemptAt) && Number.isFinite(newAttemptAt) && staleAttemptAt <= newAttemptAt;
     schedule.push('new-authority-completion-attempted');
 
     finalResult = await ingress.result(submission);
@@ -276,14 +280,14 @@ export async function runRestateT5({
       oldAuthorityIdentity,
       newAuthorityIdentity,
       authorityAdvanced: deploymentA !== deploymentB && acquiredB.variant === 'B',
-      oldAuthorityHeldUntilTakeover: acquiredA.variant === 'A' && acquiredB.variant === 'B' && staleAttemptEvent !== null,
+      oldAuthorityHeldUntilTakeover: acquiredA.variant === 'A' && acquiredB.variant === 'B' && staleAttemptActuallyObserved,
       staleCompletion: {
-        attempted: staleTransportFinished,
-        attemptedBeforeNewCompletion: staleTransportFinished && newAttemptEvent !== null,
-        rejectedOrNonAuthoritative: staleTransportFinished && outputStillNotReady,
-        becameAuthoritative: staleTransportFinished && outputAfterStale.status >= 200 && outputAfterStale.status < 300
+        attempted: staleAttemptActuallyObserved,
+        attemptedBeforeNewCompletion: staleAttemptActuallyObserved && staleAttemptBeforeNewCompletion,
+        rejectedOrNonAuthoritative: staleAttemptActuallyObserved && outputStillNotReady,
+        becameAuthoritative: staleAttemptActuallyObserved && outputAfterStale.status >= 200 && outputAfterStale.status < 300
       },
-      newAuthorityStillCurrentAfterStaleAttempt: staleTransportFinished && outputStillNotReady && !serviceB.exit,
+      newAuthorityStillCurrentAfterStaleAttempt: staleAttemptActuallyObserved && outputStillNotReady && !serviceB.exit,
       newAuthorityCompletion: {
         attempted: newAttemptEvent !== null,
         acceptedOrAuthoritative: finalFromB
@@ -305,6 +309,7 @@ export async function runRestateT5({
         staleTransportDisposition,
         outputAfterStale,
         newAttemptEvent,
+        staleAttemptBeforeNewCompletion,
         finalResult,
         serviceA: { pid: serviceA.pid, events: serviceA.events, stderr: serviceA.stderr },
         serviceB: { pid: serviceB.pid, events: serviceB.events, stderr: serviceB.stderr }
