@@ -102,6 +102,7 @@ const verificationEvidence = {
   repetition: 1,
   recordSha256: 'd'.repeat(64),
   validatorSha256: 'e'.repeat(64),
+  harnessSha256: 'b'.repeat(64),
   verifiedAt: '2026-09-01T00:00:02.000Z'
 };
 
