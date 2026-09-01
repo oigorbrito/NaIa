@@ -67,12 +67,41 @@ function record({ lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED', cleanupS
   };
 }
 
+const verificationEvidence = {
+  executionRef: 'test-fixture:runtime-receipt',
+  experimentId: 'temporal-typescript-t5-001',
+  mutantId: 'T5',
+  repetition: 1,
+  recordSha256: 'd'.repeat(64),
+  validatorSha256: 'e'.repeat(64),
+  verifiedAt: '2026-09-01T00:00:02.000Z'
+};
+
 const verifiedSupport = {
-  'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true }
+  'Temporal TypeScript': {
+    preRunCleanup: true,
+    postRunCleanup: true,
+    status: 'RUNTIME_VERIFIED',
+    verificationEvidence
+  }
+};
+
+const booleanOnlySupport = {
+  'Temporal TypeScript': {
+    preRunCleanup: true,
+    postRunCleanup: true,
+    status: 'RUNTIME_VERIFIED',
+    verificationEvidence: null
+  }
 };
 
 const unverifiedSupport = {
-  'Temporal TypeScript': { preRunCleanup: false, postRunCleanup: false }
+  'Temporal TypeScript': {
+    preRunCleanup: false,
+    postRunCleanup: false,
+    status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
+    verificationEvidence: null
+  }
 };
 
 test('formal ledger admission rejects implemented-but-unverified lifecycle even with clean receipt', () => {
@@ -87,6 +116,12 @@ test('formal ledger admission rejects runtime-verified lifecycle while cleanup s
   assert.match(result.errors.join('\n'), /cleanup support is not runtime-verified/);
 });
 
+test('formal ledger admission rejects boolean-only cleanup promotion without receipt hashes', () => {
+  const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), booleanOnlySupport);
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /cleanup support is not runtime-verified/);
+});
+
 test('formal ledger admission requires PASS cleanup for READY formal execution', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', cleanupStatus: 'NOT_APPLICABLE' }),
@@ -96,7 +131,7 @@ test('formal ledger admission requires PASS cleanup for READY formal execution',
   assert.match(result.errors.join('\n'), /cleanup.status=PASS/);
 });
 
-test('formal ledger admission opens only when lifecycle provenance and cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle provenance and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -106,16 +141,16 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
   };
-  const result = benchmarkEligible([record()], faultSuite);
+  const result = benchmarkEligible([record()], faultSuite, verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record after lifecycle provenance is runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after lifecycle provenance and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
   };
-  const result = benchmarkEligible([record({ lifecycleStatus: 'RUNTIME_VERIFIED' })], faultSuite);
+  const result = benchmarkEligible([record({ lifecycleStatus: 'RUNTIME_VERIFIED' })], faultSuite, verifiedSupport);
   assert.deepEqual(result, { eligible: true, candidate: 'Temporal TypeScript', errors: [] });
 });
