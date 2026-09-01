@@ -1,8 +1,14 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
-import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
-import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
+import {
+  lifecycleQualificationRecordProvenanceStructurallyValid,
+  lifecycleQualificationRecordProvenanceValid
+} from './formal-lifecycle-qualification-provenance.mjs';
+import {
+  formalPromotionPolicyProvenanceStructurallyValid,
+  formalPromotionPolicyProvenanceValid
+} from './formal-promotion-policy.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
 const CLEANUP_DIMENSIONS = Object.freeze([
@@ -50,12 +56,15 @@ export function auditStoredFormalRecord(record) {
     errors.push(`${candidate}: stored formal record lacks immutable RUNTIME_VERIFIED lifecycle provenance`);
   }
 
-  if (!lifecycleQualificationRecordProvenanceValid(record?.setup?.environment?.formalLifecycleQualification, record?.candidate)) {
-    errors.push(`${candidate}: stored formal record lacks current candidate lifecycle qualification bundle provenance`);
+  if (!lifecycleQualificationRecordProvenanceStructurallyValid(
+    record?.setup?.environment?.formalLifecycleQualification,
+    record?.candidate
+  )) {
+    errors.push(`${candidate}: stored formal record lacks structurally valid lifecycle qualification provenance`);
   }
 
-  if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
-    errors.push(`${candidate}: stored formal record lacks current frozen promotion policy hash provenance`);
+  if (!formalPromotionPolicyProvenanceStructurallyValid(record?.setup?.environment?.formalPromotionPolicy)) {
+    errors.push(`${candidate}: stored formal record lacks structurally valid promotion policy provenance`);
   }
 
   if (record?.setup?.status === 'READY') {
@@ -78,6 +87,24 @@ export function auditStoredFormalRecord(record) {
   return { valid: errors.length === 0, errors };
 }
 
+export function assessStoredFormalRecordCurrentCompatibility(record) {
+  const errors = [];
+  const candidate = record?.candidate ?? 'unknown candidate';
+
+  if (!lifecycleQualificationRecordProvenanceValid(
+    record?.setup?.environment?.formalLifecycleQualification,
+    record?.candidate
+  )) {
+    errors.push(`${candidate}: stored formal record lifecycle qualification bundle differs from current qualification bundle`);
+  }
+
+  if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
+    errors.push(`${candidate}: stored formal record promotion policy differs from current frozen promotion policy`);
+  }
+
+  return { compatible: errors.length === 0, errors };
+}
+
 export function auditStoredFormalLedger(records) {
   if (!Array.isArray(records)) return { valid: false, recordCount: 0, errors: ['records must be an array'] };
   const errors = [];
@@ -88,6 +115,16 @@ export function auditStoredFormalLedger(records) {
   return { valid: errors.length === 0, recordCount: records.length, errors };
 }
 
+export function assessStoredFormalLedgerCurrentCompatibility(records) {
+  if (!Array.isArray(records)) return { compatible: false, recordCount: 0, errors: ['records must be an array'] };
+  const errors = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const assessment = assessStoredFormalRecordCurrentCompatibility(records[index]);
+    for (const error of assessment.errors) errors.push(`ledger index ${index}: ${error}`);
+  }
+  return { compatible: errors.length === 0, recordCount: records.length, errors };
+}
+
 export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   const candidate = record?.candidate;
@@ -95,8 +132,11 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
     errors.push(`${candidate ?? 'unknown candidate'}: formal cleanup support is not runtime-verified`);
   }
 
-  const immutable = auditStoredFormalRecord(record);
-  errors.push(...immutable.errors);
+  const historical = auditStoredFormalRecord(record);
+  errors.push(...historical.errors);
+
+  const compatibility = assessStoredFormalRecordCurrentCompatibility(record);
+  errors.push(...compatibility.errors);
 
   return { valid: errors.length === 0, errors };
 }
@@ -152,9 +192,14 @@ export function appendRecordToLedger(
   const current = validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
   if (!current.valid) throw new Error(`existing ledger is invalid: ${current.errors.join('; ')}`);
 
-  const currentFormalAudit = auditStoredFormalLedger(records);
-  if (!currentFormalAudit.valid) {
-    throw new Error(`existing formal ledger immutable provenance is invalid: ${currentFormalAudit.errors.join('; ')}`);
+  const currentHistoricalAudit = auditStoredFormalLedger(records);
+  if (!currentHistoricalAudit.valid) {
+    throw new Error(`existing formal ledger historical provenance is invalid: ${currentHistoricalAudit.errors.join('; ')}`);
+  }
+
+  const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records);
+  if (!currentCompatibility.compatible) {
+    throw new Error(`existing formal ledger is incompatible with current frozen qualification/promotion state: ${currentCompatibility.errors.join('; ')}`);
   }
 
   if (!current.nextExpectedExperiment) throw new Error('preregistered ledger is already complete');
@@ -169,10 +214,20 @@ export function appendRecordToLedger(
   const nextValidation = validateExecutionLedger(next, protocol, faultSuite, { allowPrefix: true });
   if (!nextValidation.valid) throw new Error(`appended ledger is invalid: ${nextValidation.errors.join('; ')}`);
 
-  const nextFormalAudit = auditStoredFormalLedger(next);
-  if (!nextFormalAudit.valid) {
-    throw new Error(`appended formal ledger immutable provenance is invalid: ${nextFormalAudit.errors.join('; ')}`);
+  const nextHistoricalAudit = auditStoredFormalLedger(next);
+  if (!nextHistoricalAudit.valid) {
+    throw new Error(`appended formal ledger historical provenance is invalid: ${nextHistoricalAudit.errors.join('; ')}`);
   }
 
-  return { records: next, validation: nextValidation, formalAudit: nextFormalAudit };
+  const nextCompatibility = assessStoredFormalLedgerCurrentCompatibility(next);
+  if (!nextCompatibility.compatible) {
+    throw new Error(`appended formal ledger is incompatible with current frozen qualification/promotion state: ${nextCompatibility.errors.join('; ')}`);
+  }
+
+  return {
+    records: next,
+    validation: nextValidation,
+    formalAudit: nextHistoricalAudit,
+    currentCompatibility: nextCompatibility
+  };
 }
