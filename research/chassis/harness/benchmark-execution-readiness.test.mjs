@@ -24,6 +24,7 @@ function completeCleanupSupport(candidates) {
       repetition: 1,
       recordSha256: String(index + 1).padStart(64, 'a').slice(-64),
       validatorSha256: String(index + 1).padStart(64, 'b').slice(-64),
+      harnessSha256: String(index + 1).padStart(64, 'c').slice(-64),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }]));
@@ -87,6 +88,17 @@ test('readiness opens only when every critical mutant and cleanup phase has evid
   assert.deepEqual(result.unsupportedCandidateMutants, []);
   assert.deepEqual(result.unsupportedCleanupCandidates, []);
   assert.equal(assertBenchmarkExecutionReady(protocol, plan, completeSupport, cleanupSupport).ready, true);
+});
+
+test('cleanup support without harness hash evidence cannot open readiness', () => {
+  const protocol = { criticalMutants: ['T5'] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const support = { T5: { modes: ['local-process'], candidates: null } };
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
+  assert.equal(result.ready, false);
+  assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
 });
 
 test('boolean-only cleanup support without receipt evidence cannot open readiness', () => {
