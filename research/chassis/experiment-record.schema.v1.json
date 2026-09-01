@@ -53,6 +53,17 @@
               },
               "additionalProperties": false
             },
+            "formalLifecycleQualification": {
+              "type": ["object", "null"],
+              "properties": {
+                "profile": {"const": "T5_R1_CLEANUP_SUPPORT_V1"},
+                "candidate": {"type": "string", "minLength": 1},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "fileCount": {"type": "integer", "minimum": 1}
+              },
+              "required": ["profile", "candidate", "sha256", "fileCount"],
+              "additionalProperties": false
+            },
             "formalRuntimeLifecycle": {
               "type": ["object", "null"],
               "properties": {
