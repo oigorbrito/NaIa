@@ -25,6 +25,15 @@ test('T12 bridge keeps fault injected when stale completion overwrites but fails
   assert.equal(run.acceptanceChecks.finalResultOriginIsNew, false);
 });
 
+test('T12 injection classification stays true when only a semantic acceptance observation fails', () => {
+  const { evidence } = executeDeterministicT12Control({ unsafe: false });
+  evidence.deterministicScheduleObserved = false;
+  const run = t12EvidenceToRunResult(evidence, spec, setup);
+  assert.equal(run.fault.injected, true);
+  assert.equal(run.acceptanceChecks.deterministicScheduleObserved, false);
+  assert.equal(Object.values(run.acceptanceChecks).every(Boolean), false);
+});
+
 test('T12 bridge refuses injected status if stale submission ordering is not proven', () => {
   const { evidence } = executeDeterministicT12Control({ unsafe: false });
   evidence.staleCompletion.attemptedAfterNewCommit = false;
