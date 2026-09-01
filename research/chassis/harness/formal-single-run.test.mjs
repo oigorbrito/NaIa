@@ -77,6 +77,18 @@ async function syntheticBlockedRepository() {
         required_env: [],
         worker_authority_boundary: 'synthetic Restate service process boundary',
         blocker: 'B001'
+      },
+      {
+        candidate: 'Trigger.dev',
+        version: '4.5.15',
+        source_ref: 'triggerdotdev/trigger.dev v4.5.15',
+        execution_package: { '@trigger.dev/sdk': '4.5.15' },
+        package_manifest: 'research/chassis/adapters/triggerdev/package.json',
+        adapter: 'research/chassis/adapters/triggerdev/adapter.mjs',
+        mode: 'managed-controller',
+        required_env: ['TRIGGER_SECRET_KEY'],
+        worker_authority_boundary: 'synthetic Trigger worker boundary',
+        blocker: 'B001+B003'
       }
     ]
   };
