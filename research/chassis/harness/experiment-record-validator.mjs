@@ -1,4 +1,8 @@
-import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+import {
+  FORMAL_CLEANUP_SUPPORT,
+  assessLifecycleRuntimeIdentityBinding,
+  formalCleanupSupportsCandidate
+} from './formal-cleanup-support.mjs';
 import { assessCandidateProfileBinding } from './formal-candidate-profile-binding.mjs';
 import { assessFormalEnvironmentConsistency } from './formal-environment-identity.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
@@ -80,6 +84,11 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       const candidateBinding = assessCandidateProfileBinding(record);
       for (const error of candidateBinding.errors) {
         errors.push(`${mutantId}: repetition ${record.repetition} candidate profile binding: ${error}`);
+      }
+
+      const runtimeIdentityBinding = assessLifecycleRuntimeIdentityBinding(record, cleanupSupport, candidate);
+      for (const error of runtimeIdentityBinding.errors) {
+        errors.push(`${mutantId}: repetition ${record.repetition} lifecycle runtime identity binding: ${error}`);
       }
 
       const environment = record?.setup?.environment ?? {};
