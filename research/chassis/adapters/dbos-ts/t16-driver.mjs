@@ -148,6 +148,18 @@ export async function runDbosT16({
     const bRecovered = workerB.events.some((event) => event.event === 'durable_checkpoint_observed' && event.objectiveId === objectiveId);
     schedule.push('recovery-under-B-attempted');
 
+    const promotionPrior = workerB.events.length;
+    send(workerB, { command: 'promote-version', objectiveId, applicationVersion: beforeVersion });
+    const rollbackPromotion = await waitForEvent(
+      workerB,
+      (event) => event.event === 'application_version_promoted' &&
+        event.promotedVersion === beforeVersion &&
+        workerB.events.indexOf(event) >= promotionPrior,
+      timeoutMs,
+      'application_version_promoted'
+    );
+    schedule.push('rollback-promoted-A-to-latest');
+
     await closeWorker(workerB);
 
     workerC = spawnWorker('worker-C', stableExecutorId, beforeVersion, env);
@@ -161,10 +173,14 @@ export async function runDbosT16({
     schedule.push('final-state-inspected');
 
     const retainedBeforeVersionUnderB = statusUnderB.status?.applicationVersion === beforeVersion;
+    const explicitRollbackObserved =
+      rollbackPromotion.promotedVersion === beforeVersion &&
+      rollbackPromotion.latestVersion === beforeVersion;
     const routedToCompatible =
       readyB.applicationVersion === afterVersion &&
       bRecovered === false &&
       retainedBeforeVersionUnderB &&
+      explicitRollbackObserved &&
       checkpointC.applicationVersion === beforeVersion &&
       resultC.result?.applicationVersion === beforeVersion &&
       finalStatus.status?.status === 'SUCCESS' &&
@@ -190,6 +206,7 @@ export async function runDbosT16({
         'execution-boundary-stopped',
         'semantic-dimension-mutated:applicationVersion',
         'recovery-under-B-attempted',
+        'rollback-promoted-A-to-latest',
         'compatible-profile-recovery-observed',
         'final-state-inspected'
       ]),
@@ -200,6 +217,7 @@ export async function runDbosT16({
         crash: { requested: crashRequested, exit: crashExit },
         statusBefore: statusBefore.status,
         statusUnderMutatedProfile: statusUnderB.status,
+        rollbackPromotion,
         finalStatus: finalStatus.status,
         bRecovered,
         checkpointA,
