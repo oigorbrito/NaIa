@@ -3,6 +3,7 @@ import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-
 import { formalPromotionPolicyProvenanceValid } from './formal-promotion-policy.mjs';
 import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
+import { repositoryProvenanceReady } from './repository-provenance.mjs';
 
 export { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 
@@ -41,14 +42,18 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       if (repetitionIds.has(record.repetition)) errors.push(`${mutantId}: duplicate repetition ${record.repetition}`);
       repetitionIds.add(record.repetition);
 
-      const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
+      const environment = record?.setup?.environment ?? {};
+      const lifecycle = environment.formalRuntimeLifecycle;
+      if (!repositoryProvenanceReady(environment.repositoryProvenance)) {
+        errors.push(`${mutantId}: repetition ${record.repetition} lacks verified clean Git repository revision provenance`);
+      }
       if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
       }
-      if (!lifecycleQualificationRecordProvenanceValid(record?.setup?.environment?.formalLifecycleQualification, candidate)) {
+      if (!lifecycleQualificationRecordProvenanceValid(environment.formalLifecycleQualification, candidate)) {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks current candidate lifecycle qualification bundle provenance`);
       }
-      if (!formalPromotionPolicyProvenanceValid(record?.setup?.environment?.formalPromotionPolicy)) {
+      if (!formalPromotionPolicyProvenanceValid(environment.formalPromotionPolicy)) {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks current frozen formal promotion policy hash provenance`);
       }
       if (record?.setup?.status === 'READY') {
