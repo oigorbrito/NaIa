@@ -1,4 +1,5 @@
 import { evaluateT5Evidence } from './t5-evaluator.mjs';
+import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 export function t5EvidenceToRunResult(evidence, spec, setup) {
   const evaluation = evaluateT5Evidence(evidence);
@@ -9,6 +10,10 @@ export function t5EvidenceToRunResult(evidence, spec, setup) {
     evidence?.newAuthorityCompletion?.attempted === true &&
     evaluation.checks.workersDistinct === true &&
     evaluation.checks.authoritiesDistinct === true;
+  const workerProcessPids = normalizeWorkerProcessPids(
+    evidence?.rawNativeEvidence?.workerA?.pid,
+    evidence?.rawNativeEvidence?.workerB?.pid
+  );
 
   return {
     blocked: false,
@@ -26,6 +31,7 @@ export function t5EvidenceToRunResult(evidence, spec, setup) {
       objectiveId: evidence?.rawNativeEvidence?.objectiveId ?? null
     },
     rawObservations: {
+      workerProcessPids,
       t5Evidence: evidence,
       t5Evaluation: evaluation,
       setupIdentity: {
