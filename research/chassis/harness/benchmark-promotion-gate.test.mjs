@@ -4,6 +4,10 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { assessCandidatePromotion, FORMAL_PROMOTION_POLICY } from './benchmark-promotion-gate.mjs';
+import {
+  currentLifecycleQualificationProvenance,
+  currentLifecycleQualificationSha256
+} from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +20,16 @@ async function faultSuite() {
 
 function candidateSlug(candidate) {
   return candidate.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+}
+
+function qualificationRecord(candidate) {
+  const value = currentLifecycleQualificationProvenance(candidate);
+  return value ? {
+    profile: value.profile,
+    candidate: value.candidate,
+    sha256: value.aggregateSha256,
+    fileCount: value.fileCount
+  } : null;
 }
 
 function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId = null) {
@@ -32,6 +46,7 @@ function verifiedCleanupSupport(candidate = 'Temporal TypeScript', experimentId 
         recordSha256: 'd'.repeat(64),
         validatorSha256: 'e'.repeat(64),
         harnessSha256: 'f'.repeat(64),
+        lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate),
         verifiedAt: '2026-09-01T00:00:00.000Z'
       }
     }
@@ -70,6 +85,7 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
         arch: 'fixture-arch',
         runtime: 'node v22.16.0',
         formalPromotionPolicy: formalPromotionPolicyProvenance(),
+        formalLifecycleQualification: qualificationRecord(candidate),
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
       },
       parameters: {},
@@ -155,6 +171,15 @@ test('cleanup support without harness hash cannot open promotion', async () => {
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
+test('cleanup support without lifecycle qualification hash cannot open promotion', async () => {
+  const cleanupSupport = verifiedCleanupSupport();
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
+  const result = assessCandidatePromotion(completeCandidate('Temporal TypeScript'), await faultSuite(), { cleanupSupport });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
 test('tampering formal promotion policy provenance closes candidate comparability', async () => {
   const records = completeCandidate('Temporal TypeScript');
   records[0].setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
@@ -162,6 +187,15 @@ test('tampering formal promotion policy provenance closes candidate comparabilit
   assert.equal(result.comparable, false);
   assert.equal(result.qualified, false);
   assert.match(result.errors.join('\n'), /lacks current frozen formal promotion policy hash provenance/);
+});
+
+test('tampering lifecycle qualification provenance closes candidate comparability', async () => {
+  const records = completeCandidate('Temporal TypeScript');
+  records[0].setup.environment.formalLifecycleQualification.sha256 = '0'.repeat(64);
+  const result = assessCandidatePromotion(records, await faultSuite(), { cleanupSupport: verifiedCleanupSupport() });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /lacks current candidate lifecycle qualification bundle provenance/);
 });
 
 test('cleanup verification evidence from another candidate cannot open promotion', async () => {
