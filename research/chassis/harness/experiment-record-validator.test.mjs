@@ -2,6 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateExperimentRecord, benchmarkEligible } from './experiment-record-validator.mjs';
 
+const verifiedSupport = {
+  'Temporal TypeScript': {
+    preRunCleanup: true,
+    postRunCleanup: true,
+    status: 'RUNTIME_VERIFIED',
+    verificationEvidence: {
+      executionRef: 'test-fixture:runtime-receipt',
+      experimentId: 'temporal-typescript-t5-001',
+      mutantId: 'T5',
+      repetition: 1,
+      recordSha256: 'e'.repeat(64),
+      validatorSha256: 'f'.repeat(64),
+      verifiedAt: '2026-09-01T00:00:00.000Z'
+    }
+  }
+};
+
 function record(overrides = {}) {
   return {
     schemaVersion: 1,
@@ -12,7 +29,11 @@ function record(overrides = {}) {
     randomSeed: overrides.randomSeed ?? 1001,
     setup: {
       status: 'READY', candidateVersion: '1.23.0', adapterSha256: 'aaaaaaaaaaaaaaaa', harnessSha256: 'bbbbbbbbbbbbbbbb',
-      environment: { os: 'linux', arch: 'x64', runtime: 'node 22' }, parameters: {}, cleanupVerifiedBeforeRun: true
+      environment: {
+        os: 'linux', arch: 'x64', runtime: 'node 22',
+        formalRuntimeLifecycle: { candidate: overrides.candidate ?? 'Temporal TypeScript', status: 'RUNTIME_VERIFIED' }
+      },
+      parameters: {}, cleanupVerifiedBeforeRun: true
     },
     run: {
       startedAt: '2026-08-31T15:00:00Z', finishedAt: '2026-08-31T15:00:02Z', workload: {},
@@ -75,14 +96,14 @@ test('random seed must be a reproducible non-negative integer when supplied', ()
 });
 
 test('benchmark eligibility rejects missing required mutant records', () => {
-  const result = benchmarkEligible([record()], suite(1, ['T5', 'T7']));
+  const result = benchmarkEligible([record()], suite(1, ['T5', 'T7']), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /T5: no executed records/);
 });
 
 test('benchmark eligibility enforces declared minimum unique repetitions', () => {
   const records = completeRecords(99);
-  const result = benchmarkEligible(records, suite(100));
+  const result = benchmarkEligible(records, suite(100), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /requires at least 100 unique repetitions, found 99/);
   assert.match(result.errors.join('\n'), /missing required repetition 100/);
@@ -91,12 +112,21 @@ test('benchmark eligibility enforces declared minimum unique repetitions', () =>
 test('benchmark eligibility rejects duplicate repetitions presented as replication', () => {
   const records = completeRecords(100);
   records.push(record({ experimentId: 'duplicate-T7-1', mutantId: 'T7', repetition: 1, randomSeed: 999999 }));
-  const result = benchmarkEligible(records, suite(100));
+  const result = benchmarkEligible(records, suite(100), verifiedSupport);
   assert.equal(result.eligible, false);
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
 });
 
-test('benchmark eligibility accepts complete critical repetition coverage', () => {
-  const result = benchmarkEligible(completeRecords(100), suite(100));
+test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
+  const booleanOnlySupport = {
+    'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
+  };
+  const result = benchmarkEligible(completeRecords(1), suite(1), booleanOnlySupport);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('benchmark eligibility accepts complete critical coverage only with evidence-backed cleanup support', () => {
+  const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
