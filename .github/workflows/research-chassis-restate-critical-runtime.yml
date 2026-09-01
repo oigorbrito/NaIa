@@ -1,0 +1,346 @@
+name: Research Chassis Restate Critical Runtime Qualification
+
+on:
+  push:
+    branches:
+      - research/qualified-chassis-gate-v1
+    paths:
+      - '.github/workflows/research-chassis-restate-critical-runtime.yml'
+      - 'research/chassis/adapters/restate-ts/**'
+      - 'research/chassis/harness/common-runner.mjs'
+      - 'research/chassis/harness/crash-controller.mjs'
+      - 'research/chassis/harness/external-oracle.mjs'
+      - 'research/chassis/harness/t5-evaluator.mjs'
+      - 'research/chassis/harness/t12-evaluator.mjs'
+      - 'research/chassis/harness/t16-evaluator.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restate-critical-runtime-qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        mutant: [T5, T7, T8, T12, T16]
+        repetition: [1, 2, 3]
+    env:
+      RESTATE_VERSION: '1.7.8'
+      RESTATE_SERVER_ARCHIVE: 'restate-server-x86_64-unknown-linux-musl.tar.xz'
+      RESTATE_SERVER_SHA256: 'e527f20b8788564a9bb90effedb7cb82b0e36d72f025011e89de465d675d8e33'
+      RESTATE_ADMIN_URL: 'http://127.0.0.1:9070'
+      RESTATE_INGRESS_URL: 'http://127.0.0.1:8080'
+      NAIA_T5_TIMEOUT_MS: '30000'
+      NAIA_T12_TIMEOUT_MS: '30000'
+      NAIA_T16_TIMEOUT_MS: '30000'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: 'npm'
+          cache-dependency-path: research/chassis/adapters/restate-ts/package-lock.json
+
+      - name: Initialize isolated qualification workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUAL_DIR="$RUNNER_TEMP/naia-restate-${{ matrix.mutant }}-runtime-${{ matrix.repetition }}"
+          rm -rf "$QUAL_DIR"
+          mkdir -p "$QUAL_DIR/bin" "$QUAL_DIR/server-work" "$QUAL_DIR/evidence"
+          echo "QUAL_DIR=$QUAL_DIR" >> "$GITHUB_ENV"
+          {
+            echo "classification=NOT_RUN"
+            echo "mutant=${{ matrix.mutant }}"
+            echo "repetition=${{ matrix.repetition }}"
+            echo "head_sha=$GITHUB_SHA"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "restate_server_version=$RESTATE_VERSION"
+            echo "restate_server_archive=$RESTATE_SERVER_ARCHIVE"
+            echo "restate_server_expected_sha256=$RESTATE_SERVER_SHA256"
+            echo "scope=CONTROLLED_LOCAL_FAULT_INJECTION"
+            echo "formal_ledger=false"
+          } > "$QUAL_DIR/evidence/runtime-manifest.txt"
+          if pgrep -af 't5-service-process.mjs|t12-service-process.mjs|t16-service-process.mjs|restate-ts/adapter.mjs|restate-server' > "$QUAL_DIR/evidence/pre-run-processes.txt"; then
+            echo 'preexisting_processes=true' >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+            echo 'BLOCKED_PRE_RUN_PROCESS_CONTAMINATION' > "$QUAL_DIR/evidence/classification.txt"
+            exit 1
+          else
+            echo 'preexisting_processes=false' >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+          fi
+
+      - name: Install locked Restate TypeScript SDK dependencies
+        id: npm_install
+        continue-on-error: true
+        working-directory: research/chassis/adapters/restate-ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm ls --all --json > "$QUAL_DIR/evidence/npm-tree.json"
+          cp package-lock.json "$QUAL_DIR/evidence/package-lock.runtime.json"
+          node -e "for (const p of ['@restatedev/restate-sdk','@restatedev/restate-sdk-clients']) { const j=require('./node_modules/'+p+'/package.json'); console.log(p+'='+j.version); if (j.version !== '1.16.9') process.exitCode=2 }" | tee "$QUAL_DIR/evidence/sdk-versions.txt"
+
+      - name: Download and verify exact Restate server
+        id: server_download
+        if: steps.npm_install.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$QUAL_DIR/bin"
+          URL="https://github.com/restatedev/restate/releases/download/v${RESTATE_VERSION}/${RESTATE_SERVER_ARCHIVE}"
+          curl --fail --location --retry 3 --retry-delay 2 --output "$RESTATE_SERVER_ARCHIVE" "$URL"
+          printf '%s  %s\n' "$RESTATE_SERVER_SHA256" "$RESTATE_SERVER_ARCHIVE" | sha256sum --check --strict | tee "$QUAL_DIR/evidence/server-checksum.txt"
+          tar -xJf "$RESTATE_SERVER_ARCHIVE" --strip-components=1 "restate-server-x86_64-unknown-linux-musl/restate-server"
+          chmod +x restate-server
+          ./restate-server --version | tee "$QUAL_DIR/evidence/server-version.txt"
+
+      - name: Start isolated Restate server
+        id: server_start
+        if: steps.npm_install.outcome == 'success' && steps.server_download.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$QUAL_DIR/server-work"
+          "$QUAL_DIR/bin/restate-server" --no-logo > "$QUAL_DIR/evidence/restate-server.log" 2>&1 &
+          echo $! > "$QUAL_DIR/evidence/restate-server.pid"
+          for i in $(seq 1 120); do
+            if curl --fail --silent --show-error "$RESTATE_ADMIN_URL/health" > "$QUAL_DIR/evidence/admin-health.txt" 2> "$QUAL_DIR/evidence/admin-health.err"; then
+              exit 0
+            fi
+            if curl --fail --silent --show-error "$RESTATE_ADMIN_URL" > "$QUAL_DIR/evidence/admin-root.txt" 2> "$QUAL_DIR/evidence/admin-root.err"; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$QUAL_DIR/evidence/restate-server.pid")" 2>/dev/null; then
+              echo 'restate-server exited before becoming reachable' >&2
+              tail -200 "$QUAL_DIR/evidence/restate-server.log" >&2 || true
+              exit 2
+            fi
+            sleep 0.5
+          done
+          echo 'restate-server did not become reachable on admin port' >&2
+          tail -200 "$QUAL_DIR/evidence/restate-server.log" >&2 || true
+          exit 3
+
+      - name: Execute controlled local critical runtime experiment
+        id: execute
+        if: steps.npm_install.outcome == 'success' && steps.server_download.outcome == 'success' && steps.server_start.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          STDOUT="$QUAL_DIR/evidence/${MUTANT,,}-driver.stdout.log"
+          STDERR="$QUAL_DIR/evidence/${MUTANT,,}-driver.stderr.log"
+          case "$MUTANT" in
+            T5)
+              (cd research/chassis/adapters/restate-ts && node t5-two-worker-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            T7|T8)
+              node research/chassis/harness/common-runner.mjs \
+                --adapter research/chassis/adapters/restate-ts/adapter.mjs \
+                --candidate Restate \
+                --mode local-process \
+                --mutant "$MUTANT" \
+                --timeout-ms 30000 \
+                --output "$EVIDENCE" > "$STDOUT" 2> "$STDERR"
+              ;;
+            T12)
+              (cd research/chassis/adapters/restate-ts && node t12-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            T16)
+              (cd research/chassis/adapters/restate-ts && node t16-driver.mjs --output "$EVIDENCE") > "$STDOUT" 2> "$STDERR"
+              ;;
+            *)
+              echo "unsupported mutant $MUTANT" >&2
+              exit 64
+              ;;
+          esac
+          CODE=$?
+          echo "$CODE" > "$QUAL_DIR/evidence/${MUTANT,,}-driver.exit-code.txt"
+          exit "$CODE"
+
+      - name: Evaluate emitted candidate evidence
+        id: evaluate
+        if: always() && steps.execute.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          INPUT="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          OUTPUT="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          if [ ! -s "$INPUT" ]; then
+            echo "No $MUTANT evidence file was emitted." >&2
+            exit 4
+          fi
+          node --input-type=module - "$MUTANT" "$INPUT" "$OUTPUT" <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { evaluateT5Evidence } from './research/chassis/harness/t5-evaluator.mjs';
+          import { evaluateT12Evidence } from './research/chassis/harness/t12-evaluator.mjs';
+          import { evaluateT16Evidence } from './research/chassis/harness/t16-evaluator.mjs';
+          const [mutant, input, output] = process.argv.slice(2);
+          const evidence = JSON.parse(await readFile(input, 'utf8'));
+          let evaluation;
+          if (mutant === 'T5') evaluation = evaluateT5Evidence(evidence);
+          else if (mutant === 'T12') evaluation = evaluateT12Evidence(evidence);
+          else if (mutant === 'T16') evaluation = evaluateT16Evidence(evidence);
+          else if (mutant === 'T7' || mutant === 'T8') {
+            evaluation = {
+              mutantId: mutant,
+              checks: evidence.checks ?? {},
+              verdict: evidence.verdict ?? 'INCONCLUSIVE',
+              blocker: evidence.blocker ?? null
+            };
+          } else throw new Error(`unsupported mutant ${mutant}`);
+          await writeFile(output, JSON.stringify(evaluation, null, 2) + '\n');
+          console.log(JSON.stringify(evaluation, null, 2));
+          NODE
+
+      - name: Classify outcome without conflating infrastructure, injection, and candidate behavior
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          MUTANT='${{ matrix.mutant }}'
+          EVIDENCE="$QUAL_DIR/evidence/${MUTANT,,}-evidence.json"
+          EVALUATION="$QUAL_DIR/evidence/${MUTANT,,}-evaluation.json"
+          CLASSIFICATION='INCONCLUSIVE'
+          if [ '${{ steps.npm_install.outcome }}' != 'success' ]; then
+            CLASSIFICATION='BLOCKED_INFRASTRUCTURE_NPM'
+          elif [ '${{ steps.server_download.outcome }}' != 'success' ]; then
+            CLASSIFICATION='BLOCKED_INFRASTRUCTURE_SERVER_ARTIFACT'
+          elif [ '${{ steps.server_start.outcome }}' != 'success' ]; then
+            CLASSIFICATION='BLOCKED_INFRASTRUCTURE_SERVER_START'
+          elif [ ! -s "$EVIDENCE" ]; then
+            CLASSIFICATION='INCONCLUSIVE_NO_RUNTIME_EVIDENCE'
+          elif [ '${{ steps.evaluate.outcome }}' != 'success' ] || [ ! -s "$EVALUATION" ]; then
+            CLASSIFICATION='INCONCLUSIVE_EVALUATION_ERROR'
+          else
+            CLASSIFICATION=$(node --input-type=module - "$MUTANT" "$EVIDENCE" "$EVALUATION" <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const [mutant, evidencePath, evaluationPath] = process.argv.slice(2);
+          const evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
+          const evaluation = JSON.parse(await readFile(evaluationPath, 'utf8'));
+          if (evaluation.verdict === 'PASS') {
+            console.log('QUALIFICATION_PASS');
+            process.exit(0);
+          }
+          if (evaluation.verdict === 'BLOCKED') {
+            console.log('BLOCKED_RUNTIME_PREREQUISITE');
+            process.exit(0);
+          }
+          if (evaluation.verdict === 'INCONCLUSIVE') {
+            console.log('INCONCLUSIVE_FAULT_OR_MEASUREMENT');
+            process.exit(0);
+          }
+          let injected = true;
+          if (mutant === 'T5') {
+            injected = evidence?.staleCompletion?.attempted === true && evidence?.authorityAdvanced === true;
+          } else if (mutant === 'T12') {
+            injected = evidence?.staleCompletion?.attempted === true && evidence?.staleCompletion?.attemptedAfterNewCommit === true;
+          } else if (mutant === 'T16') {
+            const mutation = evidence?.semanticMutation ?? {};
+            injected = evidence?.durableCheckpointBeforeMutation === true && evidence?.recoveryAttemptedUnderMutatedProfile === true && mutation.before !== mutation.after;
+          } else if (mutant === 'T7') {
+            injected = evidence?.checks?.crashInjected === true;
+          } else if (mutant === 'T8') {
+            injected = evidence?.checks?.responseLossInjected === true;
+          }
+          console.log(injected ? 'QUALIFICATION_FAIL' : 'INCONCLUSIVE_FAULT_NOT_INJECTED');
+          NODE
+            )
+          fi
+          echo "$CLASSIFICATION" | tee "$QUAL_DIR/evidence/classification.txt"
+          {
+            echo "classification=$CLASSIFICATION"
+            echo "npm_install=${{ steps.npm_install.outcome }}"
+            echo "server_download=${{ steps.server_download.outcome }}"
+            echo "server_start=${{ steps.server_start.outcome }}"
+            echo "execute=${{ steps.execute.outcome }}"
+            echo "evaluate=${{ steps.evaluate.outcome }}"
+          } >> "$QUAL_DIR/evidence/runtime-manifest.txt"
+
+      - name: Verify and record isolated cleanup
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -f "$QUAL_DIR/evidence/restate-server.pid" ]; then
+            PID=$(cat "$QUAL_DIR/evidence/restate-server.pid")
+            kill "$PID" 2>/dev/null || true
+            for i in $(seq 1 20); do
+              kill -0 "$PID" 2>/dev/null || break
+              sleep 0.25
+            done
+            kill -9 "$PID" 2>/dev/null || true
+          fi
+          pkill -f 't5-service-process.mjs' 2>/dev/null || true
+          pkill -f 't12-service-process.mjs' 2>/dev/null || true
+          pkill -f 't16-service-process.mjs' 2>/dev/null || true
+          pkill -f 'restate-ts/adapter.mjs' 2>/dev/null || true
+          sleep 0.5
+          SERVER_WORK_BYTES=$(du -sb "$QUAL_DIR/server-work" 2>/dev/null | awk '{print $1}')
+          rm -rf "$QUAL_DIR/server-work"
+          {
+            echo 'candidate_processes_after_cleanup:'
+            pgrep -af 't5-service-process.mjs|t12-service-process.mjs|t16-service-process.mjs|restate-ts/adapter.mjs' || true
+            echo 'restate_server_after_cleanup:'
+            pgrep -af 'restate-server' || true
+          } > "$QUAL_DIR/evidence/post-run-processes.txt"
+          PROCESS_CLEAN=true
+          pgrep -af 't5-service-process.mjs|t12-service-process.mjs|t16-service-process.mjs|restate-ts/adapter.mjs|restate-server' > /dev/null && PROCESS_CLEAN=false
+          DURABLE_STATE_CLEAN=true
+          [ -e "$QUAL_DIR/server-work" ] && DURABLE_STATE_CLEAN=false
+          if [ "$PROCESS_CLEAN" = true ] && [ "$DURABLE_STATE_CLEAN" = true ]; then
+            CLEANUP_STATUS=PASS
+          else
+            CLEANUP_STATUS=FAIL
+          fi
+          {
+            echo "cleanup_status=$CLEANUP_STATUS"
+            echo "worker_cleanup=$PROCESS_CLEAN"
+            echo "durable_state_cleanup=$DURABLE_STATE_CLEAN"
+            echo "temporary_resources_cleanup=$DURABLE_STATE_CLEAN"
+            echo "server_work_bytes_before_remove=$SERVER_WORK_BYTES"
+            echo "oracle_scope=runner_owned_or_driver_local"
+          } | tee "$QUAL_DIR/evidence/cleanup.txt"
+
+      - name: Upload raw qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restate-${{ matrix.mutant }}-runtime-qualification-${{ github.sha }}-r${{ matrix.repetition }}
+          path: ${{ env.QUAL_DIR }}/evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report qualification classification
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$QUAL_DIR/evidence/classification.txt" ]; then
+            CLASSIFICATION=$(cat "$QUAL_DIR/evidence/classification.txt")
+          else
+            CLASSIFICATION='INCONCLUSIVE_NO_CLASSIFICATION'
+          fi
+          CLEANUP=$(grep '^cleanup_status=' "$QUAL_DIR/evidence/cleanup.txt" 2>/dev/null | cut -d= -f2 || echo NOT_RECORDED)
+          echo "### Restate ${{ matrix.mutant }} runtime qualification — repetition ${{ matrix.repetition }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Classification: \`$CLASSIFICATION\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cleanup: \`$CLEANUP\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Candidate: Restate server 1.7.8 / SDK 1.16.9" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scope: controlled local fault-injection on an independent ephemeral GitHub runner" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dependency installation: npm ci from committed lockfile" >> "$GITHUB_STEP_SUMMARY"
+          echo "- This is qualification evidence, not formal benchmark promotion." >> "$GITHUB_STEP_SUMMARY"
