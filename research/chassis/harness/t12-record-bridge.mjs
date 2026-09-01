@@ -1,4 +1,5 @@
 import { evaluateT12Evidence } from './t12-evaluator.mjs';
+import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
 export function t12EvidenceToRunResult(evidence, spec, setup) {
   const evaluation = evaluateT12Evidence(evidence);
@@ -9,6 +10,10 @@ export function t12EvidenceToRunResult(evidence, spec, setup) {
     evidence?.newAuthorityCompletion?.acceptedOrAuthoritative === true &&
     evidence?.staleCompletion?.attempted === true &&
     evidence?.staleCompletion?.attemptedAfterNewCommit === true;
+  const workerProcessPids = normalizeWorkerProcessPids(
+    evidence?.rawNativeEvidence?.workerA?.pid,
+    evidence?.rawNativeEvidence?.workerB?.pid
+  );
 
   return {
     blocked: false,
@@ -26,6 +31,7 @@ export function t12EvidenceToRunResult(evidence, spec, setup) {
       objectiveId: evidence?.rawNativeEvidence?.objectiveId ?? null
     },
     rawObservations: {
+      workerProcessPids,
       t12Evidence: evidence,
       t12Evaluation: evaluation,
       setupIdentity: {
