@@ -22,6 +22,7 @@ async function fileSha256(file) {
 
 async function runUntilTerminal({ command, args, cwd, env, timeoutMs }) {
   const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const pid = child.pid ?? null;
   const events = [];
   const stderr = [];
   let terminalEvent = null;
@@ -46,11 +47,12 @@ async function runUntilTerminal({ command, args, cwd, env, timeoutMs }) {
   });
   clearTimeout(timer);
   rl.close();
-  return { ...result, events, stderr: stderr.join(''), terminalEvent, timedOut, terminationIssued };
+  return { ...result, pid, events, stderr: stderr.join(''), terminalEvent, timedOut, terminationIssued };
 }
 
 async function runToExit({ command, args, cwd, env, timeoutMs }) {
   const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const pid = child.pid ?? null;
   const stdout = [];
   const stderr = [];
   let timedOut = false;
@@ -64,7 +66,7 @@ async function runToExit({ command, args, cwd, env, timeoutMs }) {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
   clearTimeout(timer);
-  return { ...result, stdout: stdout.join(''), stderr: stderr.join(''), timedOut };
+  return { ...result, pid, stdout: stdout.join(''), stderr: stderr.join(''), timedOut };
 }
 
 function relatedOperations(operations, objectiveId) {
@@ -105,6 +107,7 @@ function skippedRun(reason) {
   return {
     code: null,
     signal: null,
+    pid: null,
     events: [],
     stderr: '',
     terminalEvent: null,
