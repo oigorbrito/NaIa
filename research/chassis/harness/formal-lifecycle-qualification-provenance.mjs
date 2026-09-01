@@ -56,6 +56,10 @@ function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+function sha256Value(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+}
+
 function defaultRepositoryRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 }
@@ -107,13 +111,24 @@ export function lifecycleQualificationRecordProvenance(repositoryRoot, candidate
   };
 }
 
-export function lifecycleQualificationRecordProvenanceValid(value, candidateName, expectedSha256 = currentLifecycleQualificationSha256(candidateName)) {
+export function lifecycleQualificationRecordProvenanceStructurallyValid(value, candidateName) {
   return Boolean(
     value &&
-    expectedSha256 &&
     value.profile === FORMAL_LIFECYCLE_QUALIFICATION_PROFILE &&
     value.candidate === candidateName &&
-    value.sha256 === expectedSha256 &&
+    sha256Value(value.sha256) &&
     Number.isInteger(value.fileCount) && value.fileCount > 0
+  );
+}
+
+export function lifecycleQualificationRecordProvenanceValid(
+  value,
+  candidateName,
+  expectedSha256 = currentLifecycleQualificationSha256(candidateName)
+) {
+  return Boolean(
+    lifecycleQualificationRecordProvenanceStructurallyValid(value, candidateName) &&
+    expectedSha256 &&
+    value.sha256 === expectedSha256
   );
 }
