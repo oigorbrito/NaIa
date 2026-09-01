@@ -28,6 +28,7 @@ on:
       - 'research/chassis/harness/benchmark-execution-readiness.test.mjs'
       - 'research/chassis/harness/benchmark-promotion-gate.mjs'
       - 'research/chassis/harness/benchmark-promotion-gate.test.mjs'
+      - 'research/chassis/harness/benchmark-revision-consistency.test.mjs'
       - 'research/chassis/harness/candidate-experiment.mjs'
       - 'research/chassis/harness/candidate-setup.mjs'
       - 'research/chassis/harness/common-runner-run-hook.mjs'
@@ -114,4 +115,5 @@ jobs:
             research/chassis/harness/experiment-ledger-validator.test.mjs \
             research/chassis/harness/experiment-record-validator.test.mjs \
             research/chassis/harness/benchmark-execution-readiness.test.mjs \
-            research/chassis/harness/benchmark-promotion-gate.test.mjs
+            research/chassis/harness/benchmark-promotion-gate.test.mjs \
+            research/chassis/harness/benchmark-revision-consistency.test.mjs
