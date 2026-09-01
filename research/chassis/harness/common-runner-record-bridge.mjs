@@ -1,3 +1,5 @@
+import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
+
 function requireEvidence(evidence, mutantId) {
   if (!evidence || typeof evidence !== 'object') throw new Error('common runner evidence is required');
   if (!['T7', 'T8'].includes(mutantId)) throw new Error(`unsupported preregistered bridge mutant: ${mutantId}`);
@@ -13,6 +15,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
   const checks = evidence.checks ?? {};
   const blocked = evidence.verdict === 'BLOCKED';
   const authorityAlive = durableAuthorityReachable(evidence);
+  const workerProcessPids = normalizeWorkerProcessPids(evidence.initial?.pid, evidence.resume?.pid);
 
   if (mutantId === 'T7') {
     const workerFaultAddressable = evidence.mode !== 'managed-controller' && evidence.mutants?.T7_process_sigkill !== 'NOT_EXECUTED';
@@ -31,7 +34,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
         objectiveId: evidence.objectiveId,
         operationId: evidence.operationId
       },
-      rawObservations: { commonRunnerEvidence: evidence },
+      rawObservations: { workerProcessPids, commonRunnerEvidence: evidence },
       acceptanceChecks: {
         resumedToCompletion: checks.resumedToCompletion === true,
         expectedOperationApplied: checks.expectedOperationApplied === true,
@@ -59,7 +62,7 @@ export function commonRunnerEvidenceToRunResult(evidence, mutantId) {
       objectiveId: evidence.objectiveId,
       operationId: evidence.operationId
     },
-    rawObservations: { commonRunnerEvidence: evidence },
+    rawObservations: { workerProcessPids, commonRunnerEvidence: evidence },
     acceptanceChecks: {
       resumedToCompletion: checks.resumedToCompletion === true,
       expectedOperationApplied: checks.expectedOperationApplied === true,
