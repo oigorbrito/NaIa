@@ -7,6 +7,8 @@ import {
 } from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
+const REPOSITORY_REVISION = '1'.repeat(40);
+
 function lifecycleQualification(candidate = 'Temporal TypeScript') {
   const value = currentLifecycleQualificationProvenance(candidate);
   return value ? {
@@ -23,7 +25,8 @@ const verifiedSupport = {
     postRunCleanup: true,
     status: 'RUNTIME_VERIFIED',
     verificationEvidence: {
-      executionRef: 'test-fixture:runtime-receipt',
+      executionRef: `github-actions:run=fixture;job=temporal;sha=${REPOSITORY_REVISION}`,
+      repositoryRevision: REPOSITORY_REVISION,
       experimentId: 'temporal-typescript-t5-001',
       mutantId: 'T5',
       repetition: 1,
@@ -75,6 +78,15 @@ function record(overrides = {}) {
   if (overrides.tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
   const qualification = lifecycleQualification(candidate);
   if (overrides.tamperLifecycleQualification && qualification) qualification.sha256 = '0'.repeat(64);
+  const repositoryProvenance = overrides.unverifiedRepository
+    ? {
+        source: 'git', status: 'UNVERIFIED', revision: REPOSITORY_REVISION,
+        trackedWorktreeClean: false, reason: 'TRACKED_WORKTREE_DIRTY'
+      }
+    : {
+        source: 'git', status: 'VERIFIED', revision: REPOSITORY_REVISION,
+        trackedWorktreeClean: true, reason: null
+      };
 
   return {
     schemaVersion: 1,
@@ -87,6 +99,7 @@ function record(overrides = {}) {
       status: 'READY', candidateVersion: '1.23.0', adapterSha256: 'aaaaaaaaaaaaaaaa', harnessSha256: 'bbbbbbbbbbbbbbbb',
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node 22',
+        repositoryProvenance,
         formalPromotionPolicy: promotionPolicy,
         formalLifecycleQualification: qualification,
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
@@ -182,6 +195,16 @@ test('benchmark eligibility rejects duplicate repetitions presented as replicati
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
 });
 
+test('benchmark eligibility rejects record without verified clean Git repository revision provenance', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', unverifiedRepository: true })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks verified clean Git repository revision provenance/);
+});
+
 test('benchmark eligibility rejects record bound to a different promotion policy hash', () => {
   const result = benchmarkEligible(
     [record({ mutantId: 'T7', tamperPromotionPolicy: true })],
@@ -268,6 +291,22 @@ test('benchmark eligibility remains closed when support evidence omits lifecycle
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
+test('benchmark eligibility remains closed when support evidence omits repository revision', () => {
+  const withoutRevision = structuredClone(verifiedSupport);
+  delete withoutRevision['Temporal TypeScript'].verificationEvidence.repositoryRevision;
+  const result = benchmarkEligible(completeRecords(1), suite(1), withoutRevision);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
+test('benchmark eligibility remains closed when support execution ref points to a different repository revision', () => {
+  const mismatched = structuredClone(verifiedSupport);
+  mismatched['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
+  const result = benchmarkEligible(completeRecords(1), suite(1), mismatched);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
   const booleanOnlySupport = {
     'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
@@ -277,7 +316,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, verified Git revision, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
