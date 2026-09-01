@@ -110,6 +110,18 @@ function validateCandidateProfile(profile, candidate, errors) {
     if (!profile.runtimeIdentity?.observedPlatform || typeof profile.runtimeIdentity.observedPlatform !== 'object') {
       errors.push('DBOS formal runtime identity requires observedPlatform');
     }
+  } else if (candidate === 'Restate') {
+    if (profile.runtimeIdentity?.kind !== 'restate-local-server-runtime') errors.push('Restate formal runtime identity requires restate-local-server-runtime kind');
+    if (!sha256Value(profile.runtimeIdentity?.serverSha256)) errors.push('Restate formal runtime identity requires serverSha256');
+    if (!nonEmpty(profile.runtimeIdentity?.versionOutput) || !/\b1\.7\.8\b/.test(profile.runtimeIdentity.versionOutput)) {
+      errors.push('Restate formal runtime identity requires frozen server version 1.7.8');
+    }
+    if (profile.runtimeIdentity?.expectedProfile?.serverVersion !== '1.7.8' || profile.runtimeIdentity?.expectedProfile?.sdkVersion !== '1.16.9') {
+      errors.push('Restate formal runtime identity expectedProfile must match frozen server 1.7.8 and SDK 1.16.9');
+    }
+    if (profile.runtimeIdentity?.observedPlatform?.platform !== 'linux' || profile.runtimeIdentity?.observedPlatform?.arch !== 'x64') {
+      errors.push('Restate formal runtime identity requires linux/x64 observedPlatform');
+    }
   } else if (!profile.runtimeIdentity || typeof profile.runtimeIdentity !== 'object') {
     errors.push(`${candidate ?? 'candidate'}: formalRuntimeIdentity is required before formal benchmark admission`);
   }
