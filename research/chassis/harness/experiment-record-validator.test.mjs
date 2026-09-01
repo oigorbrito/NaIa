@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateExperimentRecord, benchmarkEligible } from './experiment-record-validator.mjs';
+import {
+  currentLifecycleQualificationProvenance,
+  currentLifecycleQualificationSha256
+} from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
+
+function lifecycleQualification(candidate = 'Temporal TypeScript') {
+  const value = currentLifecycleQualificationProvenance(candidate);
+  return value ? {
+    profile: value.profile,
+    candidate: value.candidate,
+    sha256: value.aggregateSha256,
+    fileCount: value.fileCount
+  } : null;
+}
 
 const verifiedSupport = {
   'Temporal TypeScript': {
@@ -16,6 +30,7 @@ const verifiedSupport = {
       recordSha256: 'e'.repeat(64),
       validatorSha256: 'f'.repeat(64),
       harnessSha256: 'b'.repeat(64),
+      lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }
@@ -33,6 +48,7 @@ function passPreRunReceipt() {
 
 function record(overrides = {}) {
   const mutantId = overrides.mutantId ?? 'T7';
+  const candidate = overrides.candidate ?? 'Temporal TypeScript';
   const workerPid = overrides.pid ?? 8801;
   const driverPid = 8899;
   const withWorkerPid = overrides.withWorkerPid !== false;
@@ -57,11 +73,13 @@ function record(overrides = {}) {
         : [];
   const promotionPolicy = formalPromotionPolicyProvenance();
   if (overrides.tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
+  const qualification = lifecycleQualification(candidate);
+  if (overrides.tamperLifecycleQualification && qualification) qualification.sha256 = '0'.repeat(64);
 
   return {
     schemaVersion: 1,
     experimentId: overrides.experimentId ?? 'exp-1',
-    candidate: overrides.candidate ?? 'Temporal TypeScript',
+    candidate,
     mutantId,
     repetition: overrides.repetition ?? 1,
     randomSeed: overrides.randomSeed ?? 1001,
@@ -70,7 +88,8 @@ function record(overrides = {}) {
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node 22',
         formalPromotionPolicy: promotionPolicy,
-        formalRuntimeLifecycle: { candidate: overrides.candidate ?? 'Temporal TypeScript', status: 'RUNTIME_VERIFIED' }
+        formalLifecycleQualification: qualification,
+        formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
       },
       parameters: {},
       cleanupVerifiedBeforeRun: true,
@@ -173,6 +192,16 @@ test('benchmark eligibility rejects record bound to a different promotion policy
   assert.match(result.errors.join('\n'), /lacks current frozen formal promotion policy hash provenance/);
 });
 
+test('benchmark eligibility rejects record bound to a stale lifecycle qualification bundle', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', tamperLifecycleQualification: true })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks current candidate lifecycle qualification bundle provenance/);
+});
+
 test('benchmark eligibility rejects READY record without complete pre-run cleanup receipt', () => {
   const result = benchmarkEligible(
     [record({ mutantId: 'T7', missingPreRunReceipt: true })],
@@ -231,6 +260,14 @@ test('benchmark eligibility remains closed when support evidence omits harness h
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
+test('benchmark eligibility remains closed when support evidence omits lifecycle qualification hash', () => {
+  const withoutQualification = structuredClone(verifiedSupport);
+  delete withoutQualification['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
+  const result = benchmarkEligible(completeRecords(1), suite(1), withoutQualification);
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
+});
+
 test('benchmark eligibility remains closed when support booleans are true but receipt evidence is missing', () => {
   const booleanOnlySupport = {
     'Temporal TypeScript': { preRunCleanup: true, postRunCleanup: true, status: 'RUNTIME_VERIFIED', verificationEvidence: null }
@@ -240,7 +277,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with policy hash, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with frozen policy, current lifecycle bundle, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
