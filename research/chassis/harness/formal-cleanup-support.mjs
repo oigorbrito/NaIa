@@ -22,7 +22,14 @@ export const FORMAL_CLEANUP_SUPPORT = Object.freeze({
     verificationEvidence: UNVERIFIED_EVIDENCE,
     note: 'Do not set cleanup support true until lifecycle tests and an isolated T5/r1 receipt execute successfully and record/validator/harness/lifecycle-qualification hashes plus the exact Git repository revision are recorded.'
   }),
-  Restate: Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null }),
+  Restate: Object.freeze({
+    preRunCleanup: false,
+    postRunCleanup: false,
+    implementation: 'research/chassis/harness/formal-restate-lifecycle.mjs',
+    status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
+    verificationEvidence: UNVERIFIED_EVIDENCE,
+    note: 'Do not set cleanup support true until the isolated Restate 1.7.8 lifecycle and T5/r1 receipt execute successfully with the observed server SHA-256, record/validator/harness/lifecycle-qualification hashes and exact Git repository revision recorded.'
+  }),
   'Trigger.dev': Object.freeze({ preRunCleanup: false, postRunCleanup: false, status: 'NOT_IMPLEMENTED', verificationEvidence: null })
 });
 
