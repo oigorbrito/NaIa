@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateExecutionLedger } from './experiment-ledger-validator.mjs';
+import { auditStoredFormalLedger, validateExecutionLedger } from './experiment-ledger-validator.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -26,7 +26,14 @@ export async function ledgerStatus({ repositoryRoot, ledgerPath = null }) {
     readJson(path.join(chassisRoot, 'fault-suite.v1.json'))
   ]);
   const records = ledgerPath ? recordsFromLedger(await readJson(ledgerPath)) : [];
-  return validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
+  const structural = validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
+  const formalAudit = auditStoredFormalLedger(records);
+  return {
+    ...structural,
+    valid: structural.valid && formalAudit.valid,
+    complete: structural.complete && formalAudit.valid,
+    formalAudit
+  };
 }
 
 async function main() {
