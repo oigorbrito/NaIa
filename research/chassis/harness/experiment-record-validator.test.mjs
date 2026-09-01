@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateExperimentRecord, benchmarkEligible } from './experiment-record-validator.mjs';
+import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const verifiedSupport = {
   'Temporal TypeScript': {
@@ -53,6 +54,8 @@ function record(overrides = {}) {
       : overrides.driverOnly
         ? [driverPid]
         : [];
+  const promotionPolicy = formalPromotionPolicyProvenance();
+  if (overrides.tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
 
   return {
     schemaVersion: 1,
@@ -65,6 +68,7 @@ function record(overrides = {}) {
       status: 'READY', candidateVersion: '1.23.0', adapterSha256: 'aaaaaaaaaaaaaaaa', harnessSha256: 'bbbbbbbbbbbbbbbb',
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node 22',
+        formalPromotionPolicy: promotionPolicy,
         formalRuntimeLifecycle: { candidate: overrides.candidate ?? 'Temporal TypeScript', status: 'RUNTIME_VERIFIED' }
       },
       parameters: {},
@@ -158,6 +162,16 @@ test('benchmark eligibility rejects duplicate repetitions presented as replicati
   assert.match(result.errors.join('\n'), /T7: duplicate repetition 1/);
 });
 
+test('benchmark eligibility rejects record bound to a different promotion policy hash', () => {
+  const result = benchmarkEligible(
+    [record({ mutantId: 'T7', tamperPromotionPolicy: true })],
+    suite(1, ['T7']),
+    verifiedSupport
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.errors.join('\n'), /lacks current frozen formal promotion policy hash provenance/);
+});
+
 test('benchmark eligibility rejects READY record without complete pre-run cleanup receipt', () => {
   const result = benchmarkEligible(
     [record({ mutantId: 'T7', missingPreRunReceipt: true })],
@@ -217,7 +231,7 @@ test('benchmark eligibility remains closed when support booleans are true but re
   assert.match(result.errors.join('\n'), /evidence-backed RUNTIME_VERIFIED formal cleanup support/);
 });
 
-test('benchmark eligibility accepts complete critical coverage only with pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
+test('benchmark eligibility accepts complete critical coverage only with policy hash, pre-run receipt, evidence-backed cleanup support and worker PID cleanup binding', () => {
   const result = benchmarkEligible(completeRecords(100), suite(100), verifiedSupport);
   assert.equal(result.eligible, true, result.errors.join('\n'));
 });
