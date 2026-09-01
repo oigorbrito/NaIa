@@ -12,7 +12,11 @@ on:
       - 'research/chassis/harness/formal-single-run.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
+      - 'research/chassis/harness/formal-lifecycle-promotion-review.mjs'
+      - 'research/chassis/harness/formal-lifecycle-promotion-review.test.mjs'
       - 'research/chassis/harness/formal-dbos-lifecycle.test.mjs'
+      - 'research/chassis/harness/formal-cleanup-support.mjs'
+      - 'research/chassis/harness/benchmark-execution-readiness.mjs'
       - 'research/chassis/harness/common-runner-run-hook.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
   workflow_dispatch:
@@ -106,6 +110,7 @@ jobs:
           node --test \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
             research/chassis/harness/benchmark-execution-readiness.test.mjs \
@@ -139,8 +144,18 @@ jobs:
           sha256sum "$EVIDENCE/record.json" | awk '{print $1}' > "$EVIDENCE/record.sha256"
           sha256sum "$EVIDENCE/runtime-receipt-validation.json" | awk '{print $1}' > "$EVIDENCE/validator.sha256"
           printf 'github-actions:run=%s;job=%s;sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_JOB" "$GITHUB_SHA" > "$EVIDENCE/execution-ref.txt"
-          if [ "$VALIDATOR_CODE" -eq 0 ]; then
-            echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
+
+          node research/chassis/harness/formal-lifecycle-promotion-review.mjs \
+            "$EVIDENCE/record.json" \
+            "$EVIDENCE/runtime-receipt-validation.json" \
+            "$EVIDENCE/execution-ref.txt" \
+            "$EVIDENCE/promotion-review.json" \
+            > "$EVIDENCE/promotion-review.stdout.json" 2> "$EVIDENCE/promotion-review.stderr.log"
+          REVIEW_CODE=$?
+          echo "$REVIEW_CODE" > "$EVIDENCE/promotion-review.exit-code.txt"
+
+          if [ "$VALIDATOR_CODE" -eq 0 ] && [ "$REVIEW_CODE" -eq 0 ]; then
+            echo 'LIFECYCLE_RECEIPT_VALID_PROMOTION_REVIEW_READY' > "$CLASSIFICATION"
           else
             echo 'LIFECYCLE_RECEIPT_NOT_VERIFIED' > "$CLASSIFICATION"
           fi
@@ -214,6 +229,7 @@ jobs:
           node --test \
             research/chassis/harness/formal-dbos-lifecycle.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
+            research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
             research/chassis/harness/benchmark-execution-readiness.test.mjs \
@@ -247,8 +263,18 @@ jobs:
           sha256sum "$EVIDENCE/record.json" | awk '{print $1}' > "$EVIDENCE/record.sha256"
           sha256sum "$EVIDENCE/runtime-receipt-validation.json" | awk '{print $1}' > "$EVIDENCE/validator.sha256"
           printf 'github-actions:run=%s;job=%s;sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_JOB" "$GITHUB_SHA" > "$EVIDENCE/execution-ref.txt"
-          if [ "$VALIDATOR_CODE" -eq 0 ]; then
-            echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
+
+          node research/chassis/harness/formal-lifecycle-promotion-review.mjs \
+            "$EVIDENCE/record.json" \
+            "$EVIDENCE/runtime-receipt-validation.json" \
+            "$EVIDENCE/execution-ref.txt" \
+            "$EVIDENCE/promotion-review.json" \
+            > "$EVIDENCE/promotion-review.stdout.json" 2> "$EVIDENCE/promotion-review.stderr.log"
+          REVIEW_CODE=$?
+          echo "$REVIEW_CODE" > "$EVIDENCE/promotion-review.exit-code.txt"
+
+          if [ "$VALIDATOR_CODE" -eq 0 ] && [ "$REVIEW_CODE" -eq 0 ]; then
+            echo 'LIFECYCLE_RECEIPT_VALID_PROMOTION_REVIEW_READY' > "$CLASSIFICATION"
           else
             echo 'LIFECYCLE_RECEIPT_NOT_VERIFIED' > "$CLASSIFICATION"
           fi
