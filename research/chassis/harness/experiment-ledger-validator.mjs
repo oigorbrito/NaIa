@@ -1,5 +1,6 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
 
 function sameIdentity(record, spec) {
   return record?.experimentId === spec.experimentId
@@ -20,6 +21,25 @@ export function validateRecordAgainstSpec(record, spec) {
   if (record?.mutantId !== spec.mutantId) errors.push(`mutantId mismatch: expected ${spec.mutantId}, got ${record?.mutantId ?? 'missing'}`);
   if (record?.repetition !== spec.repetition) errors.push(`repetition mismatch: expected ${spec.repetition}, got ${record?.repetition ?? 'missing'}`);
   if (record?.randomSeed !== spec.randomSeed) errors.push(`randomSeed mismatch: expected ${spec.randomSeed}, got ${record?.randomSeed ?? 'missing'}`);
+
+  return { valid: errors.length === 0, errors };
+}
+
+export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
+  const errors = [];
+  const candidate = record?.candidate;
+  if (!candidate || !formalCleanupSupportsCandidate(cleanupSupport, candidate)) {
+    errors.push(`${candidate ?? 'unknown candidate'}: formal cleanup support is not runtime-verified`);
+  }
+
+  const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
+  if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
+    errors.push(`${candidate ?? 'unknown candidate'}: record lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
+  }
+
+  if (record?.setup?.status === 'READY' && record?.cleanup?.status !== 'PASS') {
+    errors.push(`${candidate ?? 'unknown candidate'}: READY formal execution requires cleanup.status=PASS`);
+  }
 
   return { valid: errors.length === 0, errors };
 }
@@ -72,6 +92,9 @@ export function appendRecordToLedger(records, record, protocol, faultSuite) {
 
   const validation = validateRecordAgainstSpec(record, current.nextExpectedExperiment);
   if (!validation.valid) throw new Error(`record is not the next preregistered experiment: ${validation.errors.join('; ')}`);
+
+  const admission = formalLedgerAdmission(record);
+  if (!admission.valid) throw new Error(`record is not eligible for formal ledger admission: ${admission.errors.join('; ')}`);
 
   const next = [...records, record];
   const nextValidation = validateExecutionLedger(next, protocol, faultSuite, { allowPrefix: true });
