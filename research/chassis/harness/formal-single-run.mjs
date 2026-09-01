@@ -5,6 +5,7 @@ import { executeCandidateExperiment, loadExperimentContext } from './candidate-e
 import { candidateByName } from './candidate-setup.mjs';
 import { createCommonRunnerRunHook } from './common-runner-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
+import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 import { createFormalRuntimeLifecycle } from './formal-runtime-lifecycle-router.mjs';
 
 function parseArgs(argv) {
@@ -66,6 +67,7 @@ export async function runFormalSingle({
     environment: {
       packageManager: runtimeEnv.npm_config_user_agent ?? null,
       requiredEnvNames: declaredEnvNames,
+      formalPromotionPolicy: formalPromotionPolicyProvenance(),
       formalRuntimeLifecycle: lifecycle
         ? { candidate: lifecycle.candidateName, status: lifecycle.status }
         : null
