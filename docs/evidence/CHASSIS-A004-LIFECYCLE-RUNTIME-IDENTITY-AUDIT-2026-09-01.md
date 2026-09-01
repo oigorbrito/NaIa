@@ -89,7 +89,7 @@ For non-READY records the comparison is not applied. This preserves the protocol
 
 ### 5. Formal ledger admission
 
-`formalLedgerAdmission()` now applies the A004 runtime identity binding after historical provenance and current frozen-state compatibility checks.
+`formalLedgerAdmission()` applies the A004 runtime identity binding as part of current frozen-state compatibility.
 
 A READY record cannot enter the formal ledger when its stable native runtime identity differs from the runtime that qualified lifecycle cleanup support.
 
@@ -97,7 +97,7 @@ Historical immutable audit remains separate from current compatibility. The audi
 
 ### 6. Benchmark eligibility
 
-`benchmarkEligible()` now applies the same A004 binding to every required critical repetition.
+`benchmarkEligible()` applies the same A004 binding to every required critical repetition.
 
 A candidate cannot become benchmark-eligible by running all repetitions on a new but internally consistent native runtime that differs from the runtime used for T5/r1 lifecycle qualification.
 
@@ -105,7 +105,7 @@ This closes the gap that candidate-profile consistency alone could not close: in
 
 ## Adversarial tests defined
 
-The structural test suite now includes explicit cases for:
+The structural test suite includes explicit cases for:
 
 - missing qualification runtime identity hash;
 - tampered validator runtime identity hash;
@@ -136,11 +136,41 @@ No benchmark-only shim or private runtime state mutation was introduced.
 
 The design remains consistent with the existing project methodology based on reproducibility metadata, software/runtime versioning, provenance and frozen execution conditions.
 
+## Continuity audit after initial A004 note
+
+A follow-up audit found a temporal continuity gap after the initial enforcement note.
+
+A newly admitted READY record was already checked against the current runtime-verified cleanup-support identity, and benchmark eligibility also rechecked every required critical record. However, when continuing an existing formal ledger prefix, `appendRecordToLedger()` revalidated old records through `assessStoredFormalLedgerCurrentCompatibility()` without passing the current cleanup-support authority into an A004 runtime-identity comparison.
+
+That meant a previously admitted READY prefix could remain marked current-compatible after the cleanup-support `verificationEvidence.runtimeIdentitySha256` for its candidate changed, until a later candidate-specific admission or final benchmark gate rejected the mismatch.
+
+This was an enforcement gap in current-state continuity, not a new experimental rule.
+
+The gap was closed by:
+
+- `025e9ef9f0e73a6e04173c51ca84abfc3bc792e2` — `fix(chassis): revalidate ledger runtime identity on continuation`
+  - `assessStoredFormalRecordCurrentCompatibility(record, cleanupSupport)` now reapplies A004 for READY records;
+  - `assessStoredFormalLedgerCurrentCompatibility(records, cleanupSupport)` propagates the current support authority across the stored prefix;
+  - `appendRecordToLedger()` passes the same current support authority into both pre-append and post-append compatibility checks;
+  - `formalLedgerAdmission()` reuses this current-compatibility authority rather than maintaining a second independent runtime-binding path.
+- `1815aa9b21ae84ea5c6848bc04d570fa1aa27dda` — `test(chassis): reject rotated runtime identity for stored ledger prefix`
+  - defines regression cases for one stored READY record and a stored ledger prefix that were valid under one qualified runtime identity and become incompatible when only the current qualification runtime hash rotates.
+- `3e5781861ba732859b5db697c803f1e82421ef68` — `ci(chassis): gate ledger runtime identity continuity`
+  - wires the new regression test into the structural chassis workflow.
+
+No A005 was introduced. The correction enforces the existing A004 policy across ledger continuation.
+
 ## Remote execution status
 
-Latest inspected workflow for source head `c975a2fcc21754af8e84cdd86a57184cb484be9d`:
+Initial inspected workflow for source head `c975a2fcc21754af8e84cdd86a57184cb484be9d`:
 
 - run: `33561714797`
+- `neutral-oracle (22)`: `failure`, `steps=null`
+- `neutral-oracle (24)`: `cancelled`, `steps=null`
+
+Latest inspected workflow after the continuity closure, for source head `3e5781861ba732859b5db697c803f1e82421ef68`:
+
+- run: `33562396617`
 - `neutral-oracle (22)`: `failure`, `steps=null`
 - `neutral-oracle (24)`: `cancelled`, `steps=null`
 
@@ -148,11 +178,13 @@ Classification:
 
 `REMOTE_CI = BLOCKED_REMOTE_CI_PRE_RUNNER`
 
-No A004 test step executed in that run. Therefore this audit does **not** claim remote runtime PASS.
+No A004 test step executed in either inspected run. Therefore this audit does **not** claim remote runtime PASS.
 
 Current evidence status:
 
 `A004_ENFORCEMENT = STRUCTURALLY_IMPLEMENTED_NOT_REMOTE_EXECUTED`
+
+`A004_LEDGER_CONTINUITY = STRUCTURALLY_IMPLEMENTED_NOT_REMOTE_EXECUTED`
 
 `FORMAL_RUNTIME_VERIFICATION = NOT_OBTAINED_FROM_BLOCKED_CI`
 
