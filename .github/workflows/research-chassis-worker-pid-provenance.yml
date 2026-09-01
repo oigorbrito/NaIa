@@ -66,8 +66,11 @@ on:
       - 'research/chassis/harness/t5-record-bridge.mjs'
       - 'research/chassis/harness/t5-record-bridge.test.mjs'
       - 'research/chassis/harness/t11-record-bridge.mjs'
+      - 'research/chassis/harness/t11-record-bridge.test.mjs'
       - 'research/chassis/harness/t12-record-bridge.mjs'
+      - 'research/chassis/harness/t12-record-bridge.test.mjs'
       - 'research/chassis/harness/t16-record-bridge.mjs'
+      - 'research/chassis/harness/t16-record-bridge.test.mjs'
       - 'research/chassis/harness/formal-cleanup-support.mjs'
       - 'research/chassis/harness/formal-cleanup-support.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-qualification-provenance.mjs'
@@ -128,6 +131,9 @@ jobs:
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/common-runner-record-bridge.test.mjs \
             research/chassis/harness/t5-record-bridge.test.mjs \
+            research/chassis/harness/t11-record-bridge.test.mjs \
+            research/chassis/harness/t12-record-bridge.test.mjs \
+            research/chassis/harness/t16-record-bridge.test.mjs \
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
             research/chassis/harness/formal-lifecycle-promotion-review.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
