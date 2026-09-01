@@ -1,6 +1,6 @@
 const EXPECTED_DECISION = 'NOT_SELECTED';
 const EXPECTED_REVISION_POLICY = 'single-verified-git-revision-per-formal-ledger';
-const EXPECTED_AMENDMENT_ID = 'A001';
+const EXPECTED_ENVIRONMENT_POLICY = 'single-common-runtime-and-candidate-profile-per-formal-ledger';
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -15,38 +15,45 @@ export function deriveSeed(protocol, candidate, mutantId, repetition) {
   return candidateOrdinal * 1_000_000 + mutantOrdinal * 10_000 + repetition;
 }
 
-function validatePreExecutionRevisionAmendment(protocol, errors) {
-  if (protocol?.executionOrder?.repositoryRevisionPolicy !== EXPECTED_REVISION_POLICY) {
-    errors.push(`executionOrder.repositoryRevisionPolicy must equal ${EXPECTED_REVISION_POLICY}`);
-  }
-
+function amendmentById(protocol, id, errors) {
   const amendments = protocol?.methodology?.preExecutionAmendments;
   if (!Array.isArray(amendments)) {
     errors.push('methodology.preExecutionAmendments must be an array');
-    return;
+    return null;
+  }
+  const amendment = amendments.find((entry) => entry?.id === id);
+  if (!amendment) errors.push(`${id}: frozen pre-execution amendment is required`);
+  return amendment ?? null;
+}
+
+function validateCommonAmendment(amendment, id, expectedPolicy, errors) {
+  if (!amendment) return;
+  if (amendment.status !== 'FROZEN_BEFORE_FORMAL_EXECUTION') errors.push(`${id}: status must be FROZEN_BEFORE_FORMAL_EXECUTION`);
+  if (amendment.policy !== expectedPolicy) errors.push(`${id}: policy must equal ${expectedPolicy}`);
+  if (!nonEmpty(amendment.date)) errors.push(`${id}: date is required`);
+  if (!nonEmpty(amendment.reason)) errors.push(`${id}: reason is required`);
+  if (!nonEmpty(amendment.constraint)) errors.push(`${id}: constraint is required`);
+  if (amendment.outcomeDriven !== false) errors.push(`${id}: outcomeDriven must be false`);
+  if (amendment.changesSemanticVerdicts !== false) errors.push(`${id}: changesSemanticVerdicts must be false`);
+  if (amendment.changesRepetitionThreshold !== false) errors.push(`${id}: changesRepetitionThreshold must be false`);
+}
+
+function validatePreExecutionAmendments(protocol, errors) {
+  if (protocol?.executionOrder?.repositoryRevisionPolicy !== EXPECTED_REVISION_POLICY) {
+    errors.push(`executionOrder.repositoryRevisionPolicy must equal ${EXPECTED_REVISION_POLICY}`);
+  }
+  if (protocol?.executionOrder?.environmentIdentityPolicy !== EXPECTED_ENVIRONMENT_POLICY) {
+    errors.push(`executionOrder.environmentIdentityPolicy must equal ${EXPECTED_ENVIRONMENT_POLICY}`);
   }
 
-  const amendment = amendments.find((entry) => entry?.id === EXPECTED_AMENDMENT_ID);
-  if (!amendment) {
-    errors.push(`${EXPECTED_AMENDMENT_ID}: frozen pre-execution repository revision amendment is required`);
-    return;
+  const revision = amendmentById(protocol, 'A001', errors);
+  validateCommonAmendment(revision, 'A001', EXPECTED_REVISION_POLICY, errors);
+  if (revision && revision.lifecycleQualificationMayPrecedeBenchmarkRevision !== true) {
+    errors.push('A001: lifecycleQualificationMayPrecedeBenchmarkRevision must be true');
   }
 
-  if (amendment.status !== 'FROZEN_BEFORE_FORMAL_EXECUTION') {
-    errors.push(`${EXPECTED_AMENDMENT_ID}: status must be FROZEN_BEFORE_FORMAL_EXECUTION`);
-  }
-  if (amendment.policy !== EXPECTED_REVISION_POLICY) {
-    errors.push(`${EXPECTED_AMENDMENT_ID}: policy must equal ${EXPECTED_REVISION_POLICY}`);
-  }
-  if (!nonEmpty(amendment.date)) errors.push(`${EXPECTED_AMENDMENT_ID}: date is required`);
-  if (!nonEmpty(amendment.reason)) errors.push(`${EXPECTED_AMENDMENT_ID}: reason is required`);
-  if (!nonEmpty(amendment.constraint)) errors.push(`${EXPECTED_AMENDMENT_ID}: constraint is required`);
-  if (amendment.outcomeDriven !== false) errors.push(`${EXPECTED_AMENDMENT_ID}: outcomeDriven must be false`);
-  if (amendment.changesSemanticVerdicts !== false) errors.push(`${EXPECTED_AMENDMENT_ID}: changesSemanticVerdicts must be false`);
-  if (amendment.changesRepetitionThreshold !== false) errors.push(`${EXPECTED_AMENDMENT_ID}: changesRepetitionThreshold must be false`);
-  if (amendment.lifecycleQualificationMayPrecedeBenchmarkRevision !== true) {
-    errors.push(`${EXPECTED_AMENDMENT_ID}: lifecycleQualificationMayPrecedeBenchmarkRevision must be true`);
-  }
+  const environment = amendmentById(protocol, 'A002', errors);
+  validateCommonAmendment(environment, 'A002', EXPECTED_ENVIRONMENT_POLICY, errors);
 }
 
 export function validateExperimentProtocol(protocol, faultSuite) {
@@ -99,7 +106,7 @@ export function validateExperimentProtocol(protocol, faultSuite) {
 
   if (protocol.executionOrder?.policy !== 'round-robin-by-repetition') errors.push('executionOrder.policy must be round-robin-by-repetition');
   if (!nonEmpty(protocol.executionOrder?.sequence)) errors.push('executionOrder.sequence is required');
-  validatePreExecutionRevisionAmendment(protocol, errors);
+  validatePreExecutionAmendments(protocol, errors);
 
   return {
     valid: errors.length === 0,
