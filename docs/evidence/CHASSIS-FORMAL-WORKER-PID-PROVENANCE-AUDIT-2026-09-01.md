@@ -22,22 +22,22 @@ This audit changes no candidate semantic verdict and does not promote any lifecy
 
 ## Finding F1 — empty PID observation could be misclassified as clean
 
-The Temporal and DBOS formal lifecycle cleanup implementations collect process IDs from `run.rawObservations` and determine worker cleanup from the absence of live observed PIDs. Before this audit, an empty observed PID set could therefore satisfy the liveness condition even if a driver regression had stopped emitting PID provenance.
+The Temporal and DBOS formal lifecycle cleanup implementations originally determined worker cleanup from the absence of live observed PIDs. An empty observed PID set could therefore satisfy the liveness condition even if a driver regression had stopped emitting worker PID provenance.
 
 Risk: `zero observed PIDs` could be confused with `all expected worker PIDs were observed and are dead`.
 
-Disposition: fail closed at formal admission and benchmark authority boundaries. A READY critical execution with the intended fault actually injected must now carry explicit worker-process provenance.
+Disposition: corrected both at the lifecycle source and at downstream authority boundaries. A READY critical execution with the intended fault actually injected now requires explicit worker-process provenance. Missing provenance makes lifecycle `workerCleanup=false`; formal ledger admission and benchmark eligibility independently fail closed as defense in depth.
 
 ## Finding F2 — driver PID is not worker PID
 
 Dedicated T11/T12/T16 run hooks now preserve their driver process PID for general process provenance. That PID is not accepted as a substitute for a worker PID.
 
-The formal contract now distinguishes:
+The formal contract distinguishes:
 
 - generic process observations such as driver/coordinator/status process PIDs; and
-- `run.rawObservations.workerProcessPids`, which is the explicit set of execution-boundary worker PIDs.
+- `run.rawObservations.workerProcessPids`, the explicit set of execution-boundary worker PIDs.
 
-A critical injected formal run with only a driver PID is rejected by formal ledger admission and benchmark eligibility.
+A critical injected formal run with only a driver PID is rejected by lifecycle cleanup, formal ledger admission, lifecycle promotion review where applicable, and benchmark eligibility.
 
 ## Worker PID sources by mutant
 
@@ -80,7 +80,7 @@ Thus a record cannot become formal/benchmark evidence merely by adding a worker 
 
 ## Finding F4 — lifecycle promotion receipt hardened
 
-The T5/r1 lifecycle receipt validator now additionally requires:
+The T5/r1 lifecycle receipt validator additionally requires:
 
 - explicit worker process PIDs;
 - non-empty cleanup PID observation;
@@ -92,7 +92,7 @@ Candidate semantic PASS/FAIL remains independent from lifecycle cleanup verifica
 
 ## Finding F5 — promotion review remains non-authoritative by itself
 
-The lifecycle promotion review recomputes receipt eligibility from the immutable record. Test fixtures now include explicit worker PID provenance and cleanup binding. A forged validator eligibility flag or driver-only provenance must not produce a support-promotion proposal.
+The lifecycle promotion review recomputes receipt eligibility from the immutable record. Test fixtures include explicit worker PID provenance and cleanup binding. A forged validator eligibility flag or driver-only provenance must not produce a support-promotion proposal.
 
 The review still cannot:
 
@@ -101,17 +101,41 @@ The review still cannot:
 - select a chassis winner; or
 - mutate `FORMAL_CLEANUP_SUPPORT` automatically.
 
+## Finding F6 — root lifecycle cleanup now fails closed
+
+Both candidate lifecycle implementations now consume the shared PID-provenance assessment during post-run cleanup.
+
+For a READY critical execution with `fault.injected=true`:
+
+- no explicit worker PID provenance => `workerCleanup=false`;
+- any observed process still alive => `workerCleanup=false`;
+- explicit worker PIDs plus all observed processes dead => worker cleanup may pass, subject to durable state, oracle and temporary resource cleanup.
+
+For `BLOCKED_SETUP` or a run where the intended critical fault was not injected, missing worker PID provenance does not create an artificial candidate or cleanup failure. This preserves the experiment classification rule `BLOCKED != FAIL != PASS`.
+
+Temporal and DBOS lifecycle receipts now also expose:
+
+- `workerPidProvenanceRequired`;
+- `workerPidProvenanceObserved`;
+- `workerProcessPids`;
+- `observedWorkerPids`; and
+- `liveObservedWorkerPids`.
+
+The corresponding lifecycle tests include explicit fail-closed fixtures. They remain `IMPLEMENTED_NOT_RUNTIME_VERIFIED` until a runner executes them.
+
 ## Structural test gate
 
-A minimal workflow was added:
+A minimal workflow exists:
 
 `.github/workflows/research-chassis-worker-pid-provenance.yml`
 
-It requires only Node 22.16.0 and repository checkout. It does not require Temporal, DBOS, PostgreSQL, Docker, provider credentials, or external services.
+It requires only Node 22.16.0 and repository checkout. It does not require Temporal, DBOS, PostgreSQL, Docker, provider credentials, or external services because the lifecycle tests use controlled fake operations.
 
 Its targeted structural suite covers:
 
 - explicit worker PID provenance helper;
+- Temporal lifecycle cleanup;
+- DBOS lifecycle cleanup;
 - common-runner T7/T8 bridge;
 - T5 bridge;
 - lifecycle receipt validation;
