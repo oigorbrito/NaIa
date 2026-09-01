@@ -1,15 +1,29 @@
 import { evaluateT12Evidence } from './t12-evaluator.mjs';
 import { normalizeWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
-export function t12EvidenceToRunResult(evidence, spec, setup) {
-  const evaluation = evaluateT12Evidence(evidence);
-  const injected =
-    evaluation.checks.authoritiesDistinct === true &&
+function nonEmpty(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function t12FaultStimulusObserved(evidence) {
+  const authoritiesDistinct =
+    nonEmpty(evidence?.oldAuthorityIdentity) &&
+    nonEmpty(evidence?.newAuthorityIdentity) &&
+    evidence.oldAuthorityIdentity !== evidence.newAuthorityIdentity;
+
+  return Boolean(
+    authoritiesDistinct &&
     evidence?.authorityAdvanced === true &&
     evidence?.newAuthorityCompletion?.attempted === true &&
     evidence?.newAuthorityCompletion?.acceptedOrAuthoritative === true &&
     evidence?.staleCompletion?.attempted === true &&
-    evidence?.staleCompletion?.attemptedAfterNewCommit === true;
+    evidence?.staleCompletion?.attemptedAfterNewCommit === true
+  );
+}
+
+export function t12EvidenceToRunResult(evidence, spec, setup) {
+  const evaluation = evaluateT12Evidence(evidence);
+  const injected = t12FaultStimulusObserved(evidence);
   const workerProcessPids = normalizeWorkerProcessPids(
     evidence?.rawNativeEvidence?.workerA?.pid,
     evidence?.rawNativeEvidence?.workerB?.pid
