@@ -73,9 +73,33 @@ function dbosReceipt(overrides = {}) {
   };
 }
 
+function restateReceipt(overrides = {}) {
+  return {
+    status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
+    server: '/fixture/restate-server',
+    serverSha256: 'e'.repeat(64),
+    versionOutput: 'restate-server 1.7.8',
+    expectedProfile: { serverVersion: '1.7.8', sdkVersion: '1.16.9', platform: 'linux', arch: 'x64' },
+    observedPlatform: { platform: 'linux', arch: 'x64' },
+    workspace: '/tmp/dynamic-restate',
+    adminUrl: 'http://127.0.0.1:24001',
+    ingressUrl: 'http://127.0.0.1:24002',
+    serverPid: 4200,
+    formalRuntimeIdentity: {
+      kind: 'restate-local-server-runtime',
+      expectedProfile: { serverVersion: '1.7.8', sdkVersion: '1.16.9', platform: 'linux', arch: 'x64' },
+      observedPlatform: { platform: 'linux', arch: 'x64' },
+      serverSha256: 'e'.repeat(64),
+      versionOutput: 'restate-server 1.7.8'
+    },
+    ...overrides
+  };
+}
+
 export function formalPreRunReceipt(candidate, overrides = {}) {
   if (candidate === 'Temporal TypeScript') return temporalReceipt(overrides);
   if (candidate === 'DBOS TypeScript') return dbosReceipt(overrides);
+  if (candidate === 'Restate') return restateReceipt(overrides);
   return {
     status: 'PASS', workerCleanup: true, durableStateCleanup: true, oracleCleanup: true, temporaryResourcesCleanup: true,
     formalRuntimeIdentity: { candidate, profile: 'synthetic-future-formal-runtime' },
@@ -119,7 +143,6 @@ export function readyFormalRecord({
   cleanupOverrides = {}
 } = {}) {
   const fields = candidateProfileRecordFields(candidate);
-  const pass = verdict === 'PASS';
   const acceptanceChecks = verdict === 'FAIL' ? { invariant: false } : { invariant: true };
   const rawObservations = { workerProcessPids: [workerPid], workerA: { pid: workerPid } };
   if (mutantId === 'T16') rawObservations.semanticMutation = { dimension: 'config', before: 'a', after: 'b' };
@@ -173,6 +196,7 @@ export function readyFormalRecord({
 
   if (candidate === 'Temporal TypeScript') Object.assign(base.cleanup, { temporalServerCleanup: true, sqliteCleanup: true, workspaceCleanup: true });
   if (candidate === 'DBOS TypeScript') Object.assign(base.cleanup, { cleanupContainerAllowed: true, databaseDrop: true, databaseAbsent: true, postgresContainerCleanup: true, workspaceCleanup: true });
+  if (candidate === 'Restate') Object.assign(base.cleanup, { restateServerCleanup: true, workspaceCleanup: true });
 
   return {
     ...base,
