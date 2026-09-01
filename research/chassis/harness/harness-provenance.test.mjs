@@ -33,12 +33,23 @@ test('aggregate harness hash changes if one bound component changes', async (t) 
   assert.notEqual(before.files[1].sha256, after.files[1].sha256);
 });
 
-test('formal provenance bundle includes governance and the two-worker Temporal T5 executor', () => {
+test('formal provenance bundle includes runtime lifecycle, worker cleanup and promotion authorities', () => {
   for (const required of [
     'research/chassis/harness/harness-provenance.mjs',
     'research/chassis/harness/benchmark-execution-readiness.mjs',
+    'research/chassis/harness/benchmark-promotion-gate.mjs',
     'research/chassis/harness/experiment-ledger-validator.mjs',
+    'research/chassis/harness/experiment-record-validator.mjs',
+    'research/chassis/harness/formal-cleanup-support.mjs',
+    'research/chassis/harness/formal-dbos-lifecycle.mjs',
     'research/chassis/harness/formal-executor-support.mjs',
+    'research/chassis/harness/formal-lifecycle-promotion-review.mjs',
+    'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs',
+    'research/chassis/harness/formal-promotion-policy.mjs',
+    'research/chassis/harness/formal-runtime-lifecycle.mjs',
+    'research/chassis/harness/formal-runtime-lifecycle-router.mjs',
+    'research/chassis/harness/formal-single-run.mjs',
+    'research/chassis/harness/formal-worker-pid-provenance.mjs',
     'research/chassis/harness/t5-evaluator.mjs',
     'research/chassis/harness/t5-record-bridge.mjs',
     'research/chassis/adapters/temporal-ts/t5-activities.mjs',
@@ -46,7 +57,8 @@ test('formal provenance bundle includes governance and the two-worker Temporal T
     'research/chassis/adapters/temporal-ts/t5-worker-process.mjs',
     'research/chassis/adapters/temporal-ts/t5-workflow.mjs',
     'research/chassis/T5-OWNERSHIP-CONTRACT-V1.md',
-    'research/chassis/critical-mutant-plan.v1.json'
+    'research/chassis/critical-mutant-plan.v1.json',
+    'research/chassis/formal-promotion-policy.v1.json'
   ]) {
     assert.ok(FORMAL_HARNESS_FILES.includes(required), required);
   }
