@@ -27,9 +27,19 @@ test('Restate T12 commits B before releasing stale A and independently re-reads 
   assert.ok(releaseA > newCommit);
   assert.ok(staleAttempt > releaseA);
   assert.ok(finalRead > staleAttempt);
-  assert.match(driver, /attempted: staleTransportFinished/);
-  assert.match(driver, /rejectedOrNonAuthoritative: staleTransportFinished && finalStillB/);
-  assert.match(driver, /becameAuthoritative: staleTransportFinished && finalAfterStale\?\.completedByVariant === 'A'/);
+  assert.match(driver, /staleAttemptActuallyObserved = staleAttemptEvent !== null/);
+  assert.match(driver, /attempted: staleAttemptActuallyObserved/);
+  assert.match(driver, /rejectedOrNonAuthoritative: staleAttemptActuallyObserved && finalStillB/);
+  assert.match(driver, /becameAuthoritative: staleAttemptActuallyObserved && finalAfterStaleValue\?\.completedByVariant === 'A'/);
+  assert.doesNotMatch(driver, /attempted: staleTransportFinished/);
+});
+
+test('Restate T12 unwraps workflowOutput ready/result envelope before deciding final authority', async () => {
+  const driver = await readFile(path.join(adapterDir, 't12-driver.mjs'), 'utf8');
+  assert.match(driver, /finalAfterStale\?\.ready === true \? finalAfterStale\.result : finalAfterStale/);
+  assert.match(driver, /finalAfterStaleValue\?\.completedByVariant === 'B'/);
+  assert.match(driver, /finalAfterStaleValue/);
+  assert.doesNotMatch(driver, /const finalStillB = finalAfterStale\?\.completedByVariant/);
 });
 
 test('Restate T12 advances authority through native pause/resume and distinct deployments', async () => {
@@ -40,4 +50,5 @@ test('Restate T12 advances authority through native pause/resume and distinct de
   assert.match(driver, /oldAuthorityIdentity = `\$\{invocationId\}:deployment:\$\{deploymentA\}`/);
   assert.match(driver, /newAuthorityIdentity = `\$\{invocationId\}:deployment:\$\{deploymentB\}`/);
   assert.match(driver, /t12_http_response_finished/);
+  assert.match(driver, /t12_http_response_closed/);
 });
