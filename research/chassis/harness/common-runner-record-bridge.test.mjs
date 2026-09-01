@@ -13,6 +13,7 @@ function evidence(mutant, overrides = {}) {
     initial: {
       pid: 1234,
       signal: mutant === 'T7' ? 'SIGKILL' : null,
+      killIssued: mutant === 'T7',
       timedOut: false,
       terminalEvent: mutant === 'T8' ? { event: 'objective_completed' } : null
     },
@@ -98,6 +99,18 @@ test('tampered precomputed checks cannot manufacture formal PASS semantics', () 
   assert.equal(result.acceptanceChecks.exactlyOneExternalApply, false);
 });
 
+test('tampered precomputed fault booleans cannot manufacture formal fault injection', () => {
+  const t7 = evidence('T7');
+  t7.checks.crashInjected = true;
+  t7.initial.killIssued = false;
+  assert.equal(commonRunnerEvidenceToRunResult(t7, 'T7').fault.injected, false);
+
+  const t8 = evidence('T8');
+  t8.checks.responseLossInjected = true;
+  t8.oracle.totalResponseLossCount = 0;
+  assert.equal(commonRunnerEvidenceToRunResult(t8, 'T8').fault.injected, false);
+});
+
 test('RECONCILIATION_REQUIRED cannot be upgraded to formal T7 PASS by legacy runner checks', () => {
   const value = evidence('T7');
   value.resume.terminalEvent = { event: 'reconciliation_required' };
@@ -111,7 +124,8 @@ test('RECONCILIATION_REQUIRED cannot be upgraded to formal T7 PASS by legacy run
 
 test('bridge preserves runtime prerequisite BLOCKED classification', () => {
   const value = evidence('T8', { verdict: 'BLOCKED', blocker: 'PREREQUISITE_OR_BOOTSTRAP_FAILED_BEFORE_FAULT' });
-  value.checks.responseLossInjected = false;
+  value.checks.responseLossInjected = true;
+  value.oracle.totalResponseLossCount = 0;
   value.status = { process: { code: 1, pid: 1299 }, parsed: null };
   const result = commonRunnerEvidenceToRunResult(value, 'T8');
   assert.equal(result.blocked, true);
