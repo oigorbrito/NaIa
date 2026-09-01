@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { FORMAL_LIFECYCLE_QUALIFICATION_PROFILE } from './formal-lifecycle-qualification-provenance.mjs';
 import { runFormalSingle } from './formal-single-run.mjs';
 import { FORMAL_HARNESS_FILES } from './harness-provenance.mjs';
 
@@ -13,6 +14,14 @@ async function writeJson(root, relativePath, value) {
   const file = path.join(root, relativePath);
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function assertLifecycleQualification(record, candidate) {
+  const value = record.setup.environment.formalLifecycleQualification;
+  assert.equal(value.profile, FORMAL_LIFECYCLE_QUALIFICATION_PROFILE);
+  assert.equal(value.candidate, candidate);
+  assert.match(value.sha256, /^[a-f0-9]{64}$/);
+  assert.ok(Number.isInteger(value.fileCount) && value.fileCount > 0);
 }
 
 async function syntheticBlockedRepository() {
@@ -128,7 +137,7 @@ async function syntheticBlockedRepository() {
   return root;
 }
 
-test('declared Temporal T7 single-run records missing SDK as valid BLOCKED evidence without executing fault', async (t) => {
+test('declared Temporal T7 single-run records missing SDK as valid BLOCKED evidence with formal provenance and without executing fault', async (t) => {
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
@@ -149,11 +158,13 @@ test('declared Temporal T7 single-run records missing SDK as valid BLOCKED evide
   assert.match(result.record.blocker, /DEPENDENCY_NOT_INSTALLED/);
   assert.match(result.record.setup.harnessSha256, /^[a-f0-9]{64}$/);
   assert.equal(result.record.setup.parameters.harnessProvenanceMode, 'FORMAL_BUNDLE');
+  assertLifecycleQualification(result.record, 'Temporal TypeScript');
+  assert.match(result.record.setup.environment.formalPromotionPolicy.sha256, /^[a-f0-9]{64}$/);
   assert.equal(result.record.run.fault.injected, false);
   assert.equal(result.record.cleanup.status, 'NOT_APPLICABLE');
 });
 
-test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SDK is missing', async (t) => {
+test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SDK is missing while preserving candidate qualification provenance', async (t) => {
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
@@ -170,6 +181,7 @@ test('declared Temporal T5 single-run may reach setup and remain BLOCKED when SD
   assert.equal(result.record.experimentId, 'temporal-typescript-t5-001');
   assert.equal(result.record.randomSeed, 1050001);
   assert.equal(result.record.verdict, 'BLOCKED');
+  assertLifecycleQualification(result.record, 'Temporal TypeScript');
   assert.equal(result.record.run.fault.injected, false);
 });
 
@@ -192,13 +204,14 @@ test('declared Temporal T16 single-run records missing SDK as valid BLOCKED evid
   assert.equal(result.record.verdict, 'BLOCKED');
   assert.equal(result.record.setup.status, 'BLOCKED_SETUP');
   assert.match(result.record.blocker, /DEPENDENCY_NOT_INSTALLED/);
+  assertLifecycleQualification(result.record, 'Temporal TypeScript');
   assert.equal(result.record.run.fault.intended, 'T16');
   assert.equal(result.record.run.fault.injected, false);
   assert.deepEqual(result.record.run.rawObservations, { setupBlocked: true });
   assert.equal(result.record.cleanup.status, 'NOT_APPLICABLE');
 });
 
-test('declared DBOS T16 single-run records missing SDK/env as valid BLOCKED evidence before the driver executes', async (t) => {
+test('declared DBOS T16 single-run records missing SDK/env as valid BLOCKED evidence before the driver executes with DBOS qualification provenance', async (t) => {
   const repositoryRoot = await syntheticBlockedRepository();
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
@@ -219,6 +232,7 @@ test('declared DBOS T16 single-run records missing SDK/env as valid BLOCKED evid
   assert.match(result.record.blocker, /(DEPENDENCY_NOT_INSTALLED|REQUIRED_ENV_MISSING)/);
   assert.match(result.record.setup.harnessSha256, /^[a-f0-9]{64}$/);
   assert.equal(result.record.setup.parameters.harnessProvenanceMode, 'FORMAL_BUNDLE');
+  assertLifecycleQualification(result.record, 'DBOS TypeScript');
   assert.equal(result.record.run.fault.intended, 'T16');
   assert.equal(result.record.run.fault.injected, false);
   assert.deepEqual(result.record.run.rawObservations, { setupBlocked: true });
