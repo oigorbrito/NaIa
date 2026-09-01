@@ -8,6 +8,7 @@ import { currentLifecycleQualificationSha256 } from './formal-lifecycle-qualific
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
+const REPOSITORY_REVISION = '1'.repeat(40);
 
 async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
@@ -19,7 +20,8 @@ function completeCleanupSupport(candidates) {
     postRunCleanup: true,
     status: 'RUNTIME_VERIFIED',
     verificationEvidence: {
-      executionRef: `test-fixture:${candidate.candidate}`,
+      executionRef: `github-actions:run=fixture;job=${candidate.candidate.replace(/[^a-z0-9]+/gi, '-').toLowerCase()};sha=${REPOSITORY_REVISION}`,
+      repositoryRevision: REPOSITORY_REVISION,
       experimentId: `${candidate.candidate.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-t5-001`,
       mutantId: 'T5',
       repetition: 1,
@@ -114,6 +116,28 @@ test('cleanup support without current lifecycle qualification hash cannot open r
   const support = { T5: { modes: ['local-process'], candidates: null } };
   const cleanupSupport = completeCleanupSupport(plan.candidates);
   cleanupSupport['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256 = '0'.repeat(64);
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
+  assert.equal(result.ready, false);
+  assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
+});
+
+test('cleanup support without repository revision cannot open readiness', () => {
+  const protocol = { criticalMutants: ['T5'] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const support = { T5: { modes: ['local-process'], candidates: null } };
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  delete cleanupSupport['Temporal TypeScript'].verificationEvidence.repositoryRevision;
+  const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
+  assert.equal(result.ready, false);
+  assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
+});
+
+test('cleanup support whose execution ref points to another Git revision cannot open readiness', () => {
+  const protocol = { criticalMutants: ['T5'] };
+  const plan = { criticalMutants: ['T5'], candidates: [{ candidate: 'Temporal TypeScript', mode: 'local-process' }] };
+  const support = { T5: { modes: ['local-process'], candidates: null } };
+  const cleanupSupport = completeCleanupSupport(plan.candidates);
+  cleanupSupport['Temporal TypeScript'].verificationEvidence.executionRef = `github-actions:run=fixture;job=temporal;sha=${'2'.repeat(40)}`;
   const result = assessBenchmarkExecutionReadiness(protocol, plan, support, cleanupSupport);
   assert.equal(result.ready, false);
   assert.equal(result.unsupportedCleanupCandidates[0].evidenceBacked, false);
