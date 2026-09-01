@@ -1,7 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditStoredFormalLedger, validateExecutionLedger } from './experiment-ledger-validator.mjs';
+import {
+  assessStoredFormalLedgerCurrentCompatibility,
+  auditStoredFormalLedger,
+  validateExecutionLedger
+} from './experiment-ledger-validator.mjs';
 
 function parseArgs(argv) {
   const out = new Map();
@@ -28,11 +32,17 @@ export async function ledgerStatus({ repositoryRoot, ledgerPath = null }) {
   const records = ledgerPath ? recordsFromLedger(await readJson(ledgerPath)) : [];
   const structural = validateExecutionLedger(records, protocol, faultSuite, { allowPrefix: true });
   const formalAudit = auditStoredFormalLedger(records);
+  const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records);
+  const historicallyValid = structural.valid && formalAudit.valid;
+  const validForAppend = historicallyValid && currentCompatibility.compatible;
   return {
     ...structural,
-    valid: structural.valid && formalAudit.valid,
-    complete: structural.complete && formalAudit.valid,
-    formalAudit
+    valid: validForAppend,
+    complete: structural.complete && historicallyValid,
+    historicallyValid,
+    validForAppend,
+    formalAudit,
+    currentCompatibility
   };
 }
 
@@ -43,7 +53,7 @@ async function main() {
   const ledgerPath = args.get('--ledger') ? path.resolve(args.get('--ledger')) : null;
   const result = await ledgerStatus({ repositoryRoot, ledgerPath });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  process.exitCode = result.valid ? 0 : 2;
+  process.exitCode = result.validForAppend ? 0 : 2;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
