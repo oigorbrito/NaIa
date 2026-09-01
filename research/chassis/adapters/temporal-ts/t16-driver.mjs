@@ -170,6 +170,11 @@ export async function runTemporalT16({
     schedule.push('semantic-dimension-mutated:workflowImplementationSha256');
     schedule.push('recovery-under-B-attempted');
 
+    // Persist a native signal while B is the active worker. This creates the
+    // workflow task that forces B to replay A's history and confront the missing
+    // durable timer command. The same signal remains durable for compatible A.
+    await handle.signal('naia-t16-release');
+
     const nondeterminism = await waitForHistory(handle, (history) => {
       const failed = (history.events ?? []).findLast((event) => {
         const attrs = event.workflowTaskFailedEventAttributes;
@@ -183,7 +188,6 @@ export async function runTemporalT16({
 
     workerC = spawnWorker('worker-C', 'A', workerEnv);
     await waitForEvent(workerC, (event) => event.event === 'worker_ready', timeoutMs, 'worker_ready C');
-    await handle.signal('naia-t16-release');
     const result = await handle.result();
     const description = await handle.describe();
     schedule.push('compatible-profile-recovery-observed');
