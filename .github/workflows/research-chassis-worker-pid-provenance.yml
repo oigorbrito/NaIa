@@ -31,7 +31,14 @@ on:
       - 'research/chassis/harness/benchmark-revision-consistency.test.mjs'
       - 'research/chassis/harness/candidate-experiment.mjs'
       - 'research/chassis/harness/candidate-setup.mjs'
+      - 'research/chassis/harness/common-runner.mjs'
       - 'research/chassis/harness/common-runner-run-hook.mjs'
+      - 'research/chassis/harness/common-runner-record-bridge.mjs'
+      - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
+      - 'research/chassis/harness/isolated-external-fault-runner.mjs'
+      - 'research/chassis/harness/isolated-external-fault-runner.test.mjs'
+      - 'research/chassis/harness/t7-t8-evaluator.mjs'
+      - 'research/chassis/harness/t7-t8-evaluator.test.mjs'
       - 'research/chassis/harness/experiment-executor.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.test.mjs'
@@ -53,8 +60,6 @@ on:
       - 'research/chassis/harness/harness-provenance.test.mjs'
       - 'research/chassis/harness/repository-provenance.mjs'
       - 'research/chassis/harness/repository-provenance.test.mjs'
-      - 'research/chassis/harness/common-runner-record-bridge.mjs'
-      - 'research/chassis/harness/common-runner-record-bridge.test.mjs'
       - 'research/chassis/harness/t5-record-bridge.mjs'
       - 'research/chassis/harness/t5-record-bridge.test.mjs'
       - 'research/chassis/harness/t11-record-bridge.mjs'
@@ -92,7 +97,7 @@ jobs:
         with:
           node-version: '22.16.0'
 
-      - name: Verify formal provenance, environment, worker PID cleanup and promotion gates
+      - name: Verify formal provenance, neutral evaluators, environment, worker PID cleanup and promotion gates
         shell: bash
         run: |
           set -euo pipefail
@@ -108,6 +113,8 @@ jobs:
             research/chassis/harness/harness-provenance.test.mjs \
             research/chassis/harness/repository-provenance.test.mjs \
             research/chassis/harness/formal-environment-identity.test.mjs \
+            research/chassis/harness/t7-t8-evaluator.test.mjs \
+            research/chassis/harness/isolated-external-fault-runner.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
             research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
