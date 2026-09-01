@@ -1,3 +1,5 @@
+import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
+
 const ALLOWED_VERDICTS = new Set(['PASS', 'FAIL', 'BLOCKED', 'INCONCLUSIVE', 'PARTIAL']);
 const CRITICAL_MUTANTS = new Set(['T5', 'T7', 'T8', 'T11', 'T12', 'T16']);
 
@@ -102,11 +104,14 @@ export function validateExperimentRecord(record) {
   return { valid: errors.length === 0, errors };
 }
 
-export function benchmarkEligible(records, faultSuite) {
+export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_CLEANUP_SUPPORT) {
   const errors = [];
   if (!Array.isArray(records) || records.length === 0) return { eligible: false, errors: ['no records'] };
   const candidate = records[0]?.candidate;
   if (!candidate || records.some((record) => record.candidate !== candidate)) errors.push('records must belong to one candidate');
+  if (candidate && !formalCleanupSupportsCandidate(cleanupSupport, candidate)) {
+    errors.push(`${candidate}: benchmark eligibility requires evidence-backed RUNTIME_VERIFIED formal cleanup support`);
+  }
 
   const mutants = new Map((faultSuite?.mutants ?? []).map((mutant) => [mutant.id, mutant]));
   const required = new Set(faultSuite?.benchmarkEligibility?.forbidBlockedOrInconclusive ?? []);
