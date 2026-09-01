@@ -22,6 +22,7 @@ function evidence(candidate = CANDIDATE, overrides = {}) {
     validatorSha256: 'b'.repeat(64),
     harnessSha256: 'c'.repeat(64),
     lifecycleQualificationSha256: currentLifecycleQualificationSha256(candidate),
+    runtimeIdentitySha256: 'f'.repeat(64),
     verifiedAt: '2026-09-01T00:00:00.000Z',
     ...overrides
   };
@@ -71,6 +72,13 @@ test('runtime verification evidence rejects another candidate lifecycle experime
 test('runtime verification evidence rejects stale lifecycle qualification hash', () => {
   const value = evidence(CANDIDATE, { lifecycleQualificationSha256: '0'.repeat(64) });
   assert.equal(runtimeVerificationEvidenceValid(value, CANDIDATE), false);
+});
+
+test('runtime verification evidence rejects missing lifecycle qualification native runtime identity hash', () => {
+  const value = evidence();
+  delete value.runtimeIdentitySha256;
+  assert.equal(runtimeVerificationEvidenceValid(value, CANDIDATE), false);
+  assert.equal(formalCleanupSupportsCandidate(support(value), CANDIDATE), false);
 });
 
 test('Restate cleanup implementation is registered but remains closed without runtime verification evidence', () => {
