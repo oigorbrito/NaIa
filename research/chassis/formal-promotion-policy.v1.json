@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "status": "FROZEN_BEFORE_FORMAL_EXECUTION",
+  "scope": "CHASSIS_ONLY",
+  "protocolRef": "research/chassis/experiment-protocol.v1.json",
+  "faultSuiteRef": "research/chassis/fault-suite.v1.json",
+  "frozenAgainstProtocolStatus": "SPECIFIED_NOT_EXECUTED",
+  "acceptedCriticalFailures": {},
+  "partialPolicies": {},
+  "rules": [
+    "A critical FAIL is comparable evidence but is not promotion-qualified unless an exception was versioned here before formal execution.",
+    "A PARTIAL verdict is promotion-qualified only when the mutant is allowed by fault-suite.v1.json and an enforced policy was versioned here before formal execution.",
+    "Runtime caller-supplied exception maps are non-authoritative and cannot waive a recorded FAIL or PARTIAL verdict.",
+    "Any later policy change must create a new version and be recorded as a protocol deviation; it must not rewrite this frozen policy after outcomes are observed."
+  ]
+}
