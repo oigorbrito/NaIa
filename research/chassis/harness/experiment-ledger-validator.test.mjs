@@ -6,11 +6,17 @@ import { fileURLToPath } from 'node:url';
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import {
   appendRecordToLedger,
+  assessStoredFormalLedgerCurrentCompatibility,
+  assessStoredFormalRecordCurrentCompatibility,
   auditStoredFormalLedger,
   auditStoredFormalRecord,
   validateExecutionLedger,
   validateRecordAgainstSpec
 } from './experiment-ledger-validator.mjs';
+import {
+  currentLifecycleQualificationProvenance,
+  currentLifecycleQualificationSha256
+} from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +24,16 @@ const chassisRoot = path.resolve(here, '..');
 
 async function json(name) {
   return JSON.parse(await readFile(path.join(chassisRoot, name), 'utf8'));
+}
+
+function qualificationRecord(candidate) {
+  const value = currentLifecycleQualificationProvenance(candidate);
+  return value ? {
+    profile: value.profile,
+    candidate: value.candidate,
+    sha256: value.aggregateSha256,
+    fileCount: value.fileCount
+  } : null;
 }
 
 function blockedRecord(spec) {
@@ -38,6 +54,7 @@ function blockedRecord(spec) {
       environment: {
         os: 'fixture-os', arch: 'fixture-arch', runtime: 'node v22.0.0',
         formalPromotionPolicy: formalPromotionPolicyProvenance(),
+        formalLifecycleQualification: qualificationRecord(spec.candidate),
         formalRuntimeLifecycle: { candidate: spec.candidate, status: 'RUNTIME_VERIFIED' }
       },
       parameters: { randomSeed: spec.randomSeed },
@@ -82,18 +99,21 @@ const verifiedTemporalSupport = {
       recordSha256: 'd'.repeat(64),
       validatorSha256: 'e'.repeat(64),
       harnessSha256: 'b'.repeat(64),
+      lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
       verifiedAt: '2026-09-01T00:00:00.000Z'
     }
   }
 };
 
-test('empty ledger is a valid structural and immutable-formal prefix', async () => {
+test('empty ledger is a valid structural, historical and current-compatible prefix', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const validation = validateExecutionLedger([], protocol, suite);
   const formalAudit = auditStoredFormalLedger([]);
+  const compatibility = assessStoredFormalLedgerCurrentCompatibility([]);
   assert.equal(validation.valid, true);
   assert.equal(formalAudit.valid, true);
+  assert.equal(compatibility.compatible, true);
   assert.equal(validation.complete, false);
   assert.equal(validation.expectedRecordCount, 2400);
   assert.deepEqual(validation.nextExpectedExperiment, {
@@ -112,6 +132,7 @@ test('record identity is bound to preregistered experimentId and random seed', a
   const record = blockedRecord(spec);
   assert.equal(validateRecordAgainstSpec(record, spec).valid, true);
   assert.equal(auditStoredFormalRecord(record).valid, true);
+  assert.equal(assessStoredFormalRecordCurrentCompatibility(record).compatible, true);
 
   const tampered = structuredClone(record);
   tampered.randomSeed += 1;
@@ -120,15 +141,41 @@ test('record identity is bound to preregistered experimentId and random seed', a
   assert.match(validation.errors.join('\n'), /randomSeed mismatch/);
 });
 
-test('stored formal audit rejects promotion policy hash drift', async () => {
+test('historical audit preserves a well-formed old promotion policy hash while current compatibility rejects it', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const [spec] = buildExecutionPlan(protocol, suite);
-  const tampered = blockedRecord(spec);
-  tampered.setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
-  const audit = auditStoredFormalRecord(tampered);
-  assert.equal(audit.valid, false);
-  assert.match(audit.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
+  const oldRecord = blockedRecord(spec);
+  oldRecord.setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
+  const historical = auditStoredFormalRecord(oldRecord);
+  const compatibility = assessStoredFormalRecordCurrentCompatibility(oldRecord);
+  assert.equal(historical.valid, true, historical.errors.join('\n'));
+  assert.equal(compatibility.compatible, false);
+  assert.match(compatibility.errors.join('\n'), /promotion policy differs from current frozen promotion policy/);
+});
+
+test('historical audit rejects malformed promotion policy provenance rather than treating it as an old valid hash', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [spec] = buildExecutionPlan(protocol, suite);
+  const malformed = blockedRecord(spec);
+  malformed.setup.environment.formalPromotionPolicy.sha256 = 'not-a-sha';
+  const historical = auditStoredFormalRecord(malformed);
+  assert.equal(historical.valid, false);
+  assert.match(historical.errors.join('\n'), /lacks structurally valid promotion policy provenance/);
+});
+
+test('historical audit preserves a well-formed old lifecycle bundle while current compatibility rejects it', async () => {
+  const protocol = await json('experiment-protocol.v1.json');
+  const suite = await json('fault-suite.v1.json');
+  const [spec] = buildExecutionPlan(protocol, suite);
+  const oldRecord = blockedRecord(spec);
+  oldRecord.setup.environment.formalLifecycleQualification.sha256 = '0'.repeat(64);
+  const historical = auditStoredFormalRecord(oldRecord);
+  const compatibility = assessStoredFormalRecordCurrentCompatibility(oldRecord);
+  assert.equal(historical.valid, true, historical.errors.join('\n'));
+  assert.equal(compatibility.compatible, false);
+  assert.match(compatibility.errors.join('\n'), /lifecycle qualification bundle differs from current qualification bundle/);
 });
 
 test('ledger rejects a valid record executed out of preregistered round-robin order', async () => {
@@ -162,30 +209,31 @@ test('real append gate remains closed while repository cleanup support is unveri
   );
 });
 
-test('hypothetical verified support accepts only the exact next record without changing repository gate state', async () => {
+test('hypothetical verified support accepts only the exact current-compatible next record without changing repository gate state', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const plan = buildExecutionPlan(protocol, suite);
   const appended = appendRecordToLedger([], blockedRecord(plan[0]), protocol, suite, { cleanupSupport: verifiedTemporalSupport });
   assert.equal(appended.validation.valid, true);
   assert.equal(appended.formalAudit.valid, true);
+  assert.equal(appended.currentCompatibility.compatible, true);
   assert.equal(appended.records.length, 1);
   assert.equal(appended.validation.nextExpectedExperiment.experimentId, plan[1].experimentId);
 });
 
-test('hypothetical support without harness hash cannot open append admission', async () => {
+test('hypothetical support without lifecycle qualification hash cannot open append admission', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const [first] = buildExecutionPlan(protocol, suite);
   const support = structuredClone(verifiedTemporalSupport);
-  delete support['Temporal TypeScript'].verificationEvidence.harnessSha256;
+  delete support['Temporal TypeScript'].verificationEvidence.lifecycleQualificationSha256;
   assert.throws(
     () => appendRecordToLedger([], blockedRecord(first), protocol, suite, { cleanupSupport: support }),
     /formal cleanup support is not runtime-verified/
   );
 });
 
-test('immutable formal audit rejects stored lifecycle provenance removed after admission', async () => {
+test('historical audit rejects lifecycle provenance removed after admission', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const plan = buildExecutionPlan(protocol, suite);
@@ -200,21 +248,27 @@ test('immutable formal audit rejects stored lifecycle provenance removed after a
 
   assert.throws(
     () => appendRecordToLedger(tamperedPrefix, blockedRecord(plan[1]), protocol, suite, { cleanupSupport: verifiedTemporalSupport }),
-    /existing formal ledger immutable provenance is invalid/
+    /existing formal ledger historical provenance is invalid/
   );
 });
 
-test('immutable formal audit rejects promotion policy hash drift after admission', async () => {
+test('well-formed old policy provenance stays historically valid but closes further append as current-incompatible', async () => {
   const protocol = await json('experiment-protocol.v1.json');
   const suite = await json('fault-suite.v1.json');
   const plan = buildExecutionPlan(protocol, suite);
   const appended = appendRecordToLedger([], blockedRecord(plan[0]), protocol, suite, { cleanupSupport: verifiedTemporalSupport });
-  const tamperedPrefix = structuredClone(appended.records);
-  tamperedPrefix[0].setup.environment.formalPromotionPolicy.sha256 = 'f'.repeat(64);
+  const oldPrefix = structuredClone(appended.records);
+  oldPrefix[0].setup.environment.formalPromotionPolicy.sha256 = 'f'.repeat(64);
 
-  const audit = auditStoredFormalLedger(tamperedPrefix);
-  assert.equal(audit.valid, false);
-  assert.match(audit.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
+  const historical = auditStoredFormalLedger(oldPrefix);
+  const compatibility = assessStoredFormalLedgerCurrentCompatibility(oldPrefix);
+  assert.equal(historical.valid, true, historical.errors.join('\n'));
+  assert.equal(compatibility.compatible, false);
+
+  assert.throws(
+    () => appendRecordToLedger(oldPrefix, blockedRecord(plan[1]), protocol, suite, { cleanupSupport: verifiedTemporalSupport }),
+    /existing formal ledger is incompatible with current frozen qualification\/promotion state/
+  );
 });
 
 test('duplicate experimentId cannot occupy the next ledger slot', async () => {
