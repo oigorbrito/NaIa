@@ -163,6 +163,11 @@ export async function runTemporalT11({
     if (preCancel?.phase !== 'WAITING_CANCEL') throw new Error(`T11 pre-cancel phase not observed: ${JSON.stringify(preCancel)}`);
     schedule.push('pre-cancel-checkpoint');
 
+    // Freeze A's polling before publishing cancellation so the durable cancel task
+    // cannot race back to the old worker between history observation and SIGKILL.
+    send(workerA, { command: 'stop_polling' });
+    await waitForEvent(workerA, (event) => event.event === 'worker_polling_stopped', timeoutMs, 'worker_polling_stopped A');
+
     await handle.cancel();
     schedule.push('cancel-submitted');
     const cancelRequested = await waitForHistoryEvent(
