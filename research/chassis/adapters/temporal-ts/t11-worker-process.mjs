@@ -27,8 +27,18 @@ const worker = await Worker.create({
   shutdownGraceTime: '2 seconds',
   shutdownForceTime: '5 seconds'
 });
+let pollingStopped = false;
 const workerRun = worker.run();
 emit('worker_ready', { workerIdentity: `naia-t11-worker:${workerId}:${process.pid}`, taskQueue });
+
+async function stopPolling() {
+  if (!pollingStopped) {
+    pollingStopped = true;
+    worker.shutdown();
+    await workerRun.catch((error) => emit('worker_error', { error: String(error) }));
+  }
+  emit('worker_polling_stopped');
+}
 
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
@@ -43,6 +53,10 @@ rl.on('line', async (line) => {
       emit('workflow_started', { objectiveId: command.objectiveId, workflowId: handle.workflowId });
       return;
     }
+    if (command.command === 'stop_polling') {
+      await stopPolling();
+      return;
+    }
     if (command.command === 'status') {
       const handle = client.workflow.getHandle(command.objectiveId);
       const description = await handle.describe();
@@ -51,7 +65,7 @@ rl.on('line', async (line) => {
     }
     if (command.command === 'exit') {
       rl.close();
-      worker.shutdown();
+      await stopPolling();
       return;
     }
     emit('command_error', { error: `unsupported command: ${command.command}` });
@@ -61,5 +75,6 @@ rl.on('line', async (line) => {
 });
 
 await workerRun.catch((error) => emit('worker_error', { error: String(error) }));
+await new Promise((resolve) => rl.once('close', resolve));
 await clientConnection.close().catch(() => {});
 await workerConnection.close().catch(() => {});
