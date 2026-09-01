@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { assessCandidatePromotion, FORMAL_PROMOTION_POLICY } from './benchmark-promotion-gate.mjs';
+import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const chassisRoot = path.resolve(here, '..');
@@ -67,6 +68,7 @@ function record(candidate, mutantId, repetition, verdict = 'PASS') {
         os: 'fixture-os',
         arch: 'fixture-arch',
         runtime: 'node v22.16.0',
+        formalPromotionPolicy: formalPromotionPolicyProvenance(),
         formalRuntimeLifecycle: { candidate, status: 'RUNTIME_VERIFIED' }
       },
       parameters: {},
@@ -141,6 +143,15 @@ test('complete all-PASS critical evidence is promotion-qualified only with candi
   assert.equal(result.qualified, true, result.errors.join('\n'));
   assert.equal(result.promotionPolicyStatus, 'FROZEN_BEFORE_FORMAL_EXECUTION');
   assert.deepEqual(result.exceptions, []);
+});
+
+test('tampering formal promotion policy provenance closes candidate comparability', async () => {
+  const records = completeCandidate('Temporal TypeScript');
+  records[0].setup.environment.formalPromotionPolicy.sha256 = '0'.repeat(64);
+  const result = assessCandidatePromotion(records, await faultSuite(), { cleanupSupport: verifiedCleanupSupport() });
+  assert.equal(result.comparable, false);
+  assert.equal(result.qualified, false);
+  assert.match(result.errors.join('\n'), /lacks current frozen formal promotion policy hash provenance/);
 });
 
 test('cleanup verification evidence from another candidate cannot open promotion', async () => {
