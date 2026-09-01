@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { runtimeVerificationEvidenceValid } from './formal-cleanup-support.mjs';
+import { currentLifecycleQualificationProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { reviewLifecyclePromotion } from './formal-lifecycle-promotion-review.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
 
 const HARNESS_SHA = 'b'.repeat(64);
+const QUALIFICATION = currentLifecycleQualificationProvenance('Temporal TypeScript');
+const QUALIFICATION_RECORD = Object.freeze({
+  profile: QUALIFICATION.profile,
+  candidate: QUALIFICATION.candidate,
+  sha256: QUALIFICATION.aggregateSha256,
+  fileCount: QUALIFICATION.fileCount
+});
 
 function temporalRecord() {
   return {
@@ -23,6 +31,7 @@ function temporalRecord() {
       dependencyIdentity: {},
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node v22.16.0',
+        formalLifecycleQualification: { ...QUALIFICATION_RECORD },
         formalRuntimeLifecycle: { candidate: 'Temporal TypeScript', status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
       parameters: { randomSeed: 1050001 },
@@ -70,10 +79,14 @@ function texts() {
 }
 
 function review(args) {
-  return reviewLifecyclePromotion({ currentHarnessSha256: HARNESS_SHA, ...args });
+  return reviewLifecyclePromotion({
+    currentHarnessSha256: HARNESS_SHA,
+    currentLifecycleQualificationSha256: QUALIFICATION.aggregateSha256,
+    ...args
+  });
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness identity into support proposal only', () => {
+test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness and candidate qualification bundle into support proposal only', () => {
   const { recordText, validationText } = texts();
   const result = review({
     recordText,
@@ -84,12 +97,15 @@ test('promotion review converts a valid T5/r1 lifecycle receipt with matching ha
   assert.equal(result.eligibleForSupportPromotion, true);
   assert.equal(result.checks.currentHarnessSha256Valid, true);
   assert.equal(result.checks.recordHarnessMatchesCurrent, true);
+  assert.equal(result.checks.currentLifecycleQualificationSha256Valid, true);
+  assert.equal(result.checks.recordLifecycleQualificationMatchesCurrent, true);
   assert.equal(result.candidateSemanticVerdict, 'FAIL');
   assert.equal(result.candidateSemanticVerdictDoesNotControlLifecyclePromotion, true);
   assert.equal(result.proposedSupport.preRunCleanup, true);
   assert.equal(result.proposedSupport.postRunCleanup, true);
   assert.equal(result.proposedSupport.status, 'RUNTIME_VERIFIED');
   assert.equal(result.proposedSupport.verificationEvidence.harnessSha256, HARNESS_SHA);
+  assert.equal(result.proposedSupport.verificationEvidence.lifecycleQualificationSha256, QUALIFICATION.aggregateSha256);
   assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence, 'Temporal TypeScript'), true);
   assert.equal(result.benchmarkPromotionAllowed, false);
   assert.equal(result.ledgerAppendAllowed, false);
@@ -102,10 +118,25 @@ test('promotion review rejects receipt produced by a different formal harness ag
     recordText,
     validationText,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc',
-    currentHarnessSha256: 'f'.repeat(64)
+    currentHarnessSha256: 'f'.repeat(64),
+    currentLifecycleQualificationSha256: QUALIFICATION.aggregateSha256
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.recordHarnessMatchesCurrent, false);
+  assert.equal(result.proposedSupport, null);
+});
+
+test('promotion review rejects stale candidate lifecycle qualification bundle', () => {
+  const { recordText, validationText } = texts();
+  const result = reviewLifecyclePromotion({
+    recordText,
+    validationText,
+    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    currentHarnessSha256: HARNESS_SHA,
+    currentLifecycleQualificationSha256: 'f'.repeat(64)
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.recordLifecycleQualificationMatchesCurrent, false);
   assert.equal(result.proposedSupport, null);
 });
 
@@ -115,10 +146,24 @@ test('promotion review rejects missing or malformed current harness identity', (
     recordText,
     validationText,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc',
-    currentHarnessSha256: ''
+    currentHarnessSha256: '',
+    currentLifecycleQualificationSha256: QUALIFICATION.aggregateSha256
   });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.currentHarnessSha256Valid, false);
+});
+
+test('promotion review rejects missing candidate qualification identity', () => {
+  const { recordText, validationText } = texts();
+  const result = reviewLifecyclePromotion({
+    recordText,
+    validationText,
+    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    currentHarnessSha256: HARNESS_SHA,
+    currentLifecycleQualificationSha256: ''
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.currentLifecycleQualificationSha256Valid, false);
 });
 
 test('promotion review rejects a supplied validator result whose candidate identity was altered', () => {
