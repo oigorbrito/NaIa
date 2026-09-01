@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assessStoredFormalLedgerCurrentCompatibility,
+  assessStoredFormalLedgerEnvironmentConsistency,
+  assessStoredFormalLedgerHarnessConsistency,
   assessStoredFormalLedgerRepositoryRevisionConsistency,
   auditStoredFormalLedger,
   validateExecutionLedger
@@ -35,17 +37,25 @@ export async function ledgerStatus({ repositoryRoot, ledgerPath = null }) {
   const formalAudit = auditStoredFormalLedger(records);
   const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(records);
   const repositoryRevisionConsistency = assessStoredFormalLedgerRepositoryRevisionConsistency(records);
+  const harnessConsistency = assessStoredFormalLedgerHarnessConsistency(records);
+  const environmentConsistency = assessStoredFormalLedgerEnvironmentConsistency(records);
   const historicallyValid = structural.valid && formalAudit.valid;
-  const validForAppend = historicallyValid && currentCompatibility.compatible && repositoryRevisionConsistency.consistent;
+  const validForAppend = historicallyValid &&
+    currentCompatibility.compatible &&
+    repositoryRevisionConsistency.consistent &&
+    harnessConsistency.consistent &&
+    environmentConsistency.consistent;
   return {
     ...structural,
     valid: validForAppend,
-    complete: structural.complete && historicallyValid && repositoryRevisionConsistency.consistent,
+    complete: structural.complete && validForAppend,
     historicallyValid,
     validForAppend,
     formalAudit,
     currentCompatibility,
-    repositoryRevisionConsistency
+    repositoryRevisionConsistency,
+    harnessConsistency,
+    environmentConsistency
   };
 }
 
