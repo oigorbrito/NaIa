@@ -4,6 +4,8 @@ import { runtimeVerificationEvidenceValid } from './formal-cleanup-support.mjs';
 import { reviewLifecyclePromotion } from './formal-lifecycle-promotion-review.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
 
+const HARNESS_SHA = 'b'.repeat(64);
+
 function temporalRecord() {
   return {
     schemaVersion: 1,
@@ -17,7 +19,7 @@ function temporalRecord() {
       candidateVersion: '1.23.0',
       candidateSourceRef: 'frozen',
       adapterSha256: 'a'.repeat(64),
-      harnessSha256: 'b'.repeat(64),
+      harnessSha256: HARNESS_SHA,
       dependencyIdentity: {},
       environment: {
         os: 'linux', arch: 'x64', runtime: 'node v22.16.0',
@@ -67,30 +69,62 @@ function texts() {
   };
 }
 
-test('promotion review converts a valid T5/r1 lifecycle receipt with explicit worker PID provenance into support proposal only', () => {
+function review(args) {
+  return reviewLifecyclePromotion({ currentHarnessSha256: HARNESS_SHA, ...args });
+}
+
+test('promotion review converts a valid T5/r1 lifecycle receipt with matching harness identity into support proposal only', () => {
   const { recordText, validationText } = texts();
-  const result = reviewLifecyclePromotion({
+  const result = review({
     recordText,
     validationText,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc',
     verifiedAt: '2026-09-01T00:00:02.000Z'
   });
   assert.equal(result.eligibleForSupportPromotion, true);
+  assert.equal(result.checks.currentHarnessSha256Valid, true);
+  assert.equal(result.checks.recordHarnessMatchesCurrent, true);
   assert.equal(result.candidateSemanticVerdict, 'FAIL');
   assert.equal(result.candidateSemanticVerdictDoesNotControlLifecyclePromotion, true);
   assert.equal(result.proposedSupport.preRunCleanup, true);
   assert.equal(result.proposedSupport.postRunCleanup, true);
   assert.equal(result.proposedSupport.status, 'RUNTIME_VERIFIED');
-  assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence), true);
+  assert.equal(result.proposedSupport.verificationEvidence.harnessSha256, HARNESS_SHA);
+  assert.equal(runtimeVerificationEvidenceValid(result.proposedSupport.verificationEvidence, 'Temporal TypeScript'), true);
   assert.equal(result.benchmarkPromotionAllowed, false);
   assert.equal(result.ledgerAppendAllowed, false);
   assert.equal(result.automaticRepositoryMutationAllowed, false);
 });
 
+test('promotion review rejects receipt produced by a different formal harness aggregate', () => {
+  const { recordText, validationText } = texts();
+  const result = reviewLifecyclePromotion({
+    recordText,
+    validationText,
+    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    currentHarnessSha256: 'f'.repeat(64)
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.recordHarnessMatchesCurrent, false);
+  assert.equal(result.proposedSupport, null);
+});
+
+test('promotion review rejects missing or malformed current harness identity', () => {
+  const { recordText, validationText } = texts();
+  const result = reviewLifecyclePromotion({
+    recordText,
+    validationText,
+    executionRef: 'github-actions:run=123;job=temporal;sha=abc',
+    currentHarnessSha256: ''
+  });
+  assert.equal(result.eligibleForSupportPromotion, false);
+  assert.equal(result.checks.currentHarnessSha256Valid, false);
+});
+
 test('promotion review rejects a supplied validator result whose candidate identity was altered', () => {
   const { recordText, validation } = texts();
   const tampered = { ...validation, candidate: 'DBOS TypeScript' };
-  const result = reviewLifecyclePromotion({
+  const result = review({
     recordText,
     validationText: `${JSON.stringify(tampered, null, 2)}\n`,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc'
@@ -102,7 +136,7 @@ test('promotion review rejects a supplied validator result whose candidate ident
 
 test('promotion review rejects missing immutable execution reference', () => {
   const { recordText, validationText } = texts();
-  const result = reviewLifecyclePromotion({ recordText, validationText, executionRef: '' });
+  const result = review({ recordText, validationText, executionRef: '' });
   assert.equal(result.eligibleForSupportPromotion, false);
   assert.equal(result.checks.executionRefPresent, false);
 });
@@ -111,7 +145,7 @@ test('promotion review recomputes lifecycle receipt validity instead of trusting
   const { record, validation } = texts();
   record.cleanup.liveObservedWorkerPids = [4102];
   const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
-  const result = reviewLifecyclePromotion({
+  const result = review({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
     validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc'
@@ -124,7 +158,7 @@ test('promotion review rejects driver-only provenance even if supplied validatio
   const { record, validation } = texts();
   record.run.rawObservations.workerProcessPids = [];
   const forgedValidation = { ...validation, eligibleForLifecycleStatusPromotion: true };
-  const result = reviewLifecyclePromotion({
+  const result = review({
     recordText: `${JSON.stringify(record, null, 2)}\n`,
     validationText: `${JSON.stringify(forgedValidation, null, 2)}\n`,
     executionRef: 'github-actions:run=123;job=temporal;sha=abc'
