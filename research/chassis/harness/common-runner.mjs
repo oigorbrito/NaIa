@@ -94,8 +94,11 @@ function prerequisiteFailure(initial, resume, statusResult) {
     JSON.stringify(resume?.events ?? []),
     statusResult?.stdout
   ].filter(Boolean).join('\n');
-  const pattern = /(ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find package|ECONNREFUSED|ENOENT|is required)/i;
-  return pattern.test(text) ? text : null;
+  const explicitExternalPrerequisite = /Cannot find package ['"][^'"]+['"]/i.test(text)
+    || /Cannot find module ['"](?:@[^/'"]+\/[^'"]+|[A-Za-z0-9_.-]+(?:\/[^'"]+)?)['"]/i.test(text)
+    || /\bECONNREFUSED\b/i.test(text)
+    || /\bspawn\s+\S+\s+ENOENT\b/i.test(text);
+  return explicitExternalPrerequisite ? text : null;
 }
 
 function skippedRun(reason) {
