@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { currentLifecycleQualificationProvenance } from './formal-lifecycle-qualification-provenance.mjs';
 import { validateRuntimeLifecycleReceipt } from './formal-lifecycle-runtime-receipt-validator.mjs';
+
+function qualificationRecord(candidate) {
+  const provenance = currentLifecycleQualificationProvenance(candidate);
+  return {
+    profile: provenance.profile,
+    candidate: provenance.candidate,
+    sha256: provenance.aggregateSha256,
+    fileCount: provenance.fileCount
+  };
+}
 
 function baseCleanup(candidate) {
   const shared = {
@@ -14,11 +25,7 @@ function baseCleanup(candidate) {
     workspaceCleanup: true
   };
   if (candidate === 'Temporal TypeScript') {
-    return {
-      ...shared,
-      temporalServerCleanup: true,
-      sqliteCleanup: true
-    };
+    return { ...shared, temporalServerCleanup: true, sqliteCleanup: true };
   }
   return {
     ...shared,
@@ -56,10 +63,8 @@ function makeRecord(candidate, overrides = {}) {
         os: 'linux',
         arch: 'x64',
         runtime: 'node v22.16.0',
-        formalRuntimeLifecycle: {
-          candidate,
-          status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED'
-        }
+        formalLifecycleQualification: qualificationRecord(candidate),
+        formalRuntimeLifecycle: { candidate, status: 'IMPLEMENTED_NOT_RUNTIME_VERIFIED' }
       },
       parameters: { randomSeed: candidate === 'Temporal TypeScript' ? 1050001 : 2050001 },
       cleanupVerifiedBeforeRun: true,
@@ -72,12 +77,8 @@ function makeRecord(candidate, overrides = {}) {
       blocker: null,
       workload: { experimentId: 'qualification' },
       fault: {
-        intended: 'T5',
-        injected: true,
-        targetKind: 'worker-process',
-        targetIdentity: 4101,
-        signal: 'SIGKILL',
-        durableAuthorityAlive: true
+        intended: 'T5', injected: true, targetKind: 'worker-process', targetIdentity: 4101,
+        signal: 'SIGKILL', durableAuthorityAlive: true
       },
       rawObservations: {
         workerProcessPids: [4101, 4102],
@@ -93,14 +94,15 @@ function makeRecord(candidate, overrides = {}) {
   return {
     ...record,
     ...overrides,
-    setup: { ...record.setup, ...(overrides.setup ?? {}) },
+    setup: {
+      ...record.setup,
+      ...(overrides.setup ?? {}),
+      environment: { ...record.setup.environment, ...(overrides.setup?.environment ?? {}) }
+    },
     run: {
       ...record.run,
       ...(overrides.run ?? {}),
-      rawObservations: {
-        ...record.run.rawObservations,
-        ...(overrides.run?.rawObservations ?? {})
-      }
+      rawObservations: { ...record.run.rawObservations, ...(overrides.run?.rawObservations ?? {}) }
     },
     cleanup: { ...record.cleanup, ...(overrides.cleanup ?? {}) }
   };
@@ -109,6 +111,7 @@ function makeRecord(candidate, overrides = {}) {
 test('Temporal T5 runtime receipt can qualify lifecycle even when candidate semantic verdict is FAIL', () => {
   const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript'));
   assert.equal(result.valid, true);
+  assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
   assert.equal(result.candidateVerdict, 'FAIL');
   assert.equal(result.candidateVerdictIgnoredForLifecycleVerification, true);
   assert.deepEqual(result.workerProcessPids, [4101, 4102]);
@@ -120,9 +123,20 @@ test('Temporal T5 runtime receipt can qualify lifecycle even when candidate sema
 test('DBOS T5 runtime receipt can qualify lifecycle independently of candidate semantic verdict', () => {
   const result = validateRuntimeLifecycleReceipt(makeRecord('DBOS TypeScript'));
   assert.equal(result.valid, true);
+  assert.equal(result.checks.lifecycleQualificationBundleCurrent, true);
   assert.equal(result.eligibleForLifecycleStatusPromotion, true);
   assert.equal(result.checks.databaseAbsent, true);
   assert.equal(result.checks.postgresContainerCleanup, true);
+});
+
+test('runtime lifecycle receipt rejects stale candidate qualification bundle', () => {
+  const qualification = qualificationRecord('Temporal TypeScript');
+  qualification.sha256 = '0'.repeat(64);
+  const result = validateRuntimeLifecycleReceipt(makeRecord('Temporal TypeScript', {
+    setup: { environment: { formalLifecycleQualification: qualification } }
+  }));
+  assert.equal(result.eligibleForLifecycleStatusPromotion, false);
+  assert.equal(result.checks.lifecycleQualificationBundleCurrent, false);
 });
 
 test('runtime lifecycle receipt rejects driver-only PID provenance', () => {
