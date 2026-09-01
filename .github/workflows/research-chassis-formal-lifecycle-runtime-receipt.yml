@@ -108,6 +108,8 @@ jobs:
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
+            research/chassis/harness/benchmark-execution-readiness.test.mjs \
+            research/chassis/harness/experiment-record-validator.test.mjs \
             > "$EVIDENCE/targeted-tests.tap" 2>&1
           TEST_CODE=$?
           echo "$TEST_CODE" > "$EVIDENCE/targeted-tests.exit-code.txt"
@@ -134,6 +136,9 @@ jobs:
             > "$EVIDENCE/runtime-receipt-validation.json" 2> "$EVIDENCE/runtime-receipt-validation.stderr.log"
           VALIDATOR_CODE=$?
           echo "$VALIDATOR_CODE" > "$EVIDENCE/runtime-receipt-validation.exit-code.txt"
+          sha256sum "$EVIDENCE/record.json" | awk '{print $1}' > "$EVIDENCE/record.sha256"
+          sha256sum "$EVIDENCE/runtime-receipt-validation.json" | awk '{print $1}' > "$EVIDENCE/validator.sha256"
+          printf 'github-actions:run=%s;job=%s;sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_JOB" "$GITHUB_SHA" > "$EVIDENCE/execution-ref.txt"
           if [ "$VALIDATOR_CODE" -eq 0 ]; then
             echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
           else
@@ -211,6 +216,8 @@ jobs:
             research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs \
             research/chassis/harness/formal-single-run.test.mjs \
             research/chassis/harness/formal-ledger-admission.test.mjs \
+            research/chassis/harness/benchmark-execution-readiness.test.mjs \
+            research/chassis/harness/experiment-record-validator.test.mjs \
             > "$EVIDENCE/targeted-tests.tap" 2>&1
           TEST_CODE=$?
           echo "$TEST_CODE" > "$EVIDENCE/targeted-tests.exit-code.txt"
@@ -237,6 +244,9 @@ jobs:
             > "$EVIDENCE/runtime-receipt-validation.json" 2> "$EVIDENCE/runtime-receipt-validation.stderr.log"
           VALIDATOR_CODE=$?
           echo "$VALIDATOR_CODE" > "$EVIDENCE/runtime-receipt-validation.exit-code.txt"
+          sha256sum "$EVIDENCE/record.json" | awk '{print $1}' > "$EVIDENCE/record.sha256"
+          sha256sum "$EVIDENCE/runtime-receipt-validation.json" | awk '{print $1}' > "$EVIDENCE/validator.sha256"
+          printf 'github-actions:run=%s;job=%s;sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_JOB" "$GITHUB_SHA" > "$EVIDENCE/execution-ref.txt"
           if [ "$VALIDATOR_CODE" -eq 0 ]; then
             echo 'LIFECYCLE_RECEIPT_VALID' > "$CLASSIFICATION"
           else
