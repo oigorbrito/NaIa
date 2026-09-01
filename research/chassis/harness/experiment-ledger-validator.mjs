@@ -1,7 +1,7 @@
 import { buildExecutionPlan } from './experiment-executor.mjs';
 import { validateExperimentRecord } from './experiment-record-validator.mjs';
 import { FORMAL_CLEANUP_SUPPORT, formalCleanupSupportsCandidate } from './formal-cleanup-support.mjs';
-import { explicitWorkerProcessPids, workerPidProvenanceRequired } from './formal-worker-pid-provenance.mjs';
+import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance.mjs';
 
 function sameIdentity(record, spec) {
   return record?.experimentId === spec.experimentId
@@ -42,13 +42,14 @@ export function formalLedgerAdmission(record, cleanupSupport = FORMAL_CLEANUP_SU
     errors.push(`${candidate ?? 'unknown candidate'}: READY formal execution requires cleanup.status=PASS`);
   }
 
-  const pidProvenanceRequired = workerPidProvenanceRequired({
+  const pidEvidence = validateWorkerPidCleanupEvidence({
     setupStatus: record?.setup?.status,
     mutantId: record?.mutantId,
-    run: record?.run
+    run: record?.run,
+    cleanup: record?.cleanup
   });
-  if (pidProvenanceRequired && explicitWorkerProcessPids(record?.run).length === 0) {
-    errors.push(`${candidate ?? 'unknown candidate'}: injected critical formal execution lacks explicit worker process PID provenance`);
+  for (const error of pidEvidence.errors) {
+    errors.push(`${candidate ?? 'unknown candidate'}: ${error}`);
   }
 
   return { valid: errors.length === 0, errors };
