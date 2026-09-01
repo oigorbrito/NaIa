@@ -3,6 +3,7 @@ import { validateWorkerPidCleanupEvidence } from './formal-worker-pid-provenance
 
 const ALLOWED_VERDICTS = new Set(['PASS', 'FAIL', 'BLOCKED', 'INCONCLUSIVE', 'PARTIAL']);
 const CRITICAL_MUTANTS = new Set(['T5', 'T7', 'T8', 'T11', 'T12', 'T16']);
+const CLEANUP_DIMENSIONS = Object.freeze(['workerCleanup', 'durableStateCleanup', 'oracleCleanup', 'temporaryResourcesCleanup']);
 
 function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -10,6 +11,10 @@ function nonEmpty(value) {
 
 function artifactValid(artifact) {
   return artifact && nonEmpty(artifact.name) && nonEmpty(artifact.sha256) && artifact.sha256.length >= 16;
+}
+
+function preRunCleanupReceiptValid(receipt) {
+  return receipt?.status === 'PASS' && CLEANUP_DIMENSIONS.every((key) => receipt?.[key] === true);
 }
 
 export function validateExperimentRecord(record) {
@@ -47,7 +52,7 @@ export function validateExperimentRecord(record) {
 
   const cleanup = record.cleanup ?? {};
   if (!['PASS', 'FAIL', 'NOT_APPLICABLE'].includes(cleanup.status)) errors.push('cleanup.status is invalid');
-  for (const key of ['workerCleanup', 'durableStateCleanup', 'oracleCleanup', 'temporaryResourcesCleanup']) {
+  for (const key of CLEANUP_DIMENSIONS) {
     if (typeof cleanup[key] !== 'boolean') errors.push(`cleanup.${key} must be boolean`);
   }
 
@@ -138,8 +143,13 @@ export function benchmarkEligible(records, faultSuite, cleanupSupport = FORMAL_C
       if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
         errors.push(`${mutantId}: repetition ${record.repetition} lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
       }
-      if (record?.setup?.status === 'READY' && record?.cleanup?.status !== 'PASS') {
-        errors.push(`${mutantId}: repetition ${record.repetition} READY execution requires cleanup.status=PASS`);
+      if (record?.setup?.status === 'READY') {
+        if (!preRunCleanupReceiptValid(record?.setup?.preRunCleanupReceipt)) {
+          errors.push(`${mutantId}: repetition ${record.repetition} READY execution lacks complete PASS pre-run cleanup receipt`);
+        }
+        if (record?.cleanup?.status !== 'PASS') {
+          errors.push(`${mutantId}: repetition ${record.repetition} READY execution requires cleanup.status=PASS`);
+        }
       }
 
       const pidEvidence = validateWorkerPidCleanupEvidence({
