@@ -2,7 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
+import {
+  currentLifecycleQualificationProvenance,
+  currentLifecycleQualificationSha256
+} from './formal-lifecycle-qualification-provenance.mjs';
 import { formalPromotionPolicyProvenance } from './formal-promotion-policy.mjs';
+
+function qualificationRecord(candidate = 'Temporal TypeScript') {
+  const value = currentLifecycleQualificationProvenance(candidate);
+  return value ? {
+    profile: value.profile,
+    candidate: value.candidate,
+    sha256: value.aggregateSha256,
+    fileCount: value.fileCount
+  } : null;
+}
 
 function record({
   lifecycleStatus = 'IMPLEMENTED_NOT_RUNTIME_VERIFIED',
@@ -11,7 +25,8 @@ function record({
   driverOnly = false,
   omitWorkerFromCleanup = false,
   liveWorker = false,
-  tamperPromotionPolicy = false
+  tamperPromotionPolicy = false,
+  tamperLifecycleQualification = false
 } = {}) {
   const workerPid = 7701;
   const driverPid = 7799;
@@ -29,6 +44,8 @@ function record({
         : [];
   const promotionPolicy = formalPromotionPolicyProvenance();
   if (tamperPromotionPolicy) promotionPolicy.sha256 = '0'.repeat(64);
+  const qualification = qualificationRecord();
+  if (tamperLifecycleQualification && qualification) qualification.sha256 = '0'.repeat(64);
   return {
     schemaVersion: 1,
     experimentId: 'temporal-typescript-t5-001',
@@ -48,6 +65,7 @@ function record({
         arch: 'x64',
         runtime: 'node v22.16.0',
         formalPromotionPolicy: promotionPolicy,
+        formalLifecycleQualification: qualification,
         formalRuntimeLifecycle: {
           candidate: 'Temporal TypeScript',
           status: lifecycleStatus
@@ -103,6 +121,7 @@ const verificationEvidence = {
   recordSha256: 'd'.repeat(64),
   validatorSha256: 'e'.repeat(64),
   harnessSha256: 'b'.repeat(64),
+  lifecycleQualificationSha256: currentLifecycleQualificationSha256('Temporal TypeScript'),
   verifiedAt: '2026-09-01T00:00:02.000Z'
 };
 
@@ -169,6 +188,15 @@ test('formal ledger admission rejects record bound to a different promotion poli
   assert.match(result.errors.join('\n'), /lacks current frozen promotion policy hash provenance/);
 });
 
+test('formal ledger admission rejects record bound to a stale lifecycle qualification bundle', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', tamperLifecycleQualification: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /lacks current candidate lifecycle qualification bundle provenance/);
+});
+
 test('formal ledger admission rejects injected critical execution with zero explicit worker process PIDs', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', withWorkerPid: false }),
@@ -205,7 +233,7 @@ test('formal ledger admission rejects explicit worker PID reported alive after c
   assert.match(result.errors.join('\n'), /still alive: 7701/);
 });
 
-test('formal ledger admission opens only when lifecycle, policy hash, explicit worker PID binding and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -220,7 +248,7 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after lifecycle, policy hash, explicit worker PID binding and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
