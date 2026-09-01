@@ -166,9 +166,25 @@ export async function runDbosT16({
     await waitForEvent(workerC, (event) => event.event === 'worker_ready', timeoutMs, 'worker-C-ready');
     const checkpointC = await waitForEvent(workerC, (event) => event.event === 'durable_checkpoint_observed' && event.objectiveId === objectiveId, timeoutMs, 'compatible recovery checkpoint');
     schedule.push('compatible-profile-recovery-observed');
+
     send(workerC, { command: 'release', objectiveId });
     await waitForEvent(workerC, (event) => event.event === 'release_ack' && event.objectiveId === objectiveId, timeoutMs, 'release_ack');
-    const resultC = await waitForEvent(workerC, (event) => event.event === 'workflow_result' && event.objectiveId === objectiveId, timeoutMs, 'workflow_result');
+    await waitForEvent(workerC, (event) => event.event === 'post_checkpoint_released' && event.objectiveId === objectiveId, timeoutMs, 'post_checkpoint_released');
+
+    const attachPrior = workerC.events.length;
+    send(workerC, { command: 'attach', objectiveId });
+    await waitForEvent(
+      workerC,
+      (event) => event.event === 'recovery_attach_attempted' && event.objectiveId === objectiveId && workerC.events.indexOf(event) >= attachPrior,
+      timeoutMs,
+      'recovery_attach_attempted'
+    );
+    const resultC = await waitForEvent(
+      workerC,
+      (event) => ['recovery_attach_result', 'recovery_attach_error'].includes(event.event) && event.objectiveId === objectiveId,
+      timeoutMs,
+      'compatible recovery result'
+    );
     const finalStatus = await queryStatus(workerC, objectiveId, timeoutMs);
     schedule.push('final-state-inspected');
 
@@ -176,13 +192,14 @@ export async function runDbosT16({
     const explicitRollbackObserved =
       rollbackPromotion.promotedVersion === beforeVersion &&
       rollbackPromotion.latestVersion === beforeVersion;
+    const compatibleResult = resultC.event === 'recovery_attach_result' ? resultC.result : null;
     const routedToCompatible =
       readyB.applicationVersion === afterVersion &&
       bRecovered === false &&
       retainedBeforeVersionUnderB &&
       explicitRollbackObserved &&
       checkpointC.applicationVersion === beforeVersion &&
-      resultC.result?.applicationVersion === beforeVersion &&
+      compatibleResult?.applicationVersion === beforeVersion &&
       finalStatus.status?.status === 'SUCCESS' &&
       finalStatus.status?.applicationVersion === beforeVersion;
 
@@ -222,7 +239,7 @@ export async function runDbosT16({
         bRecovered,
         checkpointA,
         checkpointC,
-        resultC: resultC.result,
+        resultC,
         workerA: { pid: workerA.pid, events: workerA.events, stderr: workerA.stderr, exit: workerA.exit },
         workerB: { pid: workerB.pid, events: workerB.events, stderr: workerB.stderr, exit: workerB.exit },
         workerC: { pid: workerC.pid, events: workerC.events, stderr: workerC.stderr, exit: workerC.exit }
