@@ -127,6 +127,14 @@ export function benchmarkEligible(records, faultSuite) {
       if (['BLOCKED', 'INCONCLUSIVE'].includes(record.verdict)) errors.push(`${mutantId}: benchmark-ineligible verdict ${record.verdict}`);
       if (repetitionIds.has(record.repetition)) errors.push(`${mutantId}: duplicate repetition ${record.repetition}`);
       repetitionIds.add(record.repetition);
+
+      const lifecycle = record?.setup?.environment?.formalRuntimeLifecycle;
+      if (!lifecycle || lifecycle.candidate !== candidate || lifecycle.status !== 'RUNTIME_VERIFIED') {
+        errors.push(`${mutantId}: repetition ${record.repetition} lacks RUNTIME_VERIFIED formal runtime lifecycle provenance`);
+      }
+      if (record?.setup?.status === 'READY' && record?.cleanup?.status !== 'PASS') {
+        errors.push(`${mutantId}: repetition ${record.repetition} READY execution requires cleanup.status=PASS`);
+      }
     }
 
     if (repetitionIds.size < minRepetitions) {
