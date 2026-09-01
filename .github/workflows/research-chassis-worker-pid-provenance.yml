@@ -16,6 +16,24 @@ on:
       - 'research/chassis/T11-CANCEL-CRASH-RETRY-CONTRACT-V1.md'
       - 'research/chassis/T12-STALE-COMPLETION-CONTRACT-V1.md'
       - 'research/chassis/T16-SEMANTIC-COMPATIBILITY-CONTRACT-V1.md'
+      - 'research/chassis/adapters/temporal-ts/package.json'
+      - 'research/chassis/adapters/temporal-ts/package-lock.json'
+      - 'research/chassis/adapters/temporal-ts/adapter.mjs'
+      - 'research/chassis/adapters/temporal-ts/t5-*.mjs'
+      - 'research/chassis/adapters/dbos-ts/package.json'
+      - 'research/chassis/adapters/dbos-ts/package-lock.json'
+      - 'research/chassis/adapters/dbos-ts/adapter.mjs'
+      - 'research/chassis/adapters/dbos-ts/t5-*.mjs'
+      - 'research/chassis/harness/benchmark-execution-readiness.mjs'
+      - 'research/chassis/harness/benchmark-execution-readiness.test.mjs'
+      - 'research/chassis/harness/benchmark-promotion-gate.mjs'
+      - 'research/chassis/harness/benchmark-promotion-gate.test.mjs'
+      - 'research/chassis/harness/candidate-experiment.mjs'
+      - 'research/chassis/harness/candidate-setup.mjs'
+      - 'research/chassis/harness/common-runner-run-hook.mjs'
+      - 'research/chassis/harness/experiment-executor.mjs'
+      - 'research/chassis/harness/experiment-protocol-validator.mjs'
+      - 'research/chassis/harness/formal-executor-support.mjs'
       - 'research/chassis/harness/formal-promotion-policy.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.mjs'
       - 'research/chassis/harness/formal-worker-pid-provenance.test.mjs'
@@ -36,6 +54,8 @@ on:
       - 'research/chassis/harness/t12-record-bridge.mjs'
       - 'research/chassis/harness/t16-record-bridge.mjs'
       - 'research/chassis/harness/formal-cleanup-support.mjs'
+      - 'research/chassis/harness/formal-lifecycle-qualification-provenance.mjs'
+      - 'research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.mjs'
       - 'research/chassis/harness/formal-lifecycle-runtime-receipt-validator.test.mjs'
       - 'research/chassis/harness/formal-lifecycle-promotion-review.mjs'
@@ -46,8 +66,6 @@ on:
       - 'research/chassis/harness/formal-ledger-admission.test.mjs'
       - 'research/chassis/harness/experiment-record-validator.mjs'
       - 'research/chassis/harness/experiment-record-validator.test.mjs'
-      - 'research/chassis/harness/benchmark-promotion-gate.mjs'
-      - 'research/chassis/harness/benchmark-promotion-gate.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -77,6 +95,7 @@ jobs:
           echo 'real_world_disruption=NO REAL-WORLD SERVICE DISRUPTION'
           node --test \
             research/chassis/harness/harness-provenance.test.mjs \
+            research/chassis/harness/formal-lifecycle-qualification-provenance.test.mjs \
             research/chassis/harness/formal-worker-pid-provenance.test.mjs \
             research/chassis/harness/formal-runtime-lifecycle.test.mjs \
             research/chassis/harness/formal-dbos-lifecycle.test.mjs \
@@ -88,4 +107,5 @@ jobs:
             research/chassis/harness/formal-ledger-admission.test.mjs \
             research/chassis/harness/experiment-ledger-validator.test.mjs \
             research/chassis/harness/experiment-record-validator.test.mjs \
+            research/chassis/harness/benchmark-execution-readiness.test.mjs \
             research/chassis/harness/benchmark-promotion-gate.test.mjs
