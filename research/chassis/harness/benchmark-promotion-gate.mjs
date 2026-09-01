@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   assessStoredFormalLedgerCurrentCompatibility,
+  assessStoredFormalLedgerEnvironmentConsistency,
   assessStoredFormalLedgerHarnessConsistency,
   auditStoredFormalLedger,
   validateExecutionLedger
@@ -92,6 +93,7 @@ export function assessCandidatePromotion(
     candidate,
     comparable: comparability.eligible,
     qualified: comparability.eligible && errors.length === 0,
+    environmentConsistency: comparability.environmentConsistency,
     exceptions,
     promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
     errors
@@ -111,13 +113,15 @@ export function assessBenchmarkPromotion({
   const currentCompatibility = assessStoredFormalLedgerCurrentCompatibility(ledger);
   const repositoryRevisionConsistency = assessBenchmarkRepositoryRevisionConsistency(ledger);
   const harnessConsistency = assessStoredFormalLedgerHarnessConsistency(ledger);
+  const environmentConsistency = assessStoredFormalLedgerEnvironmentConsistency(ledger);
   if (
     !ledgerValidation.valid ||
     !ledgerValidation.complete ||
     !historicalAudit.valid ||
     !currentCompatibility.compatible ||
     !repositoryRevisionConsistency.consistent ||
-    !harnessConsistency.consistent
+    !harnessConsistency.consistent ||
+    !environmentConsistency.consistent
   ) {
     return {
       readyForSelection: false,
@@ -126,6 +130,7 @@ export function assessBenchmarkPromotion({
       currentCompatibility,
       repositoryRevisionConsistency,
       harnessConsistency,
+      environmentConsistency,
       candidates: [],
       qualifiedCandidates: [],
       promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
@@ -144,6 +149,9 @@ export function assessBenchmarkPromotion({
           : null,
         !harnessConsistency.consistent
           ? 'benchmark ledger mixes formal harness identities and is not comparable'
+          : null,
+        !environmentConsistency.consistent
+          ? 'benchmark ledger mixes formal execution environment or candidate profile identities and is not comparable'
           : null
       ].filter(Boolean)
     };
@@ -167,6 +175,7 @@ export function assessBenchmarkPromotion({
     currentCompatibility,
     repositoryRevisionConsistency,
     harnessConsistency,
+    environmentConsistency,
     candidates: candidateResults,
     qualifiedCandidates,
     promotionPolicyStatus: FORMAL_PROMOTION_POLICY.status,
