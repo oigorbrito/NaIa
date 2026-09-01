@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 
-function gitRevision(value) {
+export function gitRevisionValid(value) {
   return typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value.trim());
+}
+
+export function executionRefRepositoryRevision(executionRef) {
+  const text = String(executionRef ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/(?:^|;)sha=((?:[a-f0-9]{40}|[a-f0-9]{64}))(?:;|$)/i);
+  return match ? match[1].toLowerCase() : null;
 }
 
 async function defaultRunGit(args, { cwd }) {
@@ -32,9 +39,9 @@ export function repositoryProvenanceStructurallyValid(value) {
   if (!value || value.source !== 'git') return false;
   if (!['VERIFIED', 'UNVERIFIED'].includes(value.status)) return false;
   if (value.status === 'VERIFIED') {
-    return gitRevision(value.revision) && value.trackedWorktreeClean === true && value.reason === null;
+    return gitRevisionValid(value.revision) && value.trackedWorktreeClean === true && value.reason === null;
   }
-  return (value.revision === null || gitRevision(value.revision))
+  return (value.revision === null || gitRevisionValid(value.revision))
     && (value.trackedWorktreeClean === null || typeof value.trackedWorktreeClean === 'boolean')
     && typeof value.reason === 'string'
     && value.reason.length > 0;
@@ -62,11 +69,11 @@ export async function inspectRepositoryProvenance(repositoryRoot, { runGit = def
   }
 
   const revision = String(revisionResult?.stdout ?? '').trim();
-  if (revisionResult?.code !== 0 || revisionResult?.spawnError || !gitRevision(revision)) {
+  if (revisionResult?.code !== 0 || revisionResult?.spawnError || !gitRevisionValid(revision)) {
     return {
       source: 'git',
       status: 'UNVERIFIED',
-      revision: gitRevision(revision) ? revision : null,
+      revision: gitRevisionValid(revision) ? revision : null,
       trackedWorktreeClean: null,
       reason: revisionResult?.spawnError ? 'GIT_UNAVAILABLE' : 'GIT_REVISION_UNVERIFIED',
       diagnostics: { revisionResult }
