@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { benchmarkEligible } from './experiment-record-validator.mjs';
 import { formalLedgerAdmission } from './experiment-ledger-validator.mjs';
+import { candidateProfileRecordFields } from './formal-candidate-profile-binding.mjs';
 import {
   currentLifecycleQualificationProvenance,
   currentLifecycleQualificationSha256
@@ -29,9 +30,11 @@ function record({
   liveWorker = false,
   tamperPromotionPolicy = false,
   tamperLifecycleQualification = false,
+  tamperCandidateProfile = false,
   repositoryVerified = true,
   missingDependencyIdentity = false
 } = {}) {
+  const profile = candidateProfileRecordFields('Temporal TypeScript');
   const workerPid = 7701;
   const driverPid = 7799;
   const rawObservations = driverOnly
@@ -59,20 +62,17 @@ function record({
     randomSeed: 1,
     setup: {
       status: 'READY',
-      candidateVersion: '1.23.0',
-      candidateSourceRef: 'temporalio/sdk-typescript v1.23.0',
-      adapterSha256: 'a'.repeat(64),
+      candidateVersion: tamperCandidateProfile ? '9.9.9' : profile.candidateVersion,
+      candidateSourceRef: tamperCandidateProfile ? 'invented/source v9.9.9' : profile.candidateSourceRef,
+      adapterSha256: profile.adapterSha256,
       harnessSha256: 'b'.repeat(64),
       dependencyIdentity: missingDependencyIdentity ? null : {
         manifestPath: '/fixture/research/chassis/adapters/temporal-ts/package.json',
-        manifestSha256: '7'.repeat(64),
-        packages: [{
-          package: '@temporalio/worker',
-          expectedVersion: '1.23.0',
-          declaredVersion: '1.23.0',
-          installedVersion: '1.23.0',
-          installedPackageJson: '/fixture/node_modules/@temporalio/worker/package.json'
-        }]
+        manifestSha256: profile.manifestSha256,
+        packages: profile.packages.map((entry) => ({
+          ...entry,
+          installedPackageJson: `/fixture/node_modules/${entry.package}/package.json`
+        }))
       },
       environment: {
         os: 'linux 6.11.0',
@@ -97,8 +97,8 @@ function record({
       },
       parameters: {
         randomSeed: 1,
-        mode: 'local-process',
-        workerAuthorityBoundary: 'Temporal worker process'
+        mode: profile.mode,
+        workerAuthorityBoundary: profile.workerAuthorityBoundary
       },
       cleanupVerifiedBeforeRun: true,
       preRunCleanupReceipt: {
@@ -234,6 +234,17 @@ test('formal ledger admission rejects READY record without complete candidate en
   assert.match(result.errors.join('\n'), /dependencyIdentity\.manifestSha256|installed formal dependency set/);
 });
 
+test('formal ledger admission rejects a READY record that is internally consistent but outside the current frozen candidate profile', () => {
+  const result = formalLedgerAdmission(
+    record({ lifecycleStatus: 'RUNTIME_VERIFIED', tamperCandidateProfile: true }),
+    verifiedSupport
+  );
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join('\n'), /candidate profile differs from current frozen candidate profile/);
+  assert.match(result.errors.join('\n'), /candidateVersion mismatch/);
+  assert.match(result.errors.join('\n'), /candidateSourceRef differs/);
+});
+
 test('formal ledger admission requires PASS cleanup for READY formal execution', () => {
   const result = formalLedgerAdmission(
     record({ lifecycleStatus: 'RUNTIME_VERIFIED', cleanupStatus: 'NOT_APPLICABLE' }),
@@ -297,7 +308,7 @@ test('formal ledger admission rejects explicit worker PID reported alive after c
   assert.match(result.errors.join('\n'), /still alive: 7701/);
 });
 
-test('formal ledger admission opens only when lifecycle, Git revision, environment identity, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
+test('formal ledger admission opens only when lifecycle, Git revision, candidate profile, environment identity, current lifecycle bundle, policy hash, worker PID binding and evidence-backed cleanup support are verified', () => {
   const result = formalLedgerAdmission(record({ lifecycleStatus: 'RUNTIME_VERIFIED' }), verifiedSupport);
   assert.deepEqual(result, { valid: true, errors: [] });
 });
@@ -312,7 +323,7 @@ test('benchmark eligibility rejects pilot records lacking verified formal lifecy
   assert.match(result.errors.join('\n'), /RUNTIME_VERIFIED/);
 });
 
-test('benchmark eligibility accepts the same valid critical record only after Git revision, environment identity, lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
+test('benchmark eligibility accepts the same valid critical record only after Git revision, candidate profile, environment identity, lifecycle bundle, policy hash, worker PID binding and support evidence are runtime-verified', () => {
   const faultSuite = {
     mutants: [{ id: 'T5', minRepetitions: 1 }],
     benchmarkEligibility: { forbidBlockedOrInconclusive: ['T5'] }
