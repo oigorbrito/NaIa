@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateExperimentRecord } from './experiment-record-validator.mjs';
+import { validateExperimentRecord } from './experiment-record-schema-validator.mjs';
 import { lifecycleQualificationRecordProvenanceValid } from './formal-lifecycle-qualification-provenance.mjs';
 import { explicitWorkerProcessPids } from './formal-worker-pid-provenance.mjs';
 
