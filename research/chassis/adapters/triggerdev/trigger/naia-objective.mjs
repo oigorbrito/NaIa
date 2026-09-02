@@ -1,5 +1,10 @@
 import { logger, task } from '@trigger.dev/sdk';
 
+function faultBarrierMs(payload) {
+  const value = Number(payload?.holdAfterExternalEffectMs ?? 0);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 60000;
+}
+
 export const naiaChassisObjective = task({
   id: 'naia-chassis-objective',
   retry: {
@@ -48,6 +53,18 @@ export const naiaChassisObjective = task({
         attempt: ctx.attempt.number,
         externalState
       });
+
+      if (payload.holdAfterExternalEffect === true && ctx.attempt.number === 1) {
+        const holdMs = faultBarrierMs(payload);
+        logger.info('controlled_fault_barrier_reached', {
+          objectiveId,
+          operationId,
+          attempt: ctx.attempt.number,
+          holdMs
+        });
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+      }
+
       logger.info('external_request_confirmed', {
         objectiveId,
         operationId,
