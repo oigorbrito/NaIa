@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assessTriggerKilledContainerInspection,
   assessTriggerRunnerContainerInspection,
   triggerRunnerName
 } from './triggerdev-managed-t7-run-hook.mjs';
@@ -46,6 +47,33 @@ test('wrong Trigger run identity fails closed even when container name matches',
   const result = assessTriggerRunnerContainerInspection(inspection, 'run_abc123', 1);
   assert.equal(result.valid, false);
   assert.equal(result.checks.exactRunIdentity, false);
+});
+
+test('worker SIGKILL confirmation requires same container stopped and original PID gone', () => {
+  const result = assessTriggerKilledContainerInspection({
+    Id: 'container-123',
+    State: { Running: false, Pid: 0 }
+  }, 'container-123', 4242);
+  assert.equal(result.valid, true);
+});
+
+test('docker kill command cannot manufacture fault evidence while container remains running', () => {
+  const result = assessTriggerKilledContainerInspection({
+    Id: 'container-123',
+    State: { Running: true, Pid: 4242 }
+  }, 'container-123', 4242);
+  assert.equal(result.valid, false);
+  assert.equal(result.checks.notRunning, false);
+  assert.equal(result.checks.originalHostPidNoLongerActiveInContainer, false);
+});
+
+test('post-kill observation of a different container fails closed', () => {
+  const result = assessTriggerKilledContainerInspection({
+    Id: 'container-other',
+    State: { Running: false, Pid: 0 }
+  }, 'container-123', 4242);
+  assert.equal(result.valid, false);
+  assert.equal(result.checks.exactContainerIdentity, false);
 });
 
 test('formal T7 executor matrix admits Trigger.dev managed-controller only after worker-container hook exists', () => {
