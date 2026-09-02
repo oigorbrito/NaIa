@@ -8,6 +8,7 @@ import { runCandidateT11 } from './t11-run-hook.mjs';
 import { runCandidateT12 } from './t12-run-hook.mjs';
 import { runCandidateT16 } from './t16-run-hook.mjs';
 import { runTemporalCandidateT16 } from './t16-temporal-run-hook.mjs';
+import { runTriggerdevManagedT7 } from './triggerdev-managed-t7-run-hook.mjs';
 import { FORMAL_EXECUTOR_SUPPORT, formalExecutorSupportsCandidate } from './formal-executor-support.mjs';
 
 async function spawnAndWait(command, args, options, timeoutMs = null) {
@@ -140,6 +141,9 @@ export function createCommonRunnerRunHook({ repositoryRoot, env = process.env, t
       };
     }
 
+    if (spec.mutantId === 'T7' && candidate.candidate === 'Trigger.dev' && candidate.mode === 'managed-controller') {
+      return runTriggerdevManagedT7({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
+    }
     if (spec.mutantId === 'T5') {
       return runCandidateT5({ repositoryRoot, spec, setup, candidate, env, timeoutMs });
     }
