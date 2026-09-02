@@ -8,7 +8,7 @@
   "blockers": {
     "B001": "LOCAL_RUNTIME_DEPENDENCY_INSTALL_UNAVAILABLE",
     "B002": "REMOTE_CI_RUNNER_UNAVAILABLE_OR_PRE_RUNNER_FAILURE",
-    "B003": "MANAGED_CONTROLLER_WORKER_SIGKILL_HOOK_NOT_IMPLEMENTED"
+    "B003": "MANAGED_CONTROLLER_WORKER_SIGKILL_HOOK_IMPLEMENTED_NOT_RUNTIME_VERIFIED"
   },
   "candidates": [
     {
@@ -88,20 +88,20 @@
       "package_manifest": "research/chassis/adapters/triggerdev/package.json",
       "adapter": "research/chassis/adapters/triggerdev/adapter.mjs",
       "mode": "managed-controller",
-      "worker_process_under_test": "NOT_YET_ADDRESSABLE_BY_COMMON_RUNNER; adapter process is API controller only and is not the task worker",
+      "worker_process_under_test": "The frozen self-hosted Docker supervisor creates a workload container named runner-<runFriendlyId without run_> (plus -attempt-N on retries) and stamps TRIGGER_RUN_ID/TRIGGER_RUNNER_ID. The formal T7 hook resolves and validates that exact workload container; the adapter process remains controller-only and is never accepted as the T7 kill target. Runtime verification is still pending.",
       "external_effect_boundary": "task run in research/chassis/adapters/triggerdev/trigger/naia-objective.mjs",
-      "retry_semantics": "task failure retry policy is distinct from worker-process crash semantics; worker CRASHED must be measured directly",
-      "recovery_semantics": "controller reattaches by objective tag/idempotency identity; this is not worker crash recovery evidence",
-      "fencing_semantics": "run-engine snapshot/run ownership checks exist upstream but T7 worker death remains unexecuted locally",
+      "retry_semantics": "task failure retry policy is distinct from worker-container crash semantics; worker crash recovery must be measured directly against the self-hosted runner container",
+      "recovery_semantics": "controller reattaches by objective tag/idempotency identity; T7 now has a structural self-hosted worker-container SIGKILL path, but recovery remains runtime-unverified",
+      "fencing_semantics": "run-engine snapshot/run ownership checks exist upstream; T7 structural hook validates exact runner container identity before SIGKILL and requires post-kill death evidence before fault.injected=true",
       "idempotency_requirement": "trigger idempotency prevents duplicate task creation, not arbitrary external side-effect duplication",
       "license": "project source license must be evaluated separately from hosted/self-host deployment terms",
       "runtime_status": "BLOCKED_B001_B003",
       "blocker": "B001+B003",
       "required_env": ["TRIGGER_SECRET_KEY","NAIA_TRIGGER_PROJECT_REF","NAIA_EXTERNAL_ORACLE_URL"],
       "expected_commands": ["start","resume","status","cancel"],
-      "fault_injection_compatibility": "T8/T15 controller-path may be measured; T7 requires direct worker/container/process kill hook; T5/T11/T12/T16 executors not yet implemented",
+      "fault_injection_compatibility": "T7 worker-container hook is structurally implemented against the frozen self-hosted Docker supervisor boundary and T8 controller-path is structurally supported; T7 remains blocked by B003 until an actual self-hosted run proves container identity, SIGKILL, control-plane survival, retry recovery, single external apply and cleanup. T5/T11/T12/T16 executors are not yet implemented; T15 remains noncritical evidence.",
       "operation_identity_strategy": "objective-derived idempotency key plus invariant operationId passed to external oracle",
-      "worker_authority_boundary": "Trigger control plane schedules/owns run; worker/task process is separate from adapter controller"
+      "worker_authority_boundary": "Trigger control plane schedules/owns the run; the task executes in a distinct self-hosted runner container. T7 may target only the exact validated runner container, never the adapter/controller or supervisor."
     }
   ]
 }
