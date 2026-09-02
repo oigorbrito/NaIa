@@ -5,9 +5,9 @@ export const FORMAL_EXECUTOR_SUPPORT = Object.freeze({
     fault: 'two-worker-live-ownership-race'
   }),
   T7: Object.freeze({
-    modes: Object.freeze(['local-process']),
+    modes: Object.freeze(['local-process', 'managed-controller']),
     candidates: null,
-    fault: 'worker-process-sigkill'
+    fault: 'worker-process-or-container-sigkill'
   }),
   T8: Object.freeze({
     modes: Object.freeze(['local-process', 'managed-controller']),
