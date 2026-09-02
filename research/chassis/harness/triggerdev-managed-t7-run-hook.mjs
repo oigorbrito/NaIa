@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import readline from 'node:readline';
 import { evaluateT7T8Semantics } from './t7-t8-evaluator.mjs';
 
@@ -64,6 +65,24 @@ export function assessTriggerRunnerContainerInspection(inspect, runFriendlyId, a
   };
 }
 
+export function assessTriggerKilledContainerInspection(inspect, expectedContainerId, expectedHostPid) {
+  const observedContainerId = typeof inspect?.Id === 'string' && inspect.Id.length > 0 ? inspect.Id : null;
+  const observedPid = Number.isInteger(inspect?.State?.Pid) ? inspect.State.Pid : null;
+  const running = inspect?.State?.Running === true;
+  const checks = {
+    exactContainerIdentity: Boolean(observedContainerId && observedContainerId === expectedContainerId),
+    notRunning: running === false,
+    originalHostPidNoLongerActiveInContainer: observedPid === 0 || observedPid === null || observedPid !== expectedHostPid
+  };
+  return {
+    valid: Object.values(checks).every(Boolean),
+    observedContainerId,
+    observedPid,
+    running,
+    checks
+  };
+}
+
 async function runProcess(command, args, { cwd, env, timeoutMs = 5000 } = {}) {
   const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
   const stdout = [];
@@ -92,8 +111,8 @@ async function runProcess(command, args, { cwd, env, timeoutMs = 5000 } = {}) {
   };
 }
 
-async function inspectContainer(name, env, timeoutMs) {
-  const result = await runProcess('docker', ['inspect', name], { env, timeoutMs });
+async function inspectContainer(nameOrId, env, timeoutMs) {
+  const result = await runProcess('docker', ['inspect', nameOrId], { env, timeoutMs });
   if (result.spawnError || result.timedOut || result.code !== 0) return { result, inspect: null };
   try {
     const parsed = JSON.parse(result.stdout);
@@ -159,6 +178,20 @@ function startAdapter(adapter, commonArgs, cwd, env) {
   };
 }
 
+async function cancelStartedRun(adapterPath, commonArgs, cwd, env, timeoutMs, runFriendlyId) {
+  if (!runFriendlyId) return { attempted: false, reason: 'RUN_ID_NOT_OBSERVED' };
+  const result = await runProcess(process.execPath, [adapterPath, 'cancel', ...commonArgs], {
+    cwd,
+    env,
+    timeoutMs: Math.min(5000, timeoutMs)
+  });
+  return {
+    attempted: true,
+    confirmed: !result.spawnError && !result.timedOut && result.code === 0,
+    result
+  };
+}
+
 function blockedResult({ objectiveId, operationId, blocker, observations }) {
   return {
     blocked: true,
@@ -177,7 +210,26 @@ function blockedResult({ objectiveId, operationId, blocker, observations }) {
   };
 }
 
+function inconclusiveFaultResult({ objectiveId, operationId, target, observations }) {
+  return {
+    blocked: false,
+    blocker: null,
+    fault: {
+      intended: 'T7',
+      injected: false,
+      targetKind: 'worker-container',
+      targetIdentity: target?.containerId ?? null,
+      signal: 'SIGKILL',
+      durableAuthorityAlive: false
+    },
+    workload: { objectiveId, operationId },
+    rawObservations: observations,
+    acceptanceChecks: {}
+  };
+}
+
 export async function runTriggerdevManagedT7({ repositoryRoot, spec, setup, candidate, env = process.env, timeoutMs = 15000 }) {
+  if (!repositoryRoot) throw new Error('repositoryRoot is required');
   if (candidate?.candidate !== 'Trigger.dev' || candidate?.mode !== 'managed-controller') {
     throw new Error('runTriggerdevManagedT7 requires Trigger.dev managed-controller candidate');
   }
@@ -193,9 +245,8 @@ export async function runTriggerdevManagedT7({ repositoryRoot, spec, setup, cand
 
   const objectiveId = spec.experimentId;
   const operationId = `${spec.experimentId}:external-effect`;
-  const adapter = new URL(`../${candidate.adapter.replace(/^research\/chassis\//, '')}`, import.meta.url);
-  const adapterPath = decodeURIComponent(adapter.pathname);
-  const cwd = repositoryRoot ? `${repositoryRoot}/${candidate.adapter.split('/').slice(0, -1).join('/')}` : undefined;
+  const adapterPath = path.join(repositoryRoot, candidate.adapter);
+  const cwd = path.dirname(adapterPath);
   const commonArgs = ['--objective-id', objectiveId, '--operation-id', operationId, '--oracle-url', oracleUrl];
   const controller = startAdapter(adapterPath, commonArgs, cwd, {
     ...env,
@@ -216,7 +267,8 @@ export async function runTriggerdevManagedT7({ repositoryRoot, spec, setup, cand
       try {
         related = relatedOperations(await fetchOperations(oracleUrl), objectiveId);
       } catch (error) {
-        return blockedResult({ objectiveId, operationId, blocker: 'TRIGGER_ORACLE_QUERY_FAILED', observations: { controller: snapshot, error: String(error) } });
+        const cancellation = await cancelStartedRun(adapterPath, commonArgs, cwd, env, timeoutMs, snapshot.runFriendlyId);
+        return blockedResult({ objectiveId, operationId, blocker: 'TRIGGER_ORACLE_QUERY_FAILED', observations: { controller: snapshot, error: String(error), cancellation } });
       }
       const applied = related.find((entry) => entry.operationId === operationId)?.applyCount >= 1;
       if (snapshot.runFriendlyId && applied) {
@@ -232,23 +284,50 @@ export async function runTriggerdevManagedT7({ repositoryRoot, spec, setup, cand
     const beforeFault = controller.snapshot();
     if (!runnerAssessment?.valid) {
       if (controller.child.exitCode === null && controller.child.signalCode === null) controller.child.kill('SIGTERM');
+      const cancellation = await cancelStartedRun(adapterPath, commonArgs, cwd, env, timeoutMs, beforeFault.runFriendlyId);
       return blockedResult({
         objectiveId,
         operationId,
         blocker: 'TRIGGER_WORKER_CONTAINER_NOT_ADDRESSABLE',
-        observations: { controller: beforeFault, dockerInspect: dockerInspectEvidence, runnerAssessment, oracleOperations: related }
+        observations: { controller: beforeFault, dockerInspect: dockerInspectEvidence, runnerAssessment, oracleOperations: related, cancellation }
       });
     }
 
     const kill = await killContainer(runnerAssessment.containerId, env, Math.min(5000, timeoutMs));
-    const killIssued = !kill.spawnError && !kill.timedOut && kill.code === 0;
-    if (!killIssued) {
+    const killCommandAccepted = !kill.spawnError && !kill.timedOut && kill.code === 0;
+    if (!killCommandAccepted) {
       if (controller.child.exitCode === null && controller.child.signalCode === null) controller.child.kill('SIGTERM');
+      const cancellation = await cancelStartedRun(adapterPath, commonArgs, cwd, env, timeoutMs, beforeFault.runFriendlyId);
       return blockedResult({
         objectiveId,
         operationId,
         blocker: 'TRIGGER_WORKER_CONTAINER_SIGKILL_UNAVAILABLE',
-        observations: { controller: beforeFault, runnerAssessment, kill }
+        observations: { controller: beforeFault, runnerAssessment, kill, cancellation }
+      });
+    }
+
+    const postKillInspect = await inspectContainer(runnerAssessment.containerId, env, Math.min(5000, timeoutMs));
+    const postKillAssessment = assessTriggerKilledContainerInspection(
+      postKillInspect.inspect,
+      runnerAssessment.containerId,
+      runnerAssessment.hostPid
+    );
+    if (!postKillAssessment.valid) {
+      if (controller.child.exitCode === null && controller.child.signalCode === null) controller.child.kill('SIGTERM');
+      const cancellation = await cancelStartedRun(adapterPath, commonArgs, cwd, env, timeoutMs, beforeFault.runFriendlyId);
+      return inconclusiveFaultResult({
+        objectiveId,
+        operationId,
+        target: runnerAssessment,
+        observations: {
+          reason: 'TRIGGER_WORKER_SIGKILL_NOT_CONFIRMED',
+          controller: beforeFault,
+          runnerAssessment,
+          kill,
+          postKillInspect,
+          postKillAssessment,
+          cancellation
+        }
       });
     }
 
@@ -306,6 +385,8 @@ export async function runTriggerdevManagedT7({ repositoryRoot, spec, setup, cand
           runnerAssessment,
           dockerInspect: dockerInspectEvidence,
           kill,
+          postKillInspect,
+          postKillAssessment,
           oracleOperations: related,
           totalApplyCount,
           totalResponseLossCount,
