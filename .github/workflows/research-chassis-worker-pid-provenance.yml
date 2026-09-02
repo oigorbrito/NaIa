@@ -54,6 +54,8 @@ on:
       - 'research/chassis/harness/isolated-external-fault-runner.test.mjs'
       - 'research/chassis/harness/t7-t8-evaluator.mjs'
       - 'research/chassis/harness/t7-t8-evaluator.test.mjs'
+      - 'research/chassis/harness/triggerdev-managed-t7-run-hook.mjs'
+      - 'research/chassis/harness/triggerdev-managed-t7-run-hook.test.mjs'
       - 'research/chassis/harness/critical-evaluator-neutrality.test.mjs'
       - 'research/chassis/harness/experiment-executor.mjs'
       - 'research/chassis/harness/experiment-protocol-validator.mjs'
@@ -146,6 +148,7 @@ jobs:
             research/chassis/harness/formal-environment-identity.test.mjs \
             research/chassis/harness/formal-restate-environment-identity.test.mjs \
             research/chassis/harness/t7-t8-evaluator.test.mjs \
+            research/chassis/harness/triggerdev-managed-t7-run-hook.test.mjs \
             research/chassis/harness/critical-evaluator-neutrality.test.mjs \
             research/chassis/harness/isolated-external-fault-runner.test.mjs \
             research/chassis/harness/formal-cleanup-support.test.mjs \
