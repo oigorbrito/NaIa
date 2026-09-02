@@ -48,6 +48,11 @@ function requireIdentity({ external = false } = {}) {
   if (!accessToken) throw new Error('TRIGGER_SECRET_KEY is required');
 }
 
+function faultBarrierMs() {
+  const value = Number(process.env.NAIA_HOLD_AFTER_EXTERNAL_EFFECT_MS ?? '60000');
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 60000;
+}
+
 function configureSdk() {
   configure({
     accessToken,
@@ -85,7 +90,9 @@ async function triggerOrAttach() {
       operationId,
       oracleUrl,
       injectResponseLoss: process.env.NAIA_DROP_RESPONSE_AFTER_APPLY === '1',
-      nonIdempotentProvider: process.env.NAIA_NON_IDEMPOTENT_PROVIDER === '1'
+      nonIdempotentProvider: process.env.NAIA_NON_IDEMPOTENT_PROVIDER === '1',
+      holdAfterExternalEffect: process.env.NAIA_HOLD_AFTER_EXTERNAL_EFFECT === '1',
+      holdAfterExternalEffectMs: faultBarrierMs()
     },
     {
       idempotencyKey: idempotencyKey(),
