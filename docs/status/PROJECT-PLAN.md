@@ -1,7 +1,8 @@
 # NaIa Project Plan Baseline
 
-Date: 2026-08-31
-Status: RESEARCH / PRE-IMPLEMENTATION
+Date baseline: 2026-08-31
+Last reconciled: 2026-09-03
+Status: RESEARCH / PRE-MVP
 
 ## Current product thesis
 
@@ -24,127 +25,77 @@ Product principles under research:
 
 ## Engineering method
 
-Rules are engineering guardrails, not dogma.
-
 - Prefer qualified existing components over reinventing commodity infrastructure.
-- Challenge user/project preferences when stronger evidence supports another direction.
+- Challenge project preferences when stronger evidence supports another direction.
 - Distinguish standards, independent empirical evidence, upstream tests, source inspection and vendor claims.
-- Reproduce important external tests locally before final qualification.
+- Reproduce important external tests before final qualification.
 - Record blockers as blockers; never convert unavailable evidence into PASS.
 - Record rejected alternatives and why they were rejected.
 
-## Work blocks
+## Current macro progression
 
-### Block 1 — Qualified chassis
+### Block 1 — Structural consolidation
 
-Goal: select the durable execution foundation.
+Goal: make the chassis laboratory internally coherent before runtime qualification.
 
-State: IN PROGRESS.
+State: COMPLETE (2026-09-03).
 
-Current survivors: Temporal TS restricted profile, DBOS TS, Restate, Trigger.dev; Cadence/Azure Durable remain research controls.
+Receipt: `docs/evidence/BLOCK-1-STRUCTURAL-CONSOLIDATION-2026-09-03.md`.
 
-Exit criteria:
+Result:
 
-- common T1–T16 suite implemented;
-- finalist configurations executed under equivalent conditions;
-- critical reliability mutants resolved;
-- license/lock-in/operational surface compared;
-- deliberate GitHub challenger search performed after a benchmark-to-beat exists.
+- common T1–T16 vocabulary and critical-mutant set are versioned;
+- neutral oracle/crash/evidence authorities are versioned;
+- frozen formal promotion policy exists;
+- reproduction profiles are reconciled with actual per-candidate structural coverage;
+- Temporal, DBOS and Restate expose structural paths for T5/T7/T8/T11/T12/T16;
+- Trigger.dev has structural T7/T8 coverage, including an exact self-hosted runner-container T7 boundary, but T5/T11/T12/T16 remain an explicit coverage gap;
+- no runtime PASS or chassis winner was inferred from structural work.
 
-### Block 2 — Reference architecture
+### Block 2 — Runtime qualification
 
-Goal: define boundaries after chassis evidence exists.
+Goal: execute frozen candidate profiles under equivalent neutral evidence rules.
 
-Expected concerns, not yet frozen:
+State: NEXT / NOT COMPLETE.
 
-- durable execution;
-- agent/reasoning layer;
-- policy/autonomy/budget;
-- identity/household roles;
-- memory/context;
-- tool registry/capability ladder;
-- channels such as WhatsApp/voice/web;
-- evidence and independent verification;
-- monitoring/recovery;
-- secrets and data protection.
+Primary constraints:
 
-State: NOT STARTED formally.
+- B001 blocks local exact-runtime installation/execution in the recorded environment;
+- B002 blocks repository CI before runner steps execute;
+- B003 keeps Trigger.dev T7 runtime verification blocked even though its worker-container boundary is structurally implemented.
 
-### Block 3 — Capability evidence matrix
+Exit requires reproducible critical-mutant verdicts sufficient for formal benchmark admission. A blocked or missing critical result cannot be silently promoted.
 
-Goal: map user-facing functions to evidence, reusable OSS, risk and tests.
+### Block 3 — Formal benchmark
 
-Capability families already identified:
-
-- Goal Keeper;
-- Life Inbox;
-- memory and context graph;
-- reminders/scheduling;
-- attention firewall;
-- guardian/anti-scam;
-- negotiation/business contact;
-- bureaucracy agent;
-- personal finance monitoring;
-- family/household coordination;
-- child/teen modes and progressive autonomy;
-- voice;
-- research with citations/evidence;
-- browser/computer-use fallback;
-- plan-B/recovery;
-- execution receipts.
-
-State: CONCEPTUAL, NOT QUALIFIED.
-
-### Block 4 — Empirical capability validation
-
-Candidate external suites include BFCL, tau-bench/tau2-bench, LongMemEval, AgentDojo, WorkArena/BrowserGym, OSWorld and GAIA where applicable.
-
-State: RESEARCH IDENTIFIED, NOT REPLICATED.
-
-### Block 5 — MVP implementation
-
-Scope must be chosen only after Blocks 1–3 provide evidence.
+Goal: compare promotion-qualified candidates and select `BENCHMARK_TO_BEAT`.
 
 State: NOT STARTED.
 
-### Block 6 — Operational fault model and release qualification
+### Block 4 — Chassis decision
 
-NaIa must have its own fault model covering at minimum filesystem, paths, links, process/shell, configuration/environment, secrets, provider/network, staging, acceptance, promotion, evidence, concurrency and resource exhaustion.
+Goal: challenger search, decision record and final chassis selection.
 
 State: NOT STARTED.
 
-## Progress model
+### Block 5 — Minimal product shell
 
-Percentages are engineering estimates, not earned-value accounting.
+Goal: begin the product-facing NaIa shell only after the durable execution decision is defensible.
 
-| Area | Current estimate |
-|---|---:|
-| Product thesis/differentiation | 80% |
-| Competitive assistant benchmark | 80% |
-| Capability discovery | 70% |
-| Durable chassis research | 72% |
-| License/lock-in review of chassis | 65% |
-| Chassis fault model specification | 75% |
-| Common local chassis harness implementation | 5% |
-| Formal reference architecture | 30% |
-| OSS component map beyond chassis | 35% |
-| Versioned project documentation | 20% after this research branch |
-| MVP implementation | 0% |
-| Integrated security/autonomy controls | 0% |
-| NaIa operational fault injection | 0% |
-| Release qualification | 0% |
+State: NOT STARTED.
 
-Project-to-verifiable-MVP estimate: approximately 18%.
+## Later product work
 
-Plan maturity estimate: approximately 62%.
-
-These numbers must be revised when executable evidence replaces research assumptions.
+After the chassis decision, reference architecture, capability evidence, empirical capability validation, MVP implementation and release qualification remain required. These concerns are intentionally not frozen by chassis research.
 
 ## Current decision status
 
-CHASSIS_WINNER = NOT_SELECTED
-BENCHMARK_TO_BEAT = NOT_SELECTED
-REFERENCE_ARCHITECTURE = NOT_FROZEN
-MVP_SCOPE = NOT_FROZEN
+`CHASSIS_WINNER = NOT_SELECTED`
 
-The immediate next objective is to implement and execute the common T1–T16 chassis harness before selecting a winner.
+`BENCHMARK_TO_BEAT = NOT_SELECTED`
+
+`REFERENCE_ARCHITECTURE = NOT_FROZEN`
+
+`MVP_SCOPE = NOT_FROZEN`
+
+Immediate next objective: Block 2 runtime qualification against the frozen structural baseline.
