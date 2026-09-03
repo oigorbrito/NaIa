@@ -111,7 +111,7 @@ export function createNaiaService(rawPorts) {
       approveCapability(objective, capability, action.scopes ?? []);
       await ports.objectives.save(objective);
       await ports.evidence.append({
-        type: 'CAPABILITY_APPROVED',
+        type: 'TOOL_APPROVED',
         objectiveId,
         capability,
         tool: capability,
