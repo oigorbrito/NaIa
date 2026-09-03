@@ -1,14 +1,20 @@
+import { hasCapabilityApproval } from './domain.mjs';
+
 export function createApprovalPolicy() {
   return {
     async authorize({ objective, step }) {
       if (!step?.action) return { allowed: true, reason: 'control-step' };
       if (!step.action.requiresApproval) return { allowed: true, reason: 'read-only' };
-      const approvals = Array.isArray(objective.approvals) ? objective.approvals : [];
-      const allowed = approvals.includes(step.action.tool);
+
+      const capability = step.action.capability ?? step.action.tool;
+      const scopes = Array.isArray(step.action.scopes) ? step.action.scopes : [];
+      const allowed = hasCapabilityApproval(objective, capability, scopes);
       return {
         allowed,
-        reason: allowed ? 'explicit-tool-approval' : 'approval-required',
-        tool: step.action.tool,
+        reason: allowed ? 'explicit-scoped-approval' : 'approval-required',
+        capability,
+        tool: capability,
+        scopes,
         risk: step.action.risk,
       };
     },

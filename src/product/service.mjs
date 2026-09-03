@@ -1,4 +1,4 @@
-import { approveTool, createObjective, ObjectiveStatus } from './domain.mjs';
+import { approveCapability, createObjective, ObjectiveStatus } from './domain.mjs';
 import { assertProductPorts } from './ports.mjs';
 
 async function executePlan(ports, objective, plan) {
@@ -20,7 +20,9 @@ async function executePlan(ports, objective, plan) {
         type: 'APPROVAL_REQUIRED',
         objectiveId: objective.id,
         stepId: step.id,
+        capability: authorization.capability ?? step.action?.capability ?? step.action?.tool ?? null,
         tool: authorization.tool ?? step.action?.tool ?? null,
+        scopes: authorization.scopes ?? step.action?.scopes ?? [],
         risk: authorization.risk ?? step.action?.risk ?? null,
         reason: authorization.reason,
         at: objective.updatedAt,
@@ -35,6 +37,7 @@ async function executePlan(ports, objective, plan) {
       objectiveId: objective.id,
       stepId: step.id,
       kind: step.kind,
+      capability: step.action?.capability ?? step.action?.tool ?? null,
       tool: step.action?.tool ?? null,
       at: new Date().toISOString(),
     });
@@ -47,6 +50,7 @@ async function executePlan(ports, objective, plan) {
       objectiveId: objective.id,
       stepId: step.id,
       kind: step.kind,
+      capability: step.action?.capability ?? step.action?.tool ?? null,
       tool: step.action?.tool ?? null,
       ok: Boolean(result?.ok),
       output: result?.output ?? null,
@@ -74,7 +78,7 @@ export function createNaiaService(rawPorts) {
   return {
     async pursue(input) {
       const objective = createObjective(input);
-      const plan = await ports.planner.plan(objective);
+      const plan = await ports.planner.plan(objective, { capabilities: ports.tools });
       await ports.objectives.save(objective);
       await ports.plans.save(plan);
       await ports.evidence.append({
@@ -86,25 +90,32 @@ export function createNaiaService(rawPorts) {
       await ports.evidence.append({
         type: 'PLAN_CREATED',
         objectiveId: objective.id,
-        steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
+        steps: plan.steps.map((step) => ({
+          id: step.id,
+          kind: step.kind,
+          capability: step.action?.capability ?? step.action?.tool ?? null,
+          scopes: step.action?.scopes ?? [],
+        })),
         at: new Date().toISOString(),
       });
       return executePlan(ports, objective, plan);
     },
 
-    async approve(objectiveId, tool) {
+    async approve(objectiveId, capability) {
       const objective = await ports.objectives.get(objectiveId);
       if (!objective) throw new Error(`objective not found: ${objectiveId}`);
       const plan = await ports.plans.get(objectiveId);
       if (!plan) throw new Error(`plan not found for objective: ${objectiveId}`);
-      const action = plan.steps.find((step) => step.action?.tool === tool)?.action;
-      if (!action) throw new Error(`tool is not part of objective plan: ${tool}`);
-      approveTool(objective, tool);
+      const action = plan.steps.find((step) => (step.action?.capability ?? step.action?.tool) === capability)?.action;
+      if (!action) throw new Error(`capability is not part of objective plan: ${capability}`);
+      approveCapability(objective, capability, action.scopes ?? []);
       await ports.objectives.save(objective);
       await ports.evidence.append({
         type: 'TOOL_APPROVED',
         objectiveId,
-        tool,
+        capability,
+        tool: capability,
+        scopes: action.scopes ?? [],
         risk: action.risk,
         at: objective.updatedAt,
       });

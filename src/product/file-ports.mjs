@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile, appendFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { planIntent } from './planner.mjs';
+import { createPlannerProvider } from './planner-provider.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
 
@@ -20,11 +21,14 @@ async function writeJsonAtomic(path, value) {
   await rename(temp, path);
 }
 
-export function createFilePorts({ rootDir = '.naia' } = {}) {
+export function createFilePorts({ rootDir = '.naia', capabilities = [], planner } = {}) {
   const objectivesPath = join(rootDir, 'objectives.json');
   const plansPath = join(rootDir, 'plans.json');
   const evidencePath = join(rootDir, 'evidence.jsonl');
-  const registry = createToolRegistry({ rootDir });
+  const registry = createToolRegistry({ rootDir, capabilities });
+  const plannerProvider = planner ?? createPlannerProvider({
+    async plan(objective) { return planIntent(objective, { capabilities: registry }); },
+  });
 
   async function readMap(path) {
     return readJson(path, {});
@@ -77,7 +81,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
         }
       },
     },
-    planner: { async plan(objective) { return planIntent(objective); } },
+    planner: plannerProvider,
     policy: createApprovalPolicy(),
     execution: createLocalExecutionAdapter({ registry }),
     tools: registry,
