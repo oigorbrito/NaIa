@@ -1,0 +1,23 @@
+name: Product CI
+
+on:
+  push:
+    branches:
+      - product/**
+  pull_request:
+    paths:
+      - 'src/product/**'
+      - 'test/product/**'
+      - 'package.json'
+      - '.github/workflows/product-ci.yml'
+
+jobs:
+  product-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
