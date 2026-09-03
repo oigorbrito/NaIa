@@ -6,6 +6,8 @@ import { capabilitiesFromEnvironment } from './connectors.mjs';
 import { createConnectorAwarePlanner } from './connector-planner.mjs';
 import { planIntent } from './planner.mjs';
 import { runInteractiveSession } from './interaction.mjs';
+import { listProviderPacks } from './provider-packs.mjs';
+import { providerCapabilitySchema } from './provider-pack-adapter.mjs';
 
 const [command = 'pursue', ...args] = process.argv.slice(2);
 const rootDir = process.env.NAIA_DATA_DIR || '.naia';
@@ -68,10 +70,20 @@ if (command === 'pursue') {
   print(await naia.history());
 } else if (command === 'tools' || command === 'capabilities') {
   print(naia.tools());
+} else if (command === 'providers') {
+  print(listProviderPacks());
+} else if (command === 'schema') {
+  const [capability] = args;
+  if (!capability) {
+    console.error('Usage: npm run start:product -- schema <capability>');
+    process.exitCode = 2;
+  } else {
+    print(providerCapabilitySchema(capability));
+  }
 } else if (command === 'session' || command === 'shell') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, resume, approve, show, status, history, capabilities, session');
+  console.error('Commands: pursue, resume, approve, show, status, history, capabilities, providers, schema, session');
   process.exitCode = 2;
 }
