@@ -1,3 +1,5 @@
+import { actionFromCapability } from './capabilities.mjs';
+
 function normalize(text) {
   return String(text ?? '').trim();
 }
@@ -8,22 +10,37 @@ function parseNote(input) {
   return { name: match[1].trim(), content: match[2].trim() };
 }
 
-export function planIntent(objective) {
+function fallbackAction(name, input, risk, scopes = []) {
+  return {
+    capability: name,
+    tool: name,
+    input,
+    risk,
+    scopes,
+    requiresApproval: risk !== 'READ_ONLY',
+  };
+}
+
+function action(capabilities, name, input, risk, scopes = []) {
+  return capabilities ? actionFromCapability(capabilities, name, input) : fallbackAction(name, input, risk, scopes);
+}
+
+export function planIntent(objective, { capabilities } = {}) {
   const intent = normalize(objective.title);
   const lower = intent.toLowerCase();
 
-  let action;
+  let plannedAction;
   if (lower === 'time' || lower.includes('what time') || lower.includes('current time')) {
-    action = { tool: 'time.now', input: {}, risk: 'READ_ONLY', requiresApproval: false };
+    plannedAction = action(capabilities, 'time.now', {}, 'READ_ONLY', ['clock:read']);
   } else if (/^uppercase\s*:?\s*/i.test(intent)) {
     const text = intent.replace(/^uppercase\s*:?\s*/i, '');
-    action = { tool: 'text.uppercase', input: { text }, risk: 'READ_ONLY', requiresApproval: false };
+    plannedAction = action(capabilities, 'text.uppercase', { text }, 'READ_ONLY', ['text:transform']);
   } else {
     const note = parseNote(intent);
     if (note) {
-      action = { tool: 'note.write', input: note, risk: 'LOCAL_WRITE', requiresApproval: true };
+      plannedAction = action(capabilities, 'note.write', note, 'LOCAL_WRITE', ['workspace:notes:write']);
     } else {
-      action = { tool: 'text.echo', input: { text: intent }, risk: 'READ_ONLY', requiresApproval: false };
+      plannedAction = action(capabilities, 'text.echo', { text: intent }, 'READ_ONLY', ['text:read']);
     }
   }
 
@@ -32,7 +49,7 @@ export function planIntent(objective) {
     intent,
     steps: [
       { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING', action: null },
-      { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING', action },
+      { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING', action: plannedAction },
       { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null },
     ],
   };
