@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createConnectorGateway } from '../../src/product/connectors.mjs';
 import { createGatewayProviderPackCapabilities, assertProviderCapabilityManifest, providerCapabilitySchema } from '../../src/product/provider-pack-adapter.mjs';
 import { findProviderCapability, listProviderPacks, validateCapabilityInput } from '../../src/product/provider-packs.mjs';
+import { createCapabilityRegistry } from '../../src/product/capabilities.mjs';
 
 test('provider packs expose GitHub, Gmail, and Calendar capability groups', () => {
   const packs = listProviderPacks();
@@ -57,4 +58,14 @@ test('provider schema is inspectable for UI and planner surfaces', () => {
   const schema = providerCapabilitySchema('github.issue.read');
   assert.deepEqual(schema.required, ['repository', 'issue']);
   assert.equal(schema.properties.issue.type, 'integer');
+});
+
+test('capability registry preserves provider, pack, version, and schema metadata', () => {
+  const descriptor = findProviderCapability('github.issue.read');
+  const registry = createCapabilityRegistry([{ ...descriptor, source: 'provider-pack', async invoke() { return {}; } }]);
+  const described = registry.describe('github.issue.read');
+  assert.equal(described.provider, 'github');
+  assert.equal(described.pack, 'github.core');
+  assert.equal(described.packVersion, 1);
+  assert.equal(described.inputSchema.properties.repository.type, 'string');
 });
