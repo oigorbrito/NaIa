@@ -4,6 +4,7 @@ import { planIntent } from './planner.mjs';
 import { createPlannerProvider } from './planner-provider.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
+import { createConnectionRecord } from './connection-state.mjs';
 
 async function readJson(path, fallback) {
   try {
@@ -25,9 +26,10 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
   const objectivesPath = join(rootDir, 'objectives.json');
   const plansPath = join(rootDir, 'plans.json');
   const evidencePath = join(rootDir, 'evidence.jsonl');
+  const connectionsPath = join(rootDir, 'connections.json');
   const registry = createToolRegistry({ rootDir, capabilities });
   const plannerProvider = planner ?? createPlannerProvider({
-    async plan(objective) { return planIntent(objective, { capabilities: registry }); },
+    async plan(objective, context = {}) { return planIntent(objective, { ...context, capabilities: registry }); },
   });
 
   async function readMap(path) {
@@ -79,6 +81,22 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
           if (error?.code === 'ENOENT') return [];
           throw error;
         }
+      },
+    },
+    connections: {
+      async save(record) {
+        const all = await readMap(connectionsPath);
+        const normalized = createConnectionRecord(record);
+        all[normalized.provider] = normalized;
+        await writeJsonAtomic(connectionsPath, all);
+        return structuredClone(normalized);
+      },
+      async get(provider) {
+        const all = await readMap(connectionsPath);
+        return all[provider] ? structuredClone(all[provider]) : null;
+      },
+      async list() {
+        return Object.values(await readMap(connectionsPath)).map((value) => structuredClone(value));
       },
     },
     planner: plannerProvider,
