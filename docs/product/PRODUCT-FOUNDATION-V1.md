@@ -14,21 +14,22 @@ Start executable NaIA product work without waiting for the still-open chassis be
 Current product components:
 
 - objective domain and lifecycle status;
-- deterministic initial plan with UNDERSTAND / EXECUTE / VERIFY steps;
-- replaceable objective, plan, evidence and execution ports;
+- replaceable objective, plan, evidence, policy and execution ports;
 - in-memory adapters for tests;
 - file-backed objective and plan stores;
 - append-only JSONL evidence store;
 - atomic JSON writes for mutable local state;
 - resumable execution that skips already completed steps;
-- persistent CLI commands: `pursue`, `resume`, `show`;
-- tests for success, fail-visible behavior, resume semantics and cross-instance persistence.
+- persistent CLI commands;
+- focused product CI.
+
+The foundation has now been exercised by the completed [First Useful Capability V1](FIRST-USEFUL-CAPABILITY-V1.md), which adds actionable intent planning, tool selection, explicit authorization for side effects, real local tool invocation and objective history.
 
 ## Runtime boundary
 
-The current file-backed execution adapter is a local placeholder. It is deliberately not a durable-execution chassis and must not be interpreted as such. The product domain depends on the `execution.run(...)` port rather than Temporal, DBOS, Restate or Trigger.dev APIs.
+The product domain depends on replaceable ports rather than Temporal, DBOS, Restate or Trigger.dev APIs. No durable-execution chassis is selected here.
 
-This boundary is intended to let chassis research later provide an adapter without rewriting objective, plan or evidence semantics.
+This boundary lets chassis research later provide an adapter without rewriting objective, plan, policy or evidence semantics.
 
 ## Local state
 
@@ -39,17 +40,9 @@ Files:
 - `.naia/objectives.json`
 - `.naia/plans.json`
 - `.naia/evidence.jsonl`
+- `.naia/workspace/notes/` for approved local note writes
 
 The directory is Git-ignored.
-
-## Commands
-
-```bash
-npm test
-npm run start:product -- pursue "my objective"
-npm run start:product -- show <objectiveId>
-npm run start:product -- resume <objectiveId>
-```
 
 ## Foundation exit state
 
@@ -61,12 +54,16 @@ npm run start:product -- resume <objectiveId>
 
 `RESUME_SEMANTICS = IMPLEMENTED`
 
+`PORTABLE_POLICY_AND_EXECUTION_BOUNDARY = IMPLEMENTED`
+
+`FIRST_USEFUL_CAPABILITY_V1 = COMPLETE`
+
 `DURABLE_EXECUTION_ADAPTER = NOT_SELECTED`
 
-`USER_INTERFACE = CLI_ONLY`
+`USER_INTERFACE = CLI`
 
-`PRODUCT_FOUNDATION_V1 = IMPLEMENTED_NEEDS_RUNTIME_VALIDATION`
+`PRODUCT_FOUNDATION_V1 = COMPLETE`
 
 ## Next product block
 
-Build the first useful capability path on top of these ports: user intent input, actionable plan/tool selection, explicit authorization boundary where needed, tool invocation, evidence rendering and objective history. Keep infrastructure replaceable and keep chassis winner selection separate.
+Build the extensible capability layer: richer planner contracts, external adapters, scoped policy rules, improved presentation, and eventual durable-execution integration behind the existing ports. Keep chassis winner selection separate.
