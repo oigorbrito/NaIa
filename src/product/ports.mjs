@@ -1,5 +1,9 @@
+import { planIntent } from './planner.mjs';
+import { createApprovalPolicy } from './policy.mjs';
+import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
+
 export function assertProductPorts(ports) {
-  const required = ['objectives', 'plans', 'evidence', 'execution'];
+  const required = ['objectives', 'plans', 'evidence', 'planner', 'policy', 'execution'];
   for (const name of required) {
     if (!ports?.[name]) throw new Error(`missing product port: ${name}`);
   }
@@ -9,6 +13,8 @@ export function assertProductPorts(ports) {
     }
   }
   if (typeof ports.evidence.append !== 'function') throw new Error('evidence.append must be a function');
+  if (typeof ports.planner.plan !== 'function') throw new Error('planner.plan must be a function');
+  if (typeof ports.policy.authorize !== 'function') throw new Error('policy.authorize must be a function');
   if (typeof ports.execution.run !== 'function') throw new Error('execution.run must be a function');
   return ports;
 }
@@ -17,6 +23,7 @@ export function createInMemoryPorts() {
   const objectives = new Map();
   const plans = new Map();
   const evidence = [];
+  const registry = createToolRegistry({ rootDir: '.naia-test' });
   return {
     objectives: {
       async save(objective) { objectives.set(objective.id, structuredClone(objective)); return objective; },
@@ -34,8 +41,9 @@ export function createInMemoryPorts() {
         return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
       },
     },
-    execution: {
-      async run({ step }) { return { ok: true, output: { stepId: step.id, kind: step.kind } }; },
-    },
+    planner: { async plan(objective) { return planIntent(objective); } },
+    policy: createApprovalPolicy(),
+    execution: createLocalExecutionAdapter({ registry }),
+    tools: registry,
   };
 }
