@@ -4,6 +4,7 @@ import { createConnectorGateway, createGatewayCapabilities } from '../../src/pro
 import { createConnectorAwarePlanner, parseCapabilityIntent } from '../../src/product/connector-planner.mjs';
 import { createDeterministicPlanner } from '../../src/product/planner.mjs';
 import { createToolRegistry } from '../../src/product/tools.mjs';
+import { handleInteractiveLine } from '../../src/product/interaction.mjs';
 
 test('connector gateway discovers and invokes external capabilities', async () => {
   const calls = [];
@@ -42,4 +43,24 @@ test('connector gateway surfaces remote failures', async () => {
     fetchImpl: async () => new Response('denied', { status: 403, statusText: 'Forbidden' }),
   });
   await assert.rejects(() => gateway.manifest(), /connector gateway 403/);
+});
+
+test('interactive command handler routes objectives and control commands', async () => {
+  const calls = [];
+  const naia = {
+    async pursue(input) { calls.push(['pursue', input]); return { objective: { id: 'o1' } }; },
+    async history() { return [{ id: 'o1' }]; },
+    tools() { return [{ name: 'text.echo' }]; },
+    async status(id) { return { id, status: 'COMPLETED' }; },
+    async approve(id, capability) { calls.push(['approve', { id, capability }]); return { approved: true }; },
+  };
+
+  assert.deepEqual(await handleInteractiveLine({ naia, line: '/history' }), { kind: 'result', value: [{ id: 'o1' }] });
+  assert.deepEqual(await handleInteractiveLine({ naia, line: '/status o1' }), { kind: 'result', value: { id: 'o1', status: 'COMPLETED' } });
+  assert.deepEqual(await handleInteractiveLine({ naia, line: '/approve o1 note.write' }), { kind: 'result', value: { approved: true } });
+  assert.deepEqual(await handleInteractiveLine({ naia, line: 'do work' }), { kind: 'result', value: { objective: { id: 'o1' } } });
+  assert.deepEqual(calls, [
+    ['approve', { id: 'o1', capability: 'note.write' }],
+    ['pursue', { title: 'do work' }],
+  ]);
 });
