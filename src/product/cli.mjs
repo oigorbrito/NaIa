@@ -60,6 +60,10 @@ if (command === 'pursue') {
   const [objectiveId] = args;
   if (!objectiveId) { console.error('Usage: npm run start:product -- status <objectiveId>'); process.exitCode = 2; }
   else print(presentObjective(await naia.get(objectiveId)));
+} else if (command === 'results') {
+  const [objectiveId] = args;
+  if (!objectiveId) { console.error('Usage: npm run start:product -- results <objectiveId>'); process.exitCode = 2; }
+  else print(await naia.results(objectiveId));
 } else if (command === 'history') {
   print(await naia.history());
 } else if (command === 'tools' || command === 'capabilities') {
@@ -86,6 +90,6 @@ if (command === 'pursue') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, resume, approve, show, status, history, capabilities, providers, schema, connections, connection:set, session');
+  console.error('Commands: pursue, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
   process.exitCode = 2;
 }
