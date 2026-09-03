@@ -9,8 +9,8 @@ function inferCapability(clause) {
   const lower = clause.toLowerCase();
   if (lower.includes('github') && lower.includes('issue') && (lower.includes('create') || lower.includes('open'))) return 'github.issue.create';
   if (lower.includes('github') && lower.includes('issue')) return 'github.issue.read';
-  if ((lower.includes('gmail') || lower.includes('email')) && (lower.includes('send') || lower.includes('email '))) return 'gmail.message.send';
   if ((lower.includes('gmail') || lower.includes('email')) && lower.includes('search')) return 'gmail.message.search';
+  if ((lower.includes('gmail') || lower.includes('email')) && (lower.includes('send') || lower.includes('reply'))) return 'gmail.message.send';
   if ((lower.includes('calendar') || lower.includes('meeting')) && (lower.includes('create') || lower.includes('schedule'))) return 'calendar.event.create';
   if (lower.includes('calendar') || lower.includes('availability') || lower.includes('free busy')) return 'calendar.free_busy.read';
   return null;
@@ -45,15 +45,9 @@ export function createProviderAwarePlanner({ fallbackPlanner } = {}) {
         const availability = evaluateCapabilityAvailability(descriptor, connection);
         const action = actionFromCapability(capabilities, item.capability, parseJsonObject(item.clause));
         action.availability = availability;
-        steps.push({
-          id: `${objective.id}:provider:${index + 1}`,
-          kind: 'EXECUTE',
-          status: availability.available ? 'PENDING' : 'BLOCKED_CONNECTION',
-          action,
-        });
+        steps.push({ id: `${objective.id}:provider:${index + 1}`, kind: 'EXECUTE', status: availability.available ? 'PENDING' : 'BLOCKED_CONNECTION', action });
       }
       steps.push({ id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null });
-
       return { objectiveId: objective.id, intent: objective.title, providerAware: true, steps };
     },
   };
