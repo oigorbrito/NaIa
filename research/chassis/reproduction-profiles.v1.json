@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineDate": "2026-08-31",
+  "baselineDate": "2026-09-03",
   "decisionState": {
     "chassisWinner": "NOT_SELECTED",
     "benchmarkToBeat": "NOT_SELECTED"
@@ -12,7 +12,13 @@
     "commonRunner": "research/chassis/harness/common-runner.mjs",
     "faultSuite": "research/chassis/fault-suite.v1.json",
     "criticalMutants": ["T5", "T7", "T8", "T11", "T12", "T16"],
-    "currentExecutableSlice": ["T7", "T8", "T15"],
+    "structurallyImplementedCriticalSlice": {
+      "Temporal TypeScript": ["T5", "T7", "T8", "T11", "T12", "T16"],
+      "DBOS TypeScript": ["T5", "T7", "T8", "T11", "T12", "T16"],
+      "Restate": ["T5", "T7", "T8", "T11", "T12", "T16"],
+      "Trigger.dev": ["T7", "T8"]
+    },
+    "runtimeQualificationState": "NOT_EXECUTED_FORMALLY",
     "faultInjection": "The harness requests response loss; the common oracle consumes the response-loss fault exactly once per semantic operation. Candidate-native attempt counters are evidence only and do not decide which request is faulted.",
     "rules": [
       "Do not change oracle semantics per candidate",
@@ -27,90 +33,61 @@
     {
       "id": "temporal-ts-restricted-v1",
       "candidate": "Temporal TypeScript",
-      "status": "READY_FOR_INSTALLATION",
-      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "status": "READY_FOR_RUNTIME_QUALIFICATION",
+      "adapterStatus": "CRITICAL_STRUCTURAL_SLICE_IMPLEMENTED_RUNTIME_BLOCKED_B001",
       "adapter": "research/chassis/adapters/temporal-ts/adapter.mjs",
       "executionMode": "local-process",
       "sdkTag": "v1.23.0",
-      "sdkPackages": {
-        "@temporalio/worker": "1.23.0",
-        "@temporalio/client": "1.23.0",
-        "@temporalio/workflow": "1.23.0",
-        "@temporalio/activity": "1.23.0"
-      },
+      "sdkPackages": {"@temporalio/worker":"1.23.0","@temporalio/client":"1.23.0","@temporalio/workflow":"1.23.0","@temporalio/activity":"1.23.0"},
       "cliTag": "v1.7.3",
       "serverTag": "v1.31.2",
       "serverProvenance": "Temporal CLI v1.7.3 go.mod pins go.temporal.io/server v1.31.2; use this CLI release for the local development server so the executable server identity matches the frozen profile.",
-      "runtimePolicy": {
-        "allowedNodeMajors": [22, 24],
-        "forbidden": [
-          "Node 26 until Temporal.Now replay behavior is resolved and regression-tested",
-          "workflow use of nondeterministic wall-clock APIs outside SDK-safe APIs"
-        ]
-      },
+      "runtimePolicy": {"allowedNodeMajors":[22,24],"forbidden":["Node 26 until Temporal.Now replay behavior is resolved and regression-tested","workflow use of nondeterministic wall-clock APIs outside SDK-safe APIs"]},
       "externalEffectSemantics": "AT_LEAST_ONCE_ACTIVITY_REQUIRES_IDEMPOTENCY_OR_RECONCILIATION"
     },
     {
       "id": "dbos-ts-v4.27",
       "candidate": "DBOS TypeScript",
-      "status": "READY_FOR_INSTALLATION",
-      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "status": "READY_FOR_RUNTIME_QUALIFICATION",
+      "adapterStatus": "CRITICAL_STRUCTURAL_SLICE_IMPLEMENTED_RUNTIME_BLOCKED_B001",
       "adapter": "research/chassis/adapters/dbos-ts/adapter.mjs",
       "executionMode": "local-process",
       "sourceTag": "v4.27",
       "publishedPackageObservedAtBaseline": "4.27.6",
-      "sdkPackages": {
-        "@dbos-inc/dbos-sdk": "4.27.6"
-      },
+      "sdkPackages": {"@dbos-inc/dbos-sdk":"4.27.6"},
       "provenanceNote": "Static source review is against GitHub release tag v4.27. First executable run must record npm lockfile integrity and verify the used APIs against the installed 4.27.6 artifact before candidate evidence is accepted.",
-      "runtimePolicy": {
-        "allowedNodeMajors": [22, 24],
-        "database": "PostgreSQL; exact image/version must be recorded at execution time",
-        "executorID": "naia-chassis-local-executor",
-        "applicationVersion": "naia-chassis-gate-v1"
-      },
+      "runtimePolicy": {"allowedNodeMajors":[22,24],"database":"PostgreSQL; exact image/version must be recorded at execution time","executorID":"naia-chassis-local-executor","applicationVersion":"naia-chassis-gate-v1"},
       "haConstraint": "Automatic multi-process recovery must explicitly state whether DBOS Conductor or an equivalent executor-recovery mechanism is present",
       "externalEffectSemantics": "DURABLE_STEP_CHECKPOINTING_REQUIRES_IDEMPOTENCY_OR_RECONCILIATION_FOR_EXTERNAL_IO"
     },
     {
       "id": "restate-ts-v1",
       "candidate": "Restate",
-      "status": "READY_FOR_INSTALLATION",
-      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "status": "READY_FOR_RUNTIME_QUALIFICATION",
+      "adapterStatus": "CRITICAL_STRUCTURAL_SLICE_IMPLEMENTED_RUNTIME_BLOCKED_B001",
       "adapter": "research/chassis/adapters/restate-ts/adapter.mjs",
       "executionMode": "local-process",
       "serverTag": "v1.7.8",
       "serverRelease": "restatedev/restate v1.7.8",
       "sdkTag": "v1.16.9",
-      "sdkPackages": {
-        "@restatedev/restate-sdk": "1.16.9",
-        "@restatedev/restate-sdk-clients": "1.16.9"
-      },
-      "runtimePolicy": {
-        "allowedNodeMajors": [22, 24]
-      },
+      "sdkPackages": {"@restatedev/restate-sdk":"1.16.9","@restatedev/restate-sdk-clients":"1.16.9"},
+      "runtimePolicy": {"allowedNodeMajors":[22,24]},
       "licenseConstraint": "Restate server v1.7.8 is BSL 1.1; SDK is MIT. License acceptance is a separate gate from technical correctness.",
       "externalEffectSemantics": "MUST_BE_MEASURED_AGAINST_COMMON_ORACLE_WITHOUT_ASSUMING_GENERIC_EXACTLY_ONCE"
     },
     {
       "id": "triggerdev-v4.5.15",
       "candidate": "Trigger.dev",
-      "status": "READY_FOR_INSTALLATION",
-      "adapterStatus": "IMPLEMENTED_SYNTAX_PASS_RUNTIME_BLOCKED_B001",
+      "status": "PARTIAL_STRUCTURAL_READY",
+      "adapterStatus": "T7_T8_STRUCTURAL_PATH_IMPLEMENTED_RUNTIME_BLOCKED_B001_B003",
       "adapter": "research/chassis/adapters/triggerdev/adapter.mjs",
       "executionMode": "managed-controller",
       "releaseTag": "v4.5.15",
-      "sdkPackages": {
-        "@trigger.dev/sdk": "4.5.15",
-        "@trigger.dev/build": "4.5.15",
-        "trigger.dev": "4.5.15"
-      },
+      "sdkPackages": {"@trigger.dev/sdk":"4.5.15","@trigger.dev/build":"4.5.15","trigger.dev":"4.5.15"},
       "selfHostedImage": "ghcr.io/triggerdotdev/trigger.dev:v4.5.15",
-      "runtimePolicy": {
-        "allowedNodeMajors": [22, 24],
-        "requires": ["NAIA_TRIGGER_PROJECT_REF", "TRIGGER_SECRET_KEY", "reachable external oracle URL"]
-      },
-      "t7Constraint": "Current Trigger.dev v4.5.15 documentation states that a CRASHED run means the worker process crashed and will not be retried. managed-controller mode only tests controller restart plus response-loss recovery; it MUST NOT be counted as T7 worker-SIGKILL evidence. A direct self-hosted worker crash hook is required before T7 can receive PASS or FAIL from this laboratory.",
+      "runtimePolicy": {"allowedNodeMajors":[22,24],"requires":["NAIA_TRIGGER_PROJECT_REF","TRIGGER_SECRET_KEY","reachable external oracle URL"]},
+      "t7Constraint": "The formal T7 hook now targets the exact self-hosted runner workload container and rejects controller/supervisor substitution. This closes the structural worker-boundary gap only. T7 remains BLOCKED_B003 until an actual self-hosted run proves container identity, SIGKILL, control-plane survival, retry/recovery behavior, single external apply and cleanup.",
+      "criticalCoverageGap": "T5/T11/T12/T16 formal candidate executors are not implemented for Trigger.dev. This is an explicit structural coverage gap and must not be represented as runtime evidence.",
       "externalEffectSemantics": "TASK_TRIGGER_IDEMPOTENCY_MUST_NOT_BE_COUNTED_AS_ARBITRARY_EXTERNAL_EFFECT_IDEMPOTENCY"
     }
   ]
