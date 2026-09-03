@@ -1,5 +1,8 @@
 import { mkdir, readFile, rename, writeFile, appendFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { planIntent } from './planner.mjs';
+import { createApprovalPolicy } from './policy.mjs';
+import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
 
 async function readJson(path, fallback) {
   try {
@@ -21,6 +24,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
   const objectivesPath = join(rootDir, 'objectives.json');
   const plansPath = join(rootDir, 'plans.json');
   const evidencePath = join(rootDir, 'evidence.jsonl');
+  const registry = createToolRegistry({ rootDir });
 
   async function readMap(path) {
     return readJson(path, {});
@@ -73,10 +77,9 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
         }
       },
     },
-    execution: {
-      async run({ step }) {
-        return { ok: true, output: { stepId: step.id, kind: step.kind, adapter: 'local-placeholder' } };
-      },
-    },
+    planner: { async plan(objective) { return planIntent(objective); } },
+    policy: createApprovalPolicy(),
+    execution: createLocalExecutionAdapter({ registry }),
+    tools: registry,
   };
 }
