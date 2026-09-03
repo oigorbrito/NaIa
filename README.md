@@ -1,22 +1,36 @@
-# NaIa
+# NaIA
 
-NaIa is currently in evidence-driven research and pre-implementation.
+NaIA now has two active engineering tracks:
 
-No durable-execution chassis, reference architecture, or MVP scope has been selected yet.
+1. **Product track** — executable MVP foundation on `product/mvp-foundation-v1`.
+2. **Research track** — chassis qualification and benchmark work, still authoritative for any future chassis-winner claim.
 
-Current engineering artifacts:
+## Product track
 
-- [Qualified Chassis Gate V1](docs/research/CHASSIS-QUALIFICATION-PROTOCOL.md)
-- [Chassis Candidates V1](docs/research/CHASSIS-CANDIDATES-V1.md)
-- [Common Fault Mutants T1–T16](docs/research/FAULT-MUTANTS-T1-T16.md)
-- [Machine-readable fault suite](research/chassis/fault-suite.v1.json)
-- [Project Plan Baseline](docs/status/PROJECT-PLAN.md)
+Current executable slice:
+
+`objective -> plan -> execution port -> evidence -> persisted state`
+
+The product branch includes local persistence, resume semantics, CLI commands and tests. The execution runtime remains behind a replaceable port; no durable-execution chassis has been selected.
+
+Local commands on the product branch:
+
+```bash
+npm test
+npm run start:product -- pursue "my objective"
+npm run start:product -- show <objectiveId>
+npm run start:product -- resume <objectiveId>
+```
+
+See [Product Foundation V1](docs/product/PRODUCT-FOUNDATION-V1.md).
+
+## Research track
+
+Research artifacts remain available under `research/chassis/` and `docs/research/`. The formal benchmark is still required before selecting `BENCHMARK_TO_BEAT` or `CHASSIS_WINNER`.
 
 Current decision state:
 
 - `CHASSIS_WINNER = NOT_SELECTED`
 - `BENCHMARK_TO_BEAT = NOT_SELECTED`
-- `REFERENCE_ARCHITECTURE = NOT_FROZEN`
-- `MVP_SCOPE = NOT_FROZEN`
-
-The next engineering milestone is to implement and execute the common T1–T16 chassis harness against finalist configurations, then deliberately search GitHub for challengers capable of beating the resulting benchmark.
+- `DURABLE_EXECUTION_ADAPTER = NOT_SELECTED`
+- `PRODUCT_FOUNDATION_V1 = IMPLEMENTED_NEEDS_RUNTIME_VALIDATION`
