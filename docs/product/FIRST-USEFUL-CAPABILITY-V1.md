@@ -108,6 +108,8 @@ The current execution environment used by this session could not clone GitHub be
 
 `PRODUCT_CI = DEFINED`
 
+`PRODUCT_FOUNDATION_V1 = COMPLETE`
+
 `DURABLE_EXECUTION_ADAPTER = NOT_SELECTED`
 
 ## Next product block
