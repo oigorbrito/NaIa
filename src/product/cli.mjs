@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFile } from 'node:fs/promises';
 import { createFilePorts } from './file-ports.mjs';
 import { createNaiaService } from './service.mjs';
 import { presentObjective } from './presenter.mjs';
@@ -9,6 +10,7 @@ import { planIntent } from './planner.mjs';
 import { runInteractiveSession } from './interaction.mjs';
 import { listProviderPacks } from './provider-packs.mjs';
 import { assertProviderCapabilityManifest, createGatewayProviderPackCapabilities, providerCapabilitySchema } from './provider-pack-adapter.mjs';
+import { validateWorkflowDefinition } from './workflows.mjs';
 
 const [command = 'pursue', ...args] = process.argv.slice(2);
 const rootDir = process.env.NAIA_DATA_DIR || '.naia';
@@ -29,6 +31,13 @@ async function loadExternalCapabilities() {
   return [...canonical, ...custom];
 }
 
+async function readWorkflow(path) {
+  if (!path) throw new Error('workflow JSON path is required');
+  const parsed = JSON.parse(await readFile(path, 'utf8'));
+  validateWorkflowDefinition(parsed);
+  return parsed;
+}
+
 const externalCapabilities = await loadExternalCapabilities();
 const connectorPlanner = createConnectorAwarePlanner({
   fallbackPlanner: { async plan(objective, context = {}) { return planIntent(objective, context); } },
@@ -44,6 +53,17 @@ if (command === 'pursue') {
   const title = args.join(' ').trim();
   if (!title) { console.error('Usage: npm run start:product -- pursue <objective>'); process.exitCode = 2; }
   else print(await naia.pursue({ title }));
+} else if (command === 'workflow:validate') {
+  const [path] = args;
+  try { const workflow = await readWorkflow(path); print({ valid: true, id: workflow.id, steps: workflow.steps.length }); }
+  catch (error) { console.error(error?.message ?? String(error)); process.exitCode = 2; }
+} else if (command === 'workflow:run') {
+  const [path, ...titleParts] = args;
+  try {
+    const workflow = await readWorkflow(path);
+    const title = titleParts.join(' ').trim();
+    print(await naia.runWorkflow(workflow, title ? { title } : {}));
+  } catch (error) { console.error(error?.message ?? String(error)); process.exitCode = 2; }
 } else if (command === 'resume') {
   const [objectiveId] = args;
   if (!objectiveId) { console.error('Usage: npm run start:product -- resume <objectiveId>'); process.exitCode = 2; }
@@ -90,6 +110,6 @@ if (command === 'pursue') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
+  console.error('Commands: pursue, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
   process.exitCode = 2;
 }

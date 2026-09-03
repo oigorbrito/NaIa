@@ -52,7 +52,8 @@ export function validatePlanDependencies(plan) {
 export function dependenciesSatisfied(plan, step) {
   const byId = new Map((plan?.steps ?? []).map((item) => [item.id, item]));
   const dependencies = new Set([...(step.dependsOn ?? []), ...collectResultRefs(step.action?.input ?? {}).map((ref) => ref.stepId)]);
-  const blocked = [...dependencies].filter((id) => byId.get(id)?.status !== 'COMPLETED');
+  const terminal = new Set(['COMPLETED', 'SKIPPED']);
+  const blocked = [...dependencies].filter((id) => !terminal.has(byId.get(id)?.status));
   return { satisfied: blocked.length === 0, blocked };
 }
 

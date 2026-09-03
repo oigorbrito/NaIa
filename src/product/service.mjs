@@ -2,6 +2,7 @@ import { approveCapability, createObjective, ObjectiveStatus } from './domain.mj
 import { assertProductPorts } from './ports.mjs';
 import { evaluateCapabilityAvailability } from './connection-state.mjs';
 import { createResultStore, dependenciesSatisfied, resolveResultRefs, validatePlanDependencies } from './orchestration.mjs';
+import { collectFanInResult, compileWorkflow, evaluateCondition, expandFanOut, resolveWorkflowValue } from './workflows.mjs';
 
 async function refreshConnectionAvailability(ports, step) {
   if (!step.action) return { available: true, reason: 'control-step', missingScopes: [] };
@@ -14,6 +15,68 @@ async function refreshConnectionAvailability(ports, step) {
   return { ...availability, provider: descriptor.provider, capability: capabilityName };
 }
 
+async function persistStepResult(ports, objective, step, resultStore, result) {
+  resultStore.set(step.id, result);
+  await ports.evidence.append({
+    type: 'STEP_RESULT', objectiveId: objective.id, stepId: step.id,
+    capability: step.action?.capability ?? step.action?.tool ?? null,
+    result, at: new Date().toISOString(),
+  });
+}
+
+async function executeWorkflowControlStep(ports, objective, plan, step, resultStore) {
+  if (step.kind === 'CONDITION') {
+    const selected = evaluateCondition(step.workflow.when, resultStore);
+    const skipped = selected ? (step.workflow.else ?? []) : (step.workflow.then ?? []);
+    const byId = new Map(plan.steps.map((item) => [item.id, item]));
+    for (const id of skipped) {
+      const target = byId.get(id);
+      if (target && !['COMPLETED', 'SKIPPED'].includes(target.status)) target.status = 'SKIPPED';
+    }
+    step.status = 'COMPLETED';
+    await ports.plans.save(plan);
+    await ports.evidence.append({
+      type: 'CONDITION_EVALUATED', objectiveId: objective.id, stepId: step.id,
+      result: selected, skipped, at: new Date().toISOString(),
+    });
+    await persistStepResult(ports, objective, step, resultStore, { matched: selected });
+    return true;
+  }
+
+  if (step.kind === 'TRANSFORM') {
+    const transformed = resolveWorkflowValue(step.workflow.value, resultStore);
+    step.status = 'COMPLETED';
+    await ports.plans.save(plan);
+    await ports.evidence.append({ type: 'TRANSFORM_APPLIED', objectiveId: objective.id, stepId: step.id, at: new Date().toISOString() });
+    await persistStepResult(ports, objective, step, resultStore, transformed);
+    return true;
+  }
+
+  if (step.kind === 'FAN_OUT') {
+    const children = expandFanOut(plan, step, resultStore, ports.tools);
+    step.status = 'COMPLETED';
+    await ports.plans.save(plan);
+    const result = { count: children.length, children: children.map((child) => child.id), concurrency: step.workflow.concurrency };
+    await ports.evidence.append({
+      type: 'FAN_OUT_EXPANDED', objectiveId: objective.id, stepId: step.id,
+      count: children.length, children: result.children, concurrency: result.concurrency, at: new Date().toISOString(),
+    });
+    await persistStepResult(ports, objective, step, resultStore, result);
+    return true;
+  }
+
+  if (step.kind === 'FAN_IN') {
+    const aggregated = collectFanInResult(step, resultStore);
+    step.status = 'COMPLETED';
+    await ports.plans.save(plan);
+    await ports.evidence.append({ type: 'FAN_IN_COMPLETED', objectiveId: objective.id, stepId: step.id, count: aggregated.length, at: new Date().toISOString() });
+    await persistStepResult(ports, objective, step, resultStore, aggregated);
+    return true;
+  }
+
+  return false;
+}
+
 async function executePlan(ports, objective, plan) {
   validatePlanDependencies(plan);
   const existingEvidence = typeof ports.evidence.list === 'function' ? await ports.evidence.list({ objectiveId: objective.id }) : [];
@@ -23,8 +86,9 @@ async function executePlan(ports, objective, plan) {
   objective.updatedAt = new Date().toISOString();
   await ports.objectives.save(objective);
 
-  for (const step of plan.steps) {
-    if (step.status === 'COMPLETED') continue;
+  for (let index = 0; index < plan.steps.length; index += 1) {
+    const step = plan.steps[index];
+    if (step.status === 'COMPLETED' || step.status === 'SKIPPED') continue;
 
     const dependencyState = dependenciesSatisfied(plan, step);
     if (!dependencyState.satisfied) {
@@ -40,6 +104,8 @@ async function executePlan(ports, objective, plan) {
       return { objective, plan, dependency: dependencyState };
     }
     if (step.status === 'BLOCKED_DEPENDENCY') step.status = 'PENDING';
+
+    if (await executeWorkflowControlStep(ports, objective, plan, step, resultStore)) continue;
 
     const availability = await refreshConnectionAvailability(ports, step);
     if (!availability.available) {
@@ -84,9 +150,7 @@ async function executePlan(ports, objective, plan) {
     await ports.evidence.append({
       type: 'STEP_STARTED', objectiveId: objective.id, stepId: step.id, kind: step.kind,
       capability: step.action?.capability ?? step.action?.tool ?? null,
-      tool: step.action?.tool ?? null,
-      resolvedInput,
-      at: new Date().toISOString(),
+      tool: step.action?.tool ?? null, resolvedInput, at: new Date().toISOString(),
     });
 
     const result = await ports.execution.run({ objective, plan, step: executionStep });
@@ -100,12 +164,7 @@ async function executePlan(ports, objective, plan) {
 
     if (result?.ok) {
       const stepResult = result?.output?.result ?? result?.output ?? null;
-      resultStore.set(step.id, stepResult);
-      await ports.evidence.append({
-        type: 'STEP_RESULT', objectiveId: objective.id, stepId: step.id,
-        capability: step.action?.capability ?? step.action?.tool ?? null,
-        result: stepResult, at: new Date().toISOString(),
-      });
+      await persistStepResult(ports, objective, step, resultStore, stepResult);
     }
 
     if (!result?.ok) {
@@ -123,6 +182,22 @@ async function executePlan(ports, objective, plan) {
   return { objective, plan, results: resultStore.entries() };
 }
 
+async function persistNewPlan(ports, objective, plan) {
+  validatePlanDependencies(plan);
+  await ports.objectives.save(objective);
+  await ports.plans.save(plan);
+  await ports.evidence.append({ type: 'OBJECTIVE_CREATED', objectiveId: objective.id, intent: plan.intent ?? objective.title, at: objective.createdAt });
+  await ports.evidence.append({
+    type: 'PLAN_CREATED', objectiveId: objective.id,
+    workflowId: plan.workflowId ?? null, declarative: Boolean(plan.declarative),
+    steps: plan.steps.map((step) => ({
+      id: step.id, kind: step.kind, capability: step.action?.capability ?? step.action?.tool ?? null,
+      scopes: step.action?.scopes ?? [], status: step.status, dependsOn: step.dependsOn ?? [],
+    })),
+    at: new Date().toISOString(),
+  });
+}
+
 export function createNaiaService(rawPorts) {
   const ports = assertProductPorts(rawPorts);
 
@@ -130,18 +205,15 @@ export function createNaiaService(rawPorts) {
     async pursue(input) {
       const objective = createObjective(input);
       const plan = await ports.planner.plan(objective, { capabilities: ports.tools, connections: ports.connections });
-      validatePlanDependencies(plan);
-      await ports.objectives.save(objective);
-      await ports.plans.save(plan);
-      await ports.evidence.append({ type: 'OBJECTIVE_CREATED', objectiveId: objective.id, intent: plan.intent ?? objective.title, at: objective.createdAt });
-      await ports.evidence.append({
-        type: 'PLAN_CREATED', objectiveId: objective.id,
-        steps: plan.steps.map((step) => ({
-          id: step.id, kind: step.kind, capability: step.action?.capability ?? step.action?.tool ?? null,
-          scopes: step.action?.scopes ?? [], status: step.status, dependsOn: step.dependsOn ?? [],
-        })),
-        at: new Date().toISOString(),
-      });
+      await persistNewPlan(ports, objective, plan);
+      return executePlan(ports, objective, plan);
+    },
+
+    async runWorkflow(definition, input = {}) {
+      const objective = createObjective({ title: input.title ?? definition.description ?? definition.id, description: input.description ?? '' });
+      const plan = compileWorkflow(definition, { objectiveId: objective.id, capabilities: ports.tools });
+      await persistNewPlan(ports, objective, plan);
+      await ports.evidence.append({ type: 'WORKFLOW_COMPILED', objectiveId: objective.id, workflowId: definition.id, at: new Date().toISOString() });
       return executePlan(ports, objective, plan);
     },
 
