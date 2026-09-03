@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 export const ObjectiveStatus = Object.freeze({
   PLANNED: 'PLANNED',
   RUNNING: 'RUNNING',
+  WAITING_APPROVAL: 'WAITING_APPROVAL',
   COMPLETED: 'COMPLETED',
   FAILED: 'FAILED',
 });
@@ -13,19 +14,18 @@ export function createObjective({ title, description = '', id = randomUUID(), cr
     id,
     title: title.trim(),
     description: description.trim(),
+    approvals: [],
     status: ObjectiveStatus.PLANNED,
     createdAt,
     updatedAt: createdAt,
   };
 }
 
-export function createPlan(objective) {
-  return {
-    objectiveId: objective.id,
-    steps: [
-      { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING' },
-      { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING' },
-      { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING' },
-    ],
-  };
+export function approveTool(objective, tool) {
+  if (!tool || !tool.trim()) throw new Error('tool approval is required');
+  const approvals = new Set(Array.isArray(objective.approvals) ? objective.approvals : []);
+  approvals.add(tool.trim());
+  objective.approvals = [...approvals];
+  objective.updatedAt = new Date().toISOString();
+  return objective;
 }
