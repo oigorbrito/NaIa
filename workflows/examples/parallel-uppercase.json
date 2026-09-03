@@ -1,0 +1,30 @@
+{
+  "id": "parallel-uppercase",
+  "description": "Uppercase several values through a declarative fan-out/fan-in workflow.",
+  "steps": [
+    {
+      "id": "seed",
+      "kind": "TRANSFORM",
+      "value": [
+        { "text": "naia" },
+        { "text": "workflow" },
+        { "text": "branching" }
+      ]
+    },
+    {
+      "id": "fan",
+      "kind": "FAN_OUT",
+      "dependsOn": ["seed"],
+      "capability": "text.uppercase",
+      "items": { "$result": { "stepId": "seed" } },
+      "input": { "text": { "$item": "text" } },
+      "concurrency": 3
+    },
+    {
+      "id": "join",
+      "kind": "FAN_IN",
+      "dependsOn": ["fan"],
+      "from": ["fan"]
+    }
+  ]
+}
