@@ -13,6 +13,10 @@ function assertCapability(capability) {
   return capability;
 }
 
+function cloneSchema(value) {
+  return value == null ? null : structuredClone(value);
+}
+
 export function createCapabilityRegistry(initial = []) {
   const entries = new Map();
 
@@ -36,6 +40,11 @@ export function createCapabilityRegistry(initial = []) {
         scopes: [...(item.scopes ?? [])],
         description: item.description ?? '',
         source: item.source ?? 'local',
+        provider: item.provider ?? null,
+        pack: item.pack ?? null,
+        packVersion: item.packVersion ?? null,
+        inputSchema: cloneSchema(item.inputSchema),
+        outputSchema: cloneSchema(item.outputSchema),
       } : null;
     },
     list() { return [...entries.keys()].map((name) => this.describe(name)); },
