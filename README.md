@@ -46,6 +46,7 @@ Research artifacts remain available under `research/chassis/` and `docs/research
 
 Current decision state:
 
+- `PRODUCT_FOUNDATION_V1 = COMPLETE`
 - `FIRST_USEFUL_CAPABILITY_V1 = COMPLETE`
 - `CHASSIS_WINNER = NOT_SELECTED`
 - `BENCHMARK_TO_BEAT = NOT_SELECTED`
