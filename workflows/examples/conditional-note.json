@@ -1,0 +1,37 @@
+{
+  "id": "conditional-note",
+  "description": "Choose one branch from a transformed value and write only the selected note after approval.",
+  "steps": [
+    {
+      "id": "seed",
+      "kind": "TRANSFORM",
+      "value": { "priority": 7 }
+    },
+    {
+      "id": "gate",
+      "kind": "CONDITION",
+      "dependsOn": ["seed"],
+      "when": {
+        "left": { "$result": { "stepId": "seed", "path": "priority" } },
+        "op": "gte",
+        "right": 5
+      },
+      "then": ["high"],
+      "else": ["low"]
+    },
+    {
+      "id": "high",
+      "kind": "ACTION",
+      "dependsOn": ["gate"],
+      "capability": "note.write",
+      "input": { "name": "priority-high", "content": "High-priority workflow branch selected." }
+    },
+    {
+      "id": "low",
+      "kind": "ACTION",
+      "dependsOn": ["gate"],
+      "capability": "note.write",
+      "input": { "name": "priority-low", "content": "Low-priority workflow branch selected." }
+    }
+  ]
+}
