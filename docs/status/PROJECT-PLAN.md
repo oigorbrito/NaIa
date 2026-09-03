@@ -56,21 +56,34 @@ Result:
 
 Goal: execute frozen candidate profiles under equivalent neutral evidence rules.
 
-State: NEXT / NOT COMPLETE.
+State: BLOCKED / EXTERNAL EXECUTION ENVIRONMENT (2026-09-03).
 
-Primary constraints:
+Receipt: `docs/evidence/BLOCK-2-RUNTIME-QUALIFICATION-BLOCKED-2026-09-03.md`.
 
-- B001 blocks local exact-runtime installation/execution in the recorded environment;
-- B002 blocks repository CI before runner steps execute;
-- B003 keeps Trigger.dev T7 runtime verification blocked even though its worker-container boundary is structurally implemented.
+What was established:
 
-Exit requires reproducible critical-mutant verdicts sufficient for formal benchmark admission. A blocked or missing critical result cannot be silently promoted.
+- the Block 1 closing HEAD was revalidated before execution work;
+- GitHub Actions run `33801754420` was re-run at that baseline;
+- attempt 2 reproduced the pre-runner condition: Node 22 failure, Node 24 cancelled, both with no steps;
+- Temporal, DBOS and Restate candidate-specific critical runtime qualification workflows are present and structurally ready to emit isolated runtime evidence when a runner is available;
+- no candidate verdict was inferred from unavailable execution.
+
+Open constraints:
+
+- B001: exact local-runtime execution unavailable in the recorded local environment;
+- B002: repository GitHub Actions execution blocked before runner steps;
+- B003: Trigger.dev T7 self-hosted runtime proof absent;
+- B004: Trigger.dev T5/T11/T12/T16 structural coverage absent.
+
+Exit remains unsatisfied. `FORMAL_RUNTIME_QUALIFICATION = NOT_EXECUTED` and `FORMAL_LEDGER_APPEND = CLOSED`.
 
 ### Block 3 — Formal benchmark
 
 Goal: compare promotion-qualified candidates and select `BENCHMARK_TO_BEAT`.
 
-State: NOT STARTED.
+State: CLOSED BY BLOCK 2 GATE / NOT STARTED.
+
+Do not start while Block 2 lacks promotion-qualified critical runtime receipts.
 
 ### Block 4 — Chassis decision
 
@@ -90,6 +103,14 @@ After the chassis decision, reference architecture, capability evidence, empiric
 
 ## Current decision status
 
+`BLOCK_1_STRUCTURAL_CONSOLIDATION = PASS`
+
+`BLOCK_2_RUNTIME_QUALIFICATION = BLOCKED_EXTERNAL_EXECUTION_ENVIRONMENT`
+
+`FORMAL_RUNTIME_QUALIFICATION = NOT_EXECUTED`
+
+`FORMAL_LEDGER_APPEND = CLOSED`
+
 `CHASSIS_WINNER = NOT_SELECTED`
 
 `BENCHMARK_TO_BEAT = NOT_SELECTED`
@@ -98,4 +119,4 @@ After the chassis decision, reference architecture, capability evidence, empiric
 
 `MVP_SCOPE = NOT_FROZEN`
 
-Immediate next objective: Block 2 runtime qualification against the frozen structural baseline.
+Immediate next objective: restore a legitimate execution boundary and resume Block 2 from the frozen structural baseline. Do not advance to Block 3 before runtime qualification gates are satisfied.
