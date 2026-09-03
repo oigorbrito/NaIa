@@ -36,7 +36,9 @@ export function createProviderAwarePlanner({ fallbackPlanner } = {}) {
       const inferred = clauses.map((clause) => ({ clause, capability: inferCapability(clause) })).filter((item) => item.capability);
       if (!inferred.length) return fallbackPlanner.plan(objective, context);
 
-      const steps = [{ id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING', action: null }];
+      const understandId = `${objective.id}:understand`;
+      const steps = [{ id: understandId, kind: 'UNDERSTAND', status: 'PENDING', action: null }];
+      let previousStepId = understandId;
       for (let index = 0; index < inferred.length; index += 1) {
         const item = inferred[index];
         const descriptor = capabilities?.describe?.(item.capability);
@@ -45,10 +47,12 @@ export function createProviderAwarePlanner({ fallbackPlanner } = {}) {
         const availability = evaluateCapabilityAvailability(descriptor, connection);
         const action = actionFromCapability(capabilities, item.capability, parseJsonObject(item.clause));
         action.availability = availability;
-        steps.push({ id: `${objective.id}:provider:${index + 1}`, kind: 'EXECUTE', status: availability.available ? 'PENDING' : 'BLOCKED_CONNECTION', action });
+        const id = `${objective.id}:provider:${index + 1}`;
+        steps.push({ id, kind: 'EXECUTE', status: availability.available ? 'PENDING' : 'BLOCKED_CONNECTION', dependsOn: [previousStepId], action });
+        previousStepId = id;
       }
-      steps.push({ id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null });
-      return { objectiveId: objective.id, intent: objective.title, providerAware: true, steps };
+      steps.push({ id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', dependsOn: [previousStepId], action: null });
+      return { objectiveId: objective.id, intent: objective.title, providerAware: true, orchestrationVersion: 1, steps };
     },
   };
 }
