@@ -2,9 +2,22 @@
 import { createFilePorts } from './file-ports.mjs';
 import { createNaiaService } from './service.mjs';
 import { presentObjective } from './presenter.mjs';
+import { capabilitiesFromEnvironment } from './connectors.mjs';
+import { createConnectorAwarePlanner } from './connector-planner.mjs';
+import { planIntent } from './planner.mjs';
+import { runInteractiveSession } from './interaction.mjs';
 
 const [command = 'pursue', ...args] = process.argv.slice(2);
-const ports = createFilePorts({ rootDir: process.env.NAIA_DATA_DIR || '.naia' });
+const rootDir = process.env.NAIA_DATA_DIR || '.naia';
+const externalCapabilities = await capabilitiesFromEnvironment(process.env);
+const planner = createConnectorAwarePlanner({
+  fallbackPlanner: {
+    async plan(objective, context = {}) {
+      return planIntent(objective, context);
+    },
+  },
+});
+const ports = createFilePorts({ rootDir, capabilities: externalCapabilities, planner });
 const naia = createNaiaService(ports);
 
 function print(value) {
@@ -55,8 +68,10 @@ if (command === 'pursue') {
   print(await naia.history());
 } else if (command === 'tools' || command === 'capabilities') {
   print(naia.tools());
+} else if (command === 'session' || command === 'shell') {
+  await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, resume, approve, show, status, history, capabilities');
+  console.error('Commands: pursue, resume, approve, show, status, history, capabilities, session');
   process.exitCode = 2;
 }
