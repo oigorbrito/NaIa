@@ -1,14 +1,12 @@
 {
   "schemaVersion": 1,
-  "baselineDate": "2026-08-31",
-  "decisionState": {
-    "benchmarkToBeat": "NOT_SELECTED",
-    "chassisWinner": "NOT_SELECTED"
-  },
+  "baselineDate": "2026-09-03",
+  "decisionState": {"benchmarkToBeat":"NOT_SELECTED","chassisWinner":"NOT_SELECTED"},
   "blockers": {
     "B001": "LOCAL_RUNTIME_DEPENDENCY_INSTALL_UNAVAILABLE",
     "B002": "REMOTE_CI_RUNNER_UNAVAILABLE_OR_PRE_RUNNER_FAILURE",
-    "B003": "MANAGED_CONTROLLER_WORKER_SIGKILL_HOOK_IMPLEMENTED_NOT_RUNTIME_VERIFIED"
+    "B003": "TRIGGERDEV_T7_WORKER_CONTAINER_RUNTIME_PROOF_PENDING",
+    "B004": "TRIGGERDEV_T5_T11_T12_T16_STRUCTURAL_EXECUTORS_MISSING"
   },
   "candidates": [
     {
@@ -22,17 +20,15 @@
       "worker_process_under_test": "T7 uses adapter process hosting Temporal Worker; T5 uses two distinct Node Worker processes with explicit WorkerOptions.identity; T11/T12 use dedicated candidate-native worker/recovery drivers; T16 uses sequential A/B/A Worker processes on the same task queue and workflow identity while the Temporal server remains external durable authority",
       "external_effect_boundary": "Activity in research/chassis/adapters/temporal-ts/activities.mjs",
       "retry_semantics": "Activity at-least-once; workflow replay is deterministic under restricted profile",
-      "recovery_semantics": "restart Worker and attach to same workflowId/history; T11/T12 use dedicated recovery/stale-completion schedules; T16 replays the same history first under deliberately incompatible code B and then under original compatible code A",
-      "fencing_semantics": "Temporal activity task token / stale completion rejection; dedicated structural executors exist for T5/T11/T12; T16 uses native WorkflowTaskFailed Nondeterminism history evidence to reject incompatible replay",
+      "recovery_semantics": "restart Worker and attach to same workflowId/history; dedicated T5/T11/T12/T16 drivers provide the critical recovery paths",
+      "fencing_semantics": "candidate-native task/history authority; T16 uses WorkflowTaskFailed Nondeterminism history evidence to reject incompatible replay",
       "idempotency_requirement": "external side effects require stable operation identity plus provider idempotency or reconciliation",
       "license": "MIT SDK/server",
       "runtime_status": "BLOCKED_B001",
       "blocker": "B001",
+      "critical_structural_coverage": ["T5","T7","T8","T11","T12","T16"],
       "required_env": [],
-      "expected_commands": ["start","resume","status","cancel"],
-      "fault_injection_compatibility": "Structural formal executors are declared for all six critical mutants T5/T7/T8/T11/T12/T16; dedicated T5/T11/T12/T16 candidate drivers remain runtime-unverified because B001 blocks exact SDK/server execution; T15 remains noncritical qualification evidence",
-      "operation_identity_strategy": "operationId derived from objective semantic effect and preserved across retry/restart; T16 preserves workflowId and changes only the declared workflow implementation SHA dimension",
-      "worker_authority_boundary": "T5 explicitly uses two addressable Worker identities; T7 local adapter process is the Worker execution authority; T11/T12 use dedicated worker boundaries; T16 uses explicit A/B/A Worker identities while Temporal server/history remains durable authority"
+      "expected_commands": ["start","resume","status","cancel"]
     },
     {
       "candidate": "DBOS TypeScript",
@@ -42,20 +38,18 @@
       "package_manifest": "research/chassis/adapters/dbos-ts/package.json",
       "adapter": "research/chassis/adapters/dbos-ts/adapter.mjs",
       "mode": "local-process",
-      "worker_process_under_test": "T7 uses the local adapter/executor process; T5 uses two distinct DBOS executor processes; T11 uses two distinct Node worker processes across restart while preserving the same DBOS executorID; T12 uses distinct old/new executor authorities; T16 uses versioned worker processes with a stable executorID; PostgreSQL remains external durable authority",
-      "external_effect_boundary": "DBOS workflow/step in research/chassis/adapters/dbos-ts/workflows.mjs; T11 uses a neutral external oracle only as a post-cancel protected-operation recorder",
+      "worker_process_under_test": "critical drivers use distinct executor/process authorities while PostgreSQL remains external durable authority",
+      "external_effect_boundary": "DBOS workflow/step with neutral oracle at the external-effect boundary",
       "retry_semantics": "durable workflow/step recovery; external I/O is not generically exactly-once",
-      "recovery_semantics": "normal recovery uses durable PostgreSQL state; T5 induces candidate-native takeover with public resumeWorkflow; T11 restarts a process with the same stable executorID after durable cancellation; T12 challenges stale completion after newer authority commits; T16 challenges applicationVersion-compatible recovery routing with the same workflow/executor identity",
-      "fencing_semantics": "T5 observes workflow executorId/recovery ownership and native DLogger outcome refusal; T11 observes public cancelWorkflow persistence to CANCELLED plus DBOSAwaitedWorkflowCancelledError; T12 requires stale completion to remain non-authoritative after a new executor commits; T16 requires a version-A workflow not to recover under version B and then to recover under compatible version A",
+      "recovery_semantics": "durable PostgreSQL state with dedicated T5/T11/T12/T16 drivers",
+      "fencing_semantics": "candidate-native workflow/executor/version authority",
       "idempotency_requirement": "external side effects require stable operation identity plus provider idempotency or reconciliation",
       "license": "MIT SDK",
       "runtime_status": "BLOCKED_B001",
       "blocker": "B001",
+      "critical_structural_coverage": ["T5","T7","T8","T11","T12","T16"],
       "required_env": ["DBOS_SYSTEM_DATABASE_URL"],
-      "expected_commands": ["start","resume","status"],
-      "fault_injection_compatibility": "Structural formal executors are declared for all six critical mutants T5/T7/T8/T11/T12/T16; T15 remains a noncritical qualification slice. T5/T11/T12/T16 dedicated drivers are runtime-unverified; all candidate runtime execution remains blocked by B001 until exact SDK and PostgreSQL prerequisites are available",
-      "operation_identity_strategy": "workflowID=objectiveId and operationId is invariant across recovery; T16 preserves workflow/executor identity while mutating only applicationVersion",
-      "worker_authority_boundary": "T5/T12 use distinct executor authorities; T11 uses distinct process identities with one stable executorID across restart; T16 uses versioned processes with one stable executorID; PostgreSQL is durable authority; no private DB mutation or benchmark-only compatibility layer is used"
+      "expected_commands": ["start","resume","status"]
     },
     {
       "candidate": "Restate",
@@ -65,20 +59,18 @@
       "package_manifest": "research/chassis/adapters/restate-ts/package.json",
       "adapter": "research/chassis/adapters/restate-ts/adapter.mjs",
       "mode": "local-process",
-      "worker_process_under_test": "adapter process hosts the Restate service endpoint handler; SIGKILL kills only the user-code endpoint while Restate server remains external durable authority; dedicated T5/T11/T12/T16 drivers use distinct service endpoint process/deployment identities where the mutant requires ownership, recovery, stale-completion, or semantic-version challenges",
-      "external_effect_boundary": "ctx.run in research/chassis/adapters/restate-ts/workflow.mjs; T11 uses the neutral harness oracle only as a post-cancel protected-operation recorder",
-      "retry_semantics": "journaled invocation retry; ctx.run retains a documented effect-complete/checkpoint-loss duplicate window",
-      "recovery_semantics": "restart endpoint and attach to the same durable workflow identity through Restate server; T11 first proves native CancelledError plus persisted cancellation output, then kills the old endpoint and challenges resume from a distinct deployment; T12 advances deployment authority and submits a stale completion; T16 pauses an invocation after a durable ctx.run checkpoint, registers deployment B, then explicitly resumes on deployment=latest",
-      "fencing_semantics": "server v1.7.8 mints a fresh fencing token on each (re)invoke and drops effects carrying stale attempt tokens; T11 requires cancellation-specific SDK evidence and persisted terminal status before worker death; T12 uses native deployment/attempt authority for stale-completion rejection; T16 uses explicit native deployment routing rather than silent endpoint substitution",
+      "worker_process_under_test": "user-code endpoint processes are replaceable while Restate server remains external durable authority",
+      "external_effect_boundary": "ctx.run with neutral oracle at the external-effect boundary",
+      "retry_semantics": "journaled invocation retry; external effect semantics remain measured rather than assumed",
+      "recovery_semantics": "dedicated T5/T11/T12/T16 drivers use native deployment/invocation authority",
+      "fencing_semantics": "server attempt/deployment authority rejects stale effects",
       "idempotency_requirement": "external side effects require stable operation identity plus provider idempotency or reconciliation",
       "license": "SDK MIT; server BSL 1.1 with delayed Apache-2.0 conversion",
       "runtime_status": "BLOCKED_B001",
       "blocker": "B001",
+      "critical_structural_coverage": ["T5","T7","T8","T11","T12","T16"],
       "required_env": [],
-      "expected_commands": ["start","resume","status"],
-      "fault_injection_compatibility": "Structural formal executors are declared for all six critical mutants T5/T7/T8/T11/T12/T16. Dedicated T5/T11/T12/T16 drivers are implemented but remain runtime-unverified under B001; T15 remains noncritical qualification evidence",
-      "operation_identity_strategy": "workflow ID=objectiveId and operationId is invariant across retry/restart; T11 preserves workflow/invocation identity across cancellation and recovery challenge; T16 preserves objective identity while intentionally mutating Restate deploymentId A->B",
-      "worker_authority_boundary": "local endpoint executes user code while Restate server owns durable invocation authority; T11 kills endpoint A only after durable cancellation is independently observed and starts distinct deployment B for recovery challenge; T12/T16 keep the server alive while swapping separately registered endpoint deployments"
+      "expected_commands": ["start","resume","status"]
     },
     {
       "candidate": "Trigger.dev",
@@ -88,20 +80,19 @@
       "package_manifest": "research/chassis/adapters/triggerdev/package.json",
       "adapter": "research/chassis/adapters/triggerdev/adapter.mjs",
       "mode": "managed-controller",
-      "worker_process_under_test": "The frozen self-hosted Docker supervisor creates a workload container named runner-<runFriendlyId without run_> (plus -attempt-N on retries) and stamps TRIGGER_RUN_ID/TRIGGER_RUNNER_ID. The formal T7 hook resolves and validates that exact workload container; the adapter process remains controller-only and is never accepted as the T7 kill target. Runtime verification is still pending.",
+      "worker_process_under_test": "formal T7 resolves and validates the exact self-hosted runner workload container; controller/supervisor substitution is rejected",
       "external_effect_boundary": "task run in research/chassis/adapters/triggerdev/trigger/naia-objective.mjs",
-      "retry_semantics": "task failure retry policy is distinct from worker-container crash semantics; worker crash recovery must be measured directly against the self-hosted runner container",
-      "recovery_semantics": "controller reattaches by objective tag/idempotency identity; T7 now has a structural self-hosted worker-container SIGKILL path, but recovery remains runtime-unverified",
-      "fencing_semantics": "run-engine snapshot/run ownership checks exist upstream; T7 structural hook validates exact runner container identity before SIGKILL and requires post-kill death evidence before fault.injected=true",
+      "retry_semantics": "task retry policy is distinct from worker-container crash semantics",
+      "recovery_semantics": "T7 structural worker-container kill path exists but runtime recovery proof is pending",
+      "fencing_semantics": "run-engine ownership plus exact runner-container identity validation",
       "idempotency_requirement": "trigger idempotency prevents duplicate task creation, not arbitrary external side-effect duplication",
-      "license": "project source license must be evaluated separately from hosted/self-host deployment terms",
-      "runtime_status": "BLOCKED_B001_B003",
-      "blocker": "B001+B003",
+      "license": "project source license and hosted/self-host terms require separate evaluation",
+      "runtime_status": "BLOCKED_B001_B003_B004",
+      "blocker": "B001+B003+B004",
+      "critical_structural_coverage": ["T7","T8"],
+      "critical_structural_gap": ["T5","T11","T12","T16"],
       "required_env": ["TRIGGER_SECRET_KEY","NAIA_TRIGGER_PROJECT_REF","NAIA_EXTERNAL_ORACLE_URL"],
-      "expected_commands": ["start","resume","status","cancel"],
-      "fault_injection_compatibility": "T7 worker-container hook is structurally implemented against the frozen self-hosted Docker supervisor boundary and T8 controller-path is structurally supported; T7 remains blocked by B003 until an actual self-hosted run proves container identity, SIGKILL, control-plane survival, retry recovery, single external apply and cleanup. T5/T11/T12/T16 executors are not yet implemented; T15 remains noncritical evidence.",
-      "operation_identity_strategy": "objective-derived idempotency key plus invariant operationId passed to external oracle",
-      "worker_authority_boundary": "Trigger control plane schedules/owns the run; the task executes in a distinct self-hosted runner container. T7 may target only the exact validated runner container, never the adapter/controller or supervisor."
+      "expected_commands": ["start","resume","status","cancel"]
     }
   ]
 }
