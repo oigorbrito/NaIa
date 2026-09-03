@@ -10,36 +10,11 @@ function safeNoteName(name) {
 
 export function createToolRegistry({ rootDir = '.naia', capabilities = [] } = {}) {
   const registry = createCapabilityRegistry([
+    { name: 'time.now', risk: CapabilityRisk.READ_ONLY, scopes: ['clock:read'], description: 'Read the current local process time as ISO-8601.', source: 'local', async invoke() { return { iso: new Date().toISOString() }; } },
+    { name: 'text.uppercase', risk: CapabilityRisk.READ_ONLY, scopes: ['text:transform'], description: 'Transform text to uppercase.', source: 'local', async invoke(input) { return { text: String(input?.text ?? '').toUpperCase() }; } },
+    { name: 'text.echo', risk: CapabilityRisk.READ_ONLY, scopes: ['text:read'], description: 'Echo text unchanged.', source: 'local', async invoke(input) { return { text: String(input?.text ?? '') }; } },
     {
-      name: 'time.now',
-      risk: CapabilityRisk.READ_ONLY,
-      scopes: ['clock:read'],
-      description: 'Read the current local process time as ISO-8601.',
-      source: 'local',
-      async invoke() { return { iso: new Date().toISOString() }; },
-    },
-    {
-      name: 'text.uppercase',
-      risk: CapabilityRisk.READ_ONLY,
-      scopes: ['text:transform'],
-      description: 'Transform text to uppercase.',
-      source: 'local',
-      async invoke(input) { return { text: String(input?.text ?? '').toUpperCase() }; },
-    },
-    {
-      name: 'text.echo',
-      risk: CapabilityRisk.READ_ONLY,
-      scopes: ['text:read'],
-      description: 'Echo text unchanged.',
-      source: 'local',
-      async invoke(input) { return { text: String(input?.text ?? '') }; },
-    },
-    {
-      name: 'note.write',
-      risk: CapabilityRisk.LOCAL_WRITE,
-      scopes: ['workspace:notes:write'],
-      description: 'Write a note into the local NaIA workspace.',
-      source: 'local',
+      name: 'note.write', risk: CapabilityRisk.LOCAL_WRITE, scopes: ['workspace:notes:write'], description: 'Write a note into the local NaIA workspace.', source: 'local',
       async invoke(input) {
         const notesDir = join(rootDir, 'workspace', 'notes');
         await mkdir(notesDir, { recursive: true });
@@ -57,7 +32,8 @@ export function createToolRegistry({ rootDir = '.naia', capabilities = [] } = {}
     register: registry.register,
     has: registry.has,
     describe: registry.describe,
-    list: registry.list.bind(registry),
+    list() { return registry.list().map(({ name, risk }) => ({ name, risk })); },
+    catalog() { return registry.list(); },
     async run(name, input, context = {}) { return registry.invoke(name, input, context); },
   };
 }
