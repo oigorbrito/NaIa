@@ -5,6 +5,7 @@ import { createPlannerProvider } from './planner-provider.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
 import { createConnectionRecord } from './connection-state.mjs';
+import { createAutomationDefinition } from './automations.mjs';
 
 async function readJson(path, fallback) {
   try {
@@ -27,14 +28,13 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
   const plansPath = join(rootDir, 'plans.json');
   const evidencePath = join(rootDir, 'evidence.jsonl');
   const connectionsPath = join(rootDir, 'connections.json');
+  const automationsPath = join(rootDir, 'automations.json');
   const registry = createToolRegistry({ rootDir, capabilities });
   const plannerProvider = planner ?? createPlannerProvider({
     async plan(objective, context = {}) { return planIntent(objective, { ...context, capabilities: registry }); },
   });
 
-  async function readMap(path) {
-    return readJson(path, {});
-  }
+  async function readMap(path) { return readJson(path, {}); }
 
   return {
     objectives: {
@@ -48,9 +48,7 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
         const all = await readMap(objectivesPath);
         return all[id] ? structuredClone(all[id]) : null;
       },
-      async list() {
-        return Object.values(await readMap(objectivesPath)).map((value) => structuredClone(value));
-      },
+      async list() { return Object.values(await readMap(objectivesPath)).map((value) => structuredClone(value)); },
     },
     plans: {
       async save(plan) {
@@ -72,10 +70,7 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
       },
       async list({ objectiveId } = {}) {
         try {
-          const rows = (await readFile(evidencePath, 'utf8'))
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((line) => JSON.parse(line));
+          const rows = (await readFile(evidencePath, 'utf8')).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
           return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
         } catch (error) {
           if (error?.code === 'ENOENT') return [];
@@ -95,8 +90,33 @@ export function createFilePorts({ rootDir = '.naia', capabilities = [], planner 
         const all = await readMap(connectionsPath);
         return all[provider] ? structuredClone(all[provider]) : null;
       },
-      async list() {
-        return Object.values(await readMap(connectionsPath)).map((value) => structuredClone(value));
+      async list() { return Object.values(await readMap(connectionsPath)).map((value) => structuredClone(value)); },
+    },
+    automations: {
+      async save(input) {
+        const all = await readMap(automationsPath);
+        const existing = input?.id ? all[input.id] : null;
+        const normalized = createAutomationDefinition({
+          ...input,
+          createdAt: existing?.createdAt ?? input?.createdAt,
+          updatedAt: new Date().toISOString(),
+        });
+        all[normalized.id] = normalized;
+        await writeJsonAtomic(automationsPath, all);
+        return structuredClone(normalized);
+      },
+      async get(id) {
+        const all = await readMap(automationsPath);
+        return all[id] ? structuredClone(all[id]) : null;
+      },
+      async list() { return Object.values(await readMap(automationsPath)).map((value) => structuredClone(value)); },
+      async setEnabled(id, enabled) {
+        const all = await readMap(automationsPath);
+        if (!all[id]) throw new Error(`automation not found: ${id}`);
+        const normalized = createAutomationDefinition({ ...all[id], enabled: Boolean(enabled), updatedAt: new Date().toISOString() });
+        all[id] = normalized;
+        await writeJsonAtomic(automationsPath, all);
+        return structuredClone(normalized);
       },
     },
     planner: plannerProvider,
