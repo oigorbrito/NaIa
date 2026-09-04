@@ -1,0 +1,21 @@
+{
+  "wave": "LIVE_PROVIDER_CONTROL_PLANE_AND_SCHEDULER_BINDING_V1",
+  "status": "COMPLETE",
+  "base": "product/provider-subscription-scheduler-adapter-v1",
+  "delivered": [
+    "live GitHub webhook REST client",
+    "live Gmail watch REST client",
+    "live Google Calendar channel REST client",
+    "provider subscription adapter composition",
+    "HTTP scheduler adapter",
+    "authenticated scheduler callback ingress",
+    "provider credential non-persistence tests",
+    "scheduler binding tests"
+  ],
+  "boundaries": {
+    "live_provider_account_verification": "NOT_EXECUTED",
+    "concrete_durable_scheduler_vendor": "NOT_SELECTED",
+    "durable_execution_adapter": "NOT_SELECTED",
+    "chassis_winner": "NOT_SELECTED"
+  }
+}
