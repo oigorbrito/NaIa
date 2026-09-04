@@ -6,6 +6,7 @@ function nowIso() { return new Date().toISOString(); }
 export function createControlPlaneOperations({
   subscriptions,
   schedulerBridge,
+  journal = null,
   renewalWindowMs = 24 * 60 * 60 * 1000,
   now = () => Date.now(),
 } = {}) {
@@ -13,6 +14,7 @@ export function createControlPlaneOperations({
     throw new Error('provider subscription manager is required');
   }
   if (!schedulerBridge?.sync) throw new Error('scheduler bridge is required');
+  if (journal && (!journal.append || !journal.list)) throw new Error('control plane journal must provide append/list');
 
   async function health() {
     const rows = await subscriptions.list();
@@ -82,7 +84,7 @@ export function createControlPlaneOperations({
     const repaired = repair ? await repairFailed() : { scanned: 0, repaired: [], failed: [] };
     const scheduler = await syncScheduler();
     const status = await health();
-    return {
+    const entry = {
       startedAt,
       completedAt: nowIso(),
       renewal,
@@ -91,7 +93,13 @@ export function createControlPlaneOperations({
       health: status,
       ok: renewal.failed.length === 0 && repaired.failed.length === 0 && scheduler.ok && status.healthy,
     };
+    if (journal) await journal.append(entry);
+    return entry;
   }
 
-  return { health, renewExpiring, repairFailed, syncScheduler, runMaintenance };
+  async function history({ limit = 50 } = {}) {
+    return journal ? journal.list({ limit }) : [];
+  }
+
+  return { health, renewExpiring, repairFailed, syncScheduler, runMaintenance, history };
 }
