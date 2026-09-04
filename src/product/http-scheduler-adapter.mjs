@@ -6,6 +6,13 @@ function headers(token) {
   return value;
 }
 
+function requestHeader(request, name) {
+  const target = String(name).toLowerCase();
+  const entries = request?.headers instanceof Headers ? [...request.headers.entries()] : Object.entries(request?.headers ?? {});
+  const pair = entries.find(([key]) => String(key).toLowerCase() === target);
+  return pair ? String(pair[1]) : '';
+}
+
 async function parse(response, label) {
   const text = await response.text();
   let body = null;
@@ -56,4 +63,28 @@ export function createHttpSchedulerAdapter({
       return Array.isArray(body) ? body : body?.registrations ?? [];
     },
   });
+}
+
+export function createSchedulerCallbackIngress({ bridge, token = '' } = {}) {
+  if (!bridge?.occurrence) throw new Error('scheduler bridge occurrence is required');
+  const expected = String(token ?? '');
+  return {
+    async handle(request) {
+      if (String(request?.method ?? 'POST').toUpperCase() !== 'POST') return { status: 405, body: { error: 'method-not-allowed' } };
+      if (expected && requestHeader(request, 'authorization') !== `Bearer ${expected}`) {
+        return { status: 401, body: { error: 'unauthorized' } };
+      }
+      try {
+        const body = request?.body ?? {};
+        const automationId = String(body.automationId ?? '').trim();
+        const scheduledFor = String(body.scheduledFor ?? '').trim();
+        if (!automationId) throw new Error('automationId is required');
+        if (!scheduledFor || Number.isNaN(Date.parse(scheduledFor))) throw new Error('scheduledFor must be a date-time');
+        const result = await bridge.occurrence({ automationId, scheduledFor, metadata: body.metadata ?? {} });
+        return { status: result?.deduplicated ? 200 : 202, body: result };
+      } catch (error) {
+        return { status: 400, body: { error: 'invalid-occurrence', message: error?.message ?? String(error) } };
+      }
+    },
+  };
 }
