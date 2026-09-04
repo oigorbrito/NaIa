@@ -8,19 +8,13 @@ function nowIso() { return new Date().toISOString(); }
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
-  }
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
   return value;
 }
 
 export function deriveIdempotencyKey(delivery) {
   if (delivery?.idempotencyKey) return String(delivery.idempotencyKey);
-  const material = JSON.stringify(canonical({
-    automationId: delivery?.automationId,
-    trigger: delivery?.trigger ?? {},
-    parameters: delivery?.parameters ?? {},
-  }));
+  const material = JSON.stringify(canonical({ automationId: delivery?.automationId, trigger: delivery?.trigger ?? {}, parameters: delivery?.parameters ?? {} }));
   return createHash('sha256').update(material).digest('hex');
 }
 
@@ -48,15 +42,9 @@ function normalizeDelivery(kind, input = {}) {
   };
 }
 
-export function createManualTriggerAdapter() {
-  return { kind: AutomationTriggerKind.MANUAL, normalize(input) { return normalizeDelivery(AutomationTriggerKind.MANUAL, input); } };
-}
-export function createScheduleTriggerAdapter() {
-  return { kind: AutomationTriggerKind.SCHEDULE, normalize(input) { return normalizeDelivery(AutomationTriggerKind.SCHEDULE, input); } };
-}
-export function createEventTriggerAdapter() {
-  return { kind: AutomationTriggerKind.EVENT, normalize(input) { return normalizeDelivery(AutomationTriggerKind.EVENT, input); } };
-}
+export function createManualTriggerAdapter() { return { kind: AutomationTriggerKind.MANUAL, normalize(input) { return normalizeDelivery(AutomationTriggerKind.MANUAL, input); } }; }
+export function createScheduleTriggerAdapter() { return { kind: AutomationTriggerKind.SCHEDULE, normalize(input) { return normalizeDelivery(AutomationTriggerKind.SCHEDULE, input); } }; }
+export function createEventTriggerAdapter() { return { kind: AutomationTriggerKind.EVENT, normalize(input) { return normalizeDelivery(AutomationTriggerKind.EVENT, input); } }; }
 
 export function createTriggerAdapterRegistry(adapters = [createManualTriggerAdapter(), createScheduleTriggerAdapter(), createEventTriggerAdapter()]) {
   const byKind = new Map(adapters.map((adapter) => [adapter.kind, adapter]));
@@ -75,13 +63,8 @@ export function createAutomationRunStore(initial = []) {
   const rows = initial.map((row) => clone(row));
   return {
     async append(run) { rows.push(clone(run)); return clone(run); },
-    async list({ automationId } = {}) {
-      return rows.filter((row) => !automationId || row.automationId === automationId).map(clone);
-    },
-    async findByIdempotencyKey(key) {
-      const row = rows.find((item) => item.idempotencyKey === key);
-      return row ? clone(row) : null;
-    },
+    async list({ automationId } = {}) { return rows.filter((row) => !automationId || row.automationId === automationId).map(clone); },
+    async findByIdempotencyKey(key) { const row = rows.find((item) => item.idempotencyKey === key); return row ? clone(row) : null; },
     async update(id, patch) {
       const index = rows.findIndex((row) => row.id === id);
       if (index < 0) throw new Error(`automation run not found: ${id}`);
@@ -133,14 +116,23 @@ export function createFileAutomationRunStore({ rootDir = '.naia' } = {}) {
 
 export function createAutomationTriggerRuntime({ naia, runs, adapters = createTriggerAdapterRegistry() } = {}) {
   if (!naia?.triggerAutomation) throw new Error('naia.triggerAutomation is required');
-  if (!runs?.append || !runs?.findByIdempotencyKey || !runs?.list) throw new Error('automation run store is required');
+  if (!runs?.append || !runs?.findByIdempotencyKey || !runs?.list || !runs?.update) throw new Error('automation run store is required');
+
+  async function reconcile(row) {
+    if (!row?.objectiveId || typeof naia.get !== 'function') return row;
+    const snapshot = await naia.get(row.objectiveId);
+    const objectiveStatus = snapshot?.objective?.status;
+    if (!objectiveStatus || objectiveStatus === row.status) return row;
+    return runs.update(row.id, { status: objectiveStatus });
+  }
+
   return {
     adapters() { return adapters.kinds(); },
     async dispatch(rawDelivery) {
       const delivery = adapters.normalize(rawDelivery);
       const idempotencyKey = deriveIdempotencyKey(delivery);
       const existing = await runs.findByIdempotencyKey(idempotencyKey);
-      if (existing) return { deduplicated: true, run: existing };
+      if (existing) return { deduplicated: true, run: await reconcile(existing) };
       const createdAt = nowIso();
       const run = await runs.append({
         id: randomUUID(), automationId: delivery.automationId, idempotencyKey,
@@ -156,6 +148,11 @@ export function createAutomationTriggerRuntime({ naia, runs, adapters = createTr
         throw error;
       }
     },
-    async history(automationId) { return runs.list({ automationId }); },
+    async history(automationId) {
+      const rows = await runs.list({ automationId });
+      const reconciled = [];
+      for (const row of rows) reconciled.push(await reconcile(row));
+      return reconciled.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    },
   };
 }
