@@ -4,6 +4,7 @@ import { evaluateCapabilityAvailability } from './connection-state.mjs';
 import { createResultStore, dependenciesSatisfied, resolveResultRefs, validatePlanDependencies } from './orchestration.mjs';
 import { collectFanInResult, compileWorkflow, evaluateCondition, expandFanOut, resolveWorkflowValue } from './workflows.mjs';
 import { summarizeAutomationPlan } from './automation-surface.mjs';
+import { assertTriggerMatches, AutomationTriggerKind, instantiateAutomationWorkflow } from './automations.mjs';
 
 async function refreshConnectionAvailability(ports, step) {
   if (!step.action) return { available: true, reason: 'control-step', missingScopes: [] };
@@ -137,7 +138,27 @@ async function persistNewPlan(ports, objective, plan) {
   await ports.objectives.save(objective);
   await ports.plans.save(plan);
   await ports.evidence.append({ type: 'OBJECTIVE_CREATED', objectiveId: objective.id, intent: plan.intent ?? objective.title, at: objective.createdAt });
-  await ports.evidence.append({ type: 'PLAN_CREATED', objectiveId: objective.id, workflowId: plan.workflowId ?? null, declarative: Boolean(plan.declarative), authored: Boolean(plan.authored), steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, capability: step.action?.capability ?? step.action?.tool ?? null, scopes: step.action?.scopes ?? [], status: step.status, dependsOn: step.dependsOn ?? [] })), at: new Date().toISOString() });
+  await ports.evidence.append({ type: 'PLAN_CREATED', objectiveId: objective.id, workflowId: plan.workflowId ?? null, declarative: Boolean(plan.declarative), authored: Boolean(plan.authored), automationId: plan.automation?.id ?? null, steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, capability: step.action?.capability ?? step.action?.tool ?? null, scopes: step.action?.scopes ?? [], status: step.status, dependsOn: step.dependsOn ?? [] })), at: new Date().toISOString() });
+}
+
+async function proposeAutomationExecution(ports, automation, trigger, suppliedParameters = {}) {
+  if (!automation.enabled) throw new Error(`automation is disabled: ${automation.id}`);
+  assertTriggerMatches(automation, trigger);
+  const instantiated = instantiateAutomationWorkflow(automation, suppliedParameters);
+  const objective = createObjective({ title: automation.name, description: automation.description });
+  const plan = compileWorkflow(instantiated.workflow, { objectiveId: objective.id, capabilities: ports.tools });
+  plan.automation = {
+    id: automation.id,
+    name: automation.name,
+    trigger: structuredClone(trigger),
+    parameters: instantiated.parameters,
+  };
+  objective.status = ObjectiveStatus.WAITING_CONFIRMATION;
+  objective.updatedAt = new Date().toISOString();
+  await persistNewPlan(ports, objective, plan);
+  const proposal = summarizeAutomationPlan(plan);
+  await ports.evidence.append({ type: 'AUTOMATION_RUN_PROPOSED', objectiveId: objective.id, automationId: automation.id, trigger: structuredClone(trigger), parameters: instantiated.parameters, proposal, at: objective.updatedAt });
+  return { objective, plan, proposal, automation };
 }
 
 export function createNaiaService(rawPorts) {
@@ -168,7 +189,7 @@ export function createNaiaService(rawPorts) {
       objective.status = ObjectiveStatus.PLANNED;
       objective.updatedAt = new Date().toISOString();
       await ports.objectives.save(objective);
-      await ports.evidence.append({ type: 'AUTOMATION_CONFIRMED', objectiveId, at: objective.updatedAt });
+      await ports.evidence.append({ type: 'AUTOMATION_CONFIRMED', objectiveId, automationId: plan.automation?.id ?? null, at: objective.updatedAt });
       return executePlan(ports, objective, plan);
     },
     async proposal(objectiveId) {
@@ -176,6 +197,28 @@ export function createNaiaService(rawPorts) {
       const plan = await ports.plans.get(objectiveId);
       if (!objective || !plan) return null;
       return { objective, plan, proposal: summarizeAutomationPlan(plan) };
+    },
+    async createAutomation(definition) {
+      const saved = await ports.automations.save(definition);
+      await ports.evidence.append({ type: 'AUTOMATION_SAVED', automationId: saved.id, name: saved.name, enabled: saved.enabled, trigger: saved.trigger, at: saved.updatedAt });
+      return saved;
+    },
+    async automations() { return ports.automations.list(); },
+    async automation(id) { return ports.automations.get(id); },
+    async setAutomationEnabled(id, enabled) {
+      const saved = await ports.automations.setEnabled(id, enabled);
+      await ports.evidence.append({ type: enabled ? 'AUTOMATION_ENABLED' : 'AUTOMATION_DISABLED', automationId: saved.id, at: saved.updatedAt });
+      return saved;
+    },
+    async runAutomation(id, parameters = {}) {
+      const automation = await ports.automations.get(id);
+      if (!automation) throw new Error(`automation not found: ${id}`);
+      return proposeAutomationExecution(ports, automation, { kind: AutomationTriggerKind.MANUAL }, parameters);
+    },
+    async triggerAutomation(id, trigger, parameters = {}) {
+      const automation = await ports.automations.get(id);
+      if (!automation) throw new Error(`automation not found: ${id}`);
+      return proposeAutomationExecution(ports, automation, trigger, parameters);
     },
     async runWorkflow(definition, input = {}) {
       const objective = createObjective({ title: input.title ?? definition.description ?? definition.id, description: input.description ?? '' });
