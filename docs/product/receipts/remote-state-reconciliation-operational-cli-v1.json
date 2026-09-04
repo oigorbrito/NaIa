@@ -1,0 +1,22 @@
+{
+  "wave": "REMOTE_STATE_RECONCILIATION_AND_OPERATIONAL_CLI_V1",
+  "status": "COMPLETE",
+  "base": "product/control-plane-operations-auto-renewal-v1",
+  "delivered": [
+    "remote subscription probe contract",
+    "GitHub webhook remote probe",
+    "remote/local drift classification",
+    "safe subscription recreate",
+    "orphan remote repair",
+    "environment-composed operational control plane",
+    "control-plane operational CLI",
+    "focused reconciliation and CLI tests"
+  ],
+  "boundaries": {
+    "gmail_remote_watch_probe": "UNVERIFIABLE_BY_DIRECT_READ_V1",
+    "calendar_remote_channel_probe": "UNVERIFIABLE_BY_DIRECT_READ_V1",
+    "embedded_maintenance_loop": "NOT_IMPLEMENTED",
+    "durable_execution_adapter": "NOT_SELECTED",
+    "chassis_winner": "NOT_SELECTED"
+  }
+}
