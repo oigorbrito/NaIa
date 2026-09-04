@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export const ObjectiveStatus = Object.freeze({
   PLANNED: 'PLANNED',
+  WAITING_CONFIRMATION: 'WAITING_CONFIRMATION',
   RUNNING: 'RUNNING',
   WAITING_APPROVAL: 'WAITING_APPROVAL',
   WAITING_CONNECTION: 'WAITING_CONNECTION',

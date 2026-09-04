@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { createFilePorts } from './file-ports.mjs';
 import { createNaiaService } from './service.mjs';
 import { presentObjective } from './presenter.mjs';
+import { presentAutomationProposal } from './automation-surface.mjs';
+import { createAutomationPlanner } from './automation-planner.mjs';
 import { createConnectorGateway } from './connectors.mjs';
 import { createConnectorAwarePlanner } from './connector-planner.mjs';
 import { createProviderAwarePlanner } from './provider-aware-planner.mjs';
@@ -24,10 +26,7 @@ async function loadExternalCapabilities() {
   const compatibleNames = new Set(compatibility.filter((item) => item.available && item.compatible).map((item) => item.name));
   const canonical = createGatewayProviderPackCapabilities({ gateway }).filter((item) => compatibleNames.has(item.name));
   const canonicalNames = new Set(canonical.map((item) => item.name));
-  const custom = manifest.filter((item) => !canonicalNames.has(item.name)).map((item) => ({
-    ...item,
-    async invoke(input, context) { return gateway.invoke(item.name, input, context); },
-  }));
+  const custom = manifest.filter((item) => !canonicalNames.has(item.name)).map((item) => ({ ...item, async invoke(input, context) { return gateway.invoke(item.name, input, context); } }));
   return [...canonical, ...custom];
 }
 
@@ -39,10 +38,9 @@ async function readWorkflow(path) {
 }
 
 const externalCapabilities = await loadExternalCapabilities();
-const connectorPlanner = createConnectorAwarePlanner({
-  fallbackPlanner: { async plan(objective, context = {}) { return planIntent(objective, context); } },
-});
-const planner = createProviderAwarePlanner({ fallbackPlanner: connectorPlanner });
+const connectorPlanner = createConnectorAwarePlanner({ fallbackPlanner: { async plan(objective, context = {}) { return planIntent(objective, context); } } });
+const providerPlanner = createProviderAwarePlanner({ fallbackPlanner: connectorPlanner });
+const planner = createAutomationPlanner({ fallbackPlanner: providerPlanner });
 const ports = createFilePorts({ rootDir, capabilities: externalCapabilities, planner });
 const naia = createNaiaService(ports);
 
@@ -53,6 +51,21 @@ if (command === 'pursue') {
   const title = args.join(' ').trim();
   if (!title) { console.error('Usage: npm run start:product -- pursue <objective>'); process.exitCode = 2; }
   else print(await naia.pursue({ title }));
+} else if (command === 'automate' || command === 'propose') {
+  const title = args.join(' ').trim();
+  if (!title) { console.error('Usage: npm run start:product -- automate <request>'); process.exitCode = 2; }
+  else {
+    const proposed = await naia.propose({ title });
+    print(presentAutomationProposal(proposed));
+  }
+} else if (command === 'proposal') {
+  const [objectiveId] = args;
+  if (!objectiveId) { console.error('Usage: npm run start:product -- proposal <objectiveId>'); process.exitCode = 2; }
+  else print(presentAutomationProposal(await naia.proposal(objectiveId) ?? {}));
+} else if (command === 'confirm') {
+  const [objectiveId] = args;
+  if (!objectiveId) { console.error('Usage: npm run start:product -- confirm <objectiveId>'); process.exitCode = 2; }
+  else print(await naia.confirm(objectiveId));
 } else if (command === 'workflow:validate') {
   const [path] = args;
   try { const workflow = await readWorkflow(path); print({ valid: true, id: workflow.id, steps: workflow.steps.length }); }
@@ -98,10 +111,8 @@ if (command === 'pursue') {
   print(await naia.connections());
 } else if (command === 'connection:set') {
   const [provider, status, scopes = ''] = args;
-  if (!provider || !status) {
-    console.error('Usage: npm run start:product -- connection:set <provider> <CONNECTED|DISCONNECTED|PERMISSION_MISSING> [scope1,scope2]');
-    process.exitCode = 2;
-  } else {
+  if (!provider || !status) { console.error('Usage: npm run start:product -- connection:set <provider> <CONNECTED|DISCONNECTED|PERMISSION_MISSING> [scope1,scope2]'); process.exitCode = 2; }
+  else {
     const grantedScopes = status === 'CONNECTED' ? parseScopes(scopes) : [];
     const missingScopes = status === 'PERMISSION_MISSING' ? parseScopes(scopes) : [];
     print(await naia.setConnection({ provider, status, grantedScopes, missingScopes }));
@@ -110,6 +121,6 @@ if (command === 'pursue') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
+  console.error('Commands: pursue, automate, proposal, confirm, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
   process.exitCode = 2;
 }
