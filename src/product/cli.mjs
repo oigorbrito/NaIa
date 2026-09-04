@@ -13,6 +13,7 @@ import { runInteractiveSession } from './interaction.mjs';
 import { listProviderPacks } from './provider-packs.mjs';
 import { assertProviderCapabilityManifest, createGatewayProviderPackCapabilities, providerCapabilitySchema } from './provider-pack-adapter.mjs';
 import { validateWorkflowDefinition } from './workflows.mjs';
+import { createAutomationTriggerRuntime, createFileAutomationRunStore } from './trigger-runtime.mjs';
 
 const [command = 'pursue', ...args] = process.argv.slice(2);
 const rootDir = process.env.NAIA_DATA_DIR || '.naia';
@@ -54,6 +55,7 @@ const providerPlanner = createProviderAwarePlanner({ fallbackPlanner: connectorP
 const planner = createAutomationPlanner({ fallbackPlanner: providerPlanner });
 const ports = createFilePorts({ rootDir, capabilities: externalCapabilities, planner });
 const naia = createNaiaService(ports);
+const triggerRuntime = createAutomationTriggerRuntime({ naia, runs: createFileAutomationRunStore({ rootDir }) });
 
 function print(value) { process.stdout.write(`${JSON.stringify(value, null, 2)}\n`); }
 function parseScopes(value = '') { return String(value).split(',').map((scope) => scope.trim()).filter(Boolean); }
@@ -96,6 +98,14 @@ if (command === 'pursue') {
   const [id, triggerJson, paramsJson] = args;
   if (!id || !triggerJson) { console.error('Usage: npm run start:product -- automation:trigger <id> <trigger-json> [params-json]'); process.exitCode = 2; }
   else print(presentAutomationProposal(await naia.triggerAutomation(id, parseJsonArg(triggerJson), parseJsonArg(paramsJson))));
+} else if (command === 'automation:deliver') {
+  const [deliveryJson] = args;
+  if (!deliveryJson) { console.error('Usage: npm run start:product -- automation:deliver <delivery-json>'); process.exitCode = 2; }
+  else print(await triggerRuntime.dispatch(parseJsonArg(deliveryJson)));
+} else if (command === 'automation:history') {
+  const [id] = args;
+  if (!id) { console.error('Usage: npm run start:product -- automation:history <id>'); process.exitCode = 2; }
+  else print(await triggerRuntime.history(id));
 } else if (command === 'workflow:validate') {
   const [path] = args;
   try { const workflow = await readWorkflow(path); print({ valid: true, id: workflow.id, steps: workflow.steps.length }); }
@@ -151,6 +161,6 @@ if (command === 'pursue') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, automate, proposal, confirm, automation:create, automations, automation:show, automation:enable, automation:disable, automation:run, automation:trigger, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
+  console.error('Commands: pursue, automate, proposal, confirm, automation:create, automations, automation:show, automation:enable, automation:disable, automation:run, automation:trigger, automation:deliver, automation:history, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
   process.exitCode = 2;
 }
