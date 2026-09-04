@@ -7,6 +7,7 @@
     "test:product": "node --test test/product/*.test.mjs",
     "start:product": "node src/product/cli.mjs",
     "session:product": "node src/product/cli.mjs session",
+    "control:product": "node src/product/control-plane-cli.mjs",
     "test:chassis": "node --test research/chassis/harness/*.test.mjs",
     "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
     "single:chassis": "node research/chassis/harness/formal-single-run.mjs",
