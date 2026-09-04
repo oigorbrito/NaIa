@@ -7,6 +7,7 @@ import { AutomationTriggerKind } from '../../src/product/automations.mjs';
 import { createAutomationRunStore, createAutomationTriggerRuntime } from '../../src/product/trigger-runtime.mjs';
 import { createBearerIngressAuthenticator } from '../../src/product/trigger-ingress.mjs';
 import { createGitHubWebhookAdapter, createGmailPushAdapter, createGoogleCalendarWebhookAdapter, createProviderWebhookIngress } from '../../src/product/provider-webhooks.mjs';
+import { createProviderWebhookHttpServer } from '../../src/product/provider-webhook-server.mjs';
 import { createScheduleSource } from '../../src/product/schedule-source.mjs';
 
 function workflow(text = 'ok') {
@@ -91,6 +92,30 @@ test('google calendar webhook derives stable event identity from x-goog headers'
   const second = await ingress.handle(request);
   assert.equal(second.status, 200);
   assert.equal(second.body.deduplicated, true);
+});
+
+test('provider webhook HTTP router accepts a signed GitHub delivery', async () => {
+  const { runtime } = await setupAutomation({
+    id: 'github-http', name: 'GitHub HTTP', enabled: true,
+    trigger: { kind: 'EVENT', event: 'github.issues', source: 'github' }, workflow: workflow('http'),
+  });
+  const secret = 'router-secret';
+  const server = createProviderWebhookHttpServer({ runtime, adapters: { github: createGitHubWebhookAdapter({ secret }) }, port: 0 });
+  const address = await server.start();
+  try {
+    const rawBody = JSON.stringify({ action: 'opened' });
+    const signature = `sha256=${createHmac('sha256', secret).update(rawBody).digest('hex')}`;
+    const response = await fetch(`http://127.0.0.1:${address.port}/webhooks/github/github-http`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': signature, 'x-github-event': 'issues', 'x-github-delivery': 'delivery-http-1' },
+      body: rawBody,
+    });
+    assert.equal(response.status, 202);
+    const body = await response.json();
+    assert.equal(body.objective.status, 'WAITING_CONFIRMATION');
+  } finally {
+    await server.stop();
+  }
 });
 
 test('schedule source emits deterministic occurrence deliveries and deduplicates replay', async () => {
