@@ -1,0 +1,32 @@
+{
+  "id": "daily-uppercase",
+  "name": "Daily uppercase",
+  "description": "Transform a configured text through the reusable automation surface.",
+  "enabled": false,
+  "trigger": {
+    "kind": "SCHEDULE",
+    "schedule": "0 9 * * *",
+    "timezone": "America/Sao_Paulo"
+  },
+  "parameters": {
+    "text": {
+      "required": true,
+      "description": "Text to uppercase"
+    }
+  },
+  "workflow": {
+    "id": "daily-uppercase-workflow",
+    "steps": [
+      {
+        "id": "uppercase",
+        "kind": "ACTION",
+        "capability": "text.uppercase",
+        "input": {
+          "text": {
+            "$param": "text"
+          }
+        }
+      }
+    ]
+  }
+}
