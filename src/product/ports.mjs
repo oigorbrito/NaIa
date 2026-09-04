@@ -2,13 +2,19 @@ import { planIntent } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
 import { createConnectionStateStore } from './connection-state.mjs';
+import { createAutomationStore } from './automations.mjs';
 
 export function assertProductPorts(ports) {
-  const required = ['objectives', 'plans', 'evidence', 'planner', 'policy', 'execution', 'connections'];
+  const required = ['objectives', 'plans', 'evidence', 'planner', 'policy', 'execution', 'connections', 'automations'];
   for (const name of required) {
     if (!ports?.[name]) throw new Error(`missing product port: ${name}`);
   }
-  for (const [name, methods] of Object.entries({ objectives: ['save', 'get'], plans: ['save', 'get'], connections: ['save', 'get', 'list'] })) {
+  for (const [name, methods] of Object.entries({
+    objectives: ['save', 'get'],
+    plans: ['save', 'get'],
+    connections: ['save', 'get', 'list'],
+    automations: ['save', 'get', 'list', 'setEnabled'],
+  })) {
     for (const method of methods) {
       if (typeof ports[name][method] !== 'function') throw new Error(`${name}.${method} must be a function`);
     }
@@ -26,6 +32,7 @@ export function createInMemoryPorts() {
   const evidence = [];
   const registry = createToolRegistry({ rootDir: '.naia-test' });
   const connections = createConnectionStateStore();
+  const automations = createAutomationStore();
   return {
     objectives: {
       async save(objective) { objectives.set(objective.id, structuredClone(objective)); return objective; },
@@ -48,5 +55,6 @@ export function createInMemoryPorts() {
     execution: createLocalExecutionAdapter({ registry }),
     tools: registry,
     connections,
+    automations,
   };
 }
