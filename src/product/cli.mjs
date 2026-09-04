@@ -30,10 +30,21 @@ async function loadExternalCapabilities() {
   return [...canonical, ...custom];
 }
 
+async function readJson(path, label = 'JSON') {
+  if (!path) throw new Error(`${label} path is required`);
+  return JSON.parse(await readFile(path, 'utf8'));
+}
+
 async function readWorkflow(path) {
-  if (!path) throw new Error('workflow JSON path is required');
-  const parsed = JSON.parse(await readFile(path, 'utf8'));
+  const parsed = await readJson(path, 'workflow JSON');
   validateWorkflowDefinition(parsed);
+  return parsed;
+}
+
+function parseJsonArg(value, fallback = {}) {
+  if (!value) return fallback;
+  const parsed = JSON.parse(value);
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('JSON argument must be an object');
   return parsed;
 }
 
@@ -54,10 +65,7 @@ if (command === 'pursue') {
 } else if (command === 'automate' || command === 'propose') {
   const title = args.join(' ').trim();
   if (!title) { console.error('Usage: npm run start:product -- automate <request>'); process.exitCode = 2; }
-  else {
-    const proposed = await naia.propose({ title });
-    print(presentAutomationProposal(proposed));
-  }
+  else print(presentAutomationProposal(await naia.propose({ title })));
 } else if (command === 'proposal') {
   const [objectiveId] = args;
   if (!objectiveId) { console.error('Usage: npm run start:product -- proposal <objectiveId>'); process.exitCode = 2; }
@@ -66,6 +74,28 @@ if (command === 'pursue') {
   const [objectiveId] = args;
   if (!objectiveId) { console.error('Usage: npm run start:product -- confirm <objectiveId>'); process.exitCode = 2; }
   else print(await naia.confirm(objectiveId));
+} else if (command === 'automation:create') {
+  const [path] = args;
+  try { print(await naia.createAutomation(await readJson(path, 'automation JSON'))); }
+  catch (error) { console.error(error?.message ?? String(error)); process.exitCode = 2; }
+} else if (command === 'automations') {
+  print(await naia.automations());
+} else if (command === 'automation:show') {
+  const [id] = args;
+  if (!id) { console.error('Usage: npm run start:product -- automation:show <id>'); process.exitCode = 2; }
+  else print(await naia.automation(id));
+} else if (command === 'automation:enable' || command === 'automation:disable') {
+  const [id] = args;
+  if (!id) { console.error(`Usage: npm run start:product -- ${command} <id>`); process.exitCode = 2; }
+  else print(await naia.setAutomationEnabled(id, command === 'automation:enable'));
+} else if (command === 'automation:run') {
+  const [id, paramsJson] = args;
+  if (!id) { console.error('Usage: npm run start:product -- automation:run <id> [params-json]'); process.exitCode = 2; }
+  else print(presentAutomationProposal(await naia.runAutomation(id, parseJsonArg(paramsJson))));
+} else if (command === 'automation:trigger') {
+  const [id, triggerJson, paramsJson] = args;
+  if (!id || !triggerJson) { console.error('Usage: npm run start:product -- automation:trigger <id> <trigger-json> [params-json]'); process.exitCode = 2; }
+  else print(presentAutomationProposal(await naia.triggerAutomation(id, parseJsonArg(triggerJson), parseJsonArg(paramsJson))));
 } else if (command === 'workflow:validate') {
   const [path] = args;
   try { const workflow = await readWorkflow(path); print({ valid: true, id: workflow.id, steps: workflow.steps.length }); }
@@ -121,6 +151,6 @@ if (command === 'pursue') {
   await runInteractiveSession({ naia });
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, automate, proposal, confirm, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
+  console.error('Commands: pursue, automate, proposal, confirm, automation:create, automations, automation:show, automation:enable, automation:disable, automation:run, automation:trigger, workflow:validate, workflow:run, resume, approve, show, status, results, history, capabilities, providers, schema, connections, connection:set, session');
   process.exitCode = 2;
 }
