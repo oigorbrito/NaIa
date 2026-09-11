@@ -5,6 +5,7 @@ import { createFilePorts } from './file-ports.mjs';
 import { createRuntimeComposition } from './runtime-config.mjs';
 import { createNaiaService } from './service.mjs';
 import { createGitHubWebhookServer } from './github-webhook-server.mjs';
+import { resolveRuntimeCommit } from './runtime-identity.mjs';
 
 function integer(value, fallback, name) {
   if (value === undefined || value === null || String(value).trim() === '') return fallback;
@@ -29,6 +30,7 @@ try {
   });
   const service = createNaiaService(ports);
   const receiptPath = String(process.env.NAIA_GITHUB_WEBHOOK_RECEIPT ?? '').trim();
+  const runtimeCommit = resolveRuntimeCommit();
   const webhook = createGitHubWebhookServer({
     service,
     secret: process.env.NAIA_GITHUB_WEBHOOK_SECRET,
@@ -42,6 +44,7 @@ try {
     onAccepted: async (accepted) => writeReceipt(receiptPath, {
       status: 'PASS',
       gate: 'LIVE_PROVIDER_EVENT',
+      commit: runtimeCommit,
       ...accepted,
       observedAt: new Date().toISOString(),
     }),
@@ -53,6 +56,7 @@ try {
     port: address.port,
     path: process.env.NAIA_GITHUB_WEBHOOK_PATH || '/webhook/github',
     receiptPath: receiptPath || null,
+    commit: runtimeCommit,
   })}\n`);
 
   const shutdown = async () => {
