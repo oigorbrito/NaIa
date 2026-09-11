@@ -2,6 +2,8 @@
 
 Status: PLANNED_POST_MVP
 
+Execution map: `docs/product/POST-MVP-MEDIA-EXECUTION-MAP-V1.md`
+
 This roadmap item adds device media management to NaIA after the current MVP readiness gates are closed. It does not modify the frozen MVP core acceptance criteria.
 
 ## Product intent
