@@ -37,11 +37,21 @@ function Gate-Pass {
   return $null -ne $Receipt -and $Receipt.status -eq 'PASS' -and $Receipt.gate -eq $Gate
 }
 
+function Invoke-CleanReproduction {
+  param([string]$Name)
+  $ReceiptPath = Join-Path $ResolvedReceiptDir $Name
+  try {
+    & (Join-Path $Root 'ops\reproduce-mvp.ps1') -Commit $Head -ReceiptPath $ReceiptPath
+  } catch {
+    Write-Warning "Clean reproduction $Name did not complete: $($_.Exception.Message)"
+  }
+}
+
 $Suite = 'NOT_EXECUTED'
 $ObservedTests = $null
 if (-not $SkipSuite) {
   Write-Output '== Local product suite =='
-  $TestOutput = @(& npm test 2>&1 | Tee-Object -Variable Captured)
+  $null = @(& npm test 2>&1 | Tee-Object -Variable Captured)
   $Exit = $LASTEXITCODE
   $Text = ($Captured | ForEach-Object { $_.ToString() }) -join "`n"
   $Matches = [regex]::Matches($Text, '(?im)(?:^|\s)tests\s+(\d+)')
@@ -51,9 +61,9 @@ if (-not $SkipSuite) {
 
 if ($RunClean) {
   Write-Output '== Clean reproduction #1 =='
-  & (Join-Path $Root 'ops\reproduce-mvp.ps1') -Commit $Head -ReceiptPath (Join-Path $ResolvedReceiptDir 'run-01.json')
+  Invoke-CleanReproduction 'run-01.json'
   Write-Output '== Clean reproduction #2 =='
-  & (Join-Path $Root 'ops\reproduce-mvp.ps1') -Commit $Head -ReceiptPath (Join-Path $ResolvedReceiptDir 'run-02.json')
+  Invoke-CleanReproduction 'run-02.json'
 }
 
 if ($RunLiveGoogle) {
