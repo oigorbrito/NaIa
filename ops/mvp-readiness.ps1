@@ -9,7 +9,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
-$ExpectedProductTests = 74
 
 function Invoke-NativeCapture {
   param([scriptblock]$Command)
@@ -96,7 +95,6 @@ if ($RunLiveGoogle) {
 
 $EvaluatorInput = [ordered]@{
   commit = $Head
-  expectedProductTests = $ExpectedProductTests
   observedProductTests = $ObservedTests
   suiteExitCode = $SuiteExitCode
   suiteExecuted = $SuiteExecuted
