@@ -1,3 +1,5 @@
+import { MVP_READINESS_MANIFEST } from './readiness-manifest.mjs';
+
 function cleanReproductionStatus(receipt, commit) {
   if (!receipt) return 'NOT_EXECUTED';
   const pass = receipt.status === 'PASS'
@@ -24,7 +26,7 @@ function liveGateStatus(receipt, gate, commit, missing = 'NOT_EXECUTED') {
 
 export function evaluateMvpReadiness({
   commit,
-  expectedProductTests,
+  expectedProductTests = MVP_READINESS_MANIFEST.expectedProductTests,
   observedProductTests,
   suiteExitCode,
   suiteExecuted = true,
@@ -65,6 +67,7 @@ export function evaluateMvpReadiness({
 
   return {
     commit,
+    readinessSchemaVersion: MVP_READINESS_MANIFEST.schemaVersion,
     expectedProductTests,
     observedProductTests: observedProductTests ?? null,
     localSuite,
