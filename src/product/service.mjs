@@ -203,6 +203,10 @@ export function createNaiaService(rawPorts) {
         }));
     },
 
+    capabilities() {
+      return typeof ports.capabilities?.list === 'function' ? ports.capabilities.list() : [];
+    },
+
     tools() {
       return typeof ports.tools?.list === 'function' ? ports.tools.list() : [];
     },
