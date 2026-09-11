@@ -61,7 +61,8 @@ test('LIVE-GCAL-01 live harness exercises full NaIA stack and reports PASS witho
     assert.equal(output.gate, 'LIVE_GCAL_READ');
     assert.equal(output.eventCount, 1);
     assert.equal(auth, `Bearer ${token}`);
-    assert.match(requestUrl, /timeMin=2026-09-11T00%3A00%3A00Z/);
+    assert.match(requestUrl, /timeMin=2026-09-11T00%3A00%3A00\.000Z/);
+    assert.match(requestUrl, /timeMax=2026-09-12T00%3A00%3A00\.000Z/);
     assert.doesNotMatch(child.stdout, new RegExp(token));
     assert.doesNotMatch(child.stderr, new RegExp(token));
   });
