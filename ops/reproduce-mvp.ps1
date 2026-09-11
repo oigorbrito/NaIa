@@ -85,14 +85,29 @@ try {
     $Receipt.node = Invoke-Captured { node --version } 'node --version'
     $Receipt.npm = Invoke-Captured { npm --version } 'npm --version'
 
-    Invoke-Checked { npm ci } 'npm ci'
-    $Receipt.npmCi = 'PASS'
+    try {
+      Invoke-Checked { npm ci } 'npm ci'
+      $Receipt.npmCi = 'PASS'
+    } catch {
+      $Receipt.npmCi = 'FAIL'
+      throw
+    }
 
-    Invoke-Checked { npm test } 'npm test'
-    $Receipt.npmTest = 'PASS'
+    try {
+      Invoke-Checked { npm test } 'npm test'
+      $Receipt.npmTest = 'PASS'
+    } catch {
+      $Receipt.npmTest = 'FAIL'
+      throw
+    }
 
-    Invoke-Checked { git diff --check } 'git diff --check'
-    $Receipt.diffCheck = 'PASS'
+    try {
+      Invoke-Checked { git diff --check } 'git diff --check'
+      $Receipt.diffCheck = 'PASS'
+    } catch {
+      $Receipt.diffCheck = 'FAIL'
+      throw
+    }
 
     $Receipt.status = 'PASS'
   } finally {
