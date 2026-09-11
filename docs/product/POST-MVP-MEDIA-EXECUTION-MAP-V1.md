@@ -4,6 +4,17 @@ Status: PLANNED_POST_MVP / EXECUTOR_READY
 
 This document turns `POST-MVP-MOBILE-MEDIA-V1.md` into an execution sequence for an implementation agent. It does not modify the frozen MVP readiness contract.
 
+Related source-baseline artifact:
+
+- `POST-MVP-MEDIA-SOURCE-FREEZE-V1.md`
+
+Current MEDIA-01 status:
+
+- engineering/source baseline: `PASS`;
+- MiaClean legal/redistribution gate: `BLOCKED_EXTERNAL / LEGAL_DECISION_REQUIRED`.
+
+The legal gate blocks copying/shipping MiaClean code, but it does not block independent NaIA contract design after MVP closure.
+
 ## Non-negotiable product rules
 
 1. NaIA remains the authority/planning layer.
@@ -117,7 +128,7 @@ No cleanup mode may silently downgrade from recoverable to permanent.
 
 ### Android
 
-Reference implementation: reusable/refactored portions of `gmailum/MiaClean`.
+Reference implementation: reusable/refactored portions of `gmailum/MiaClean` at the revision pinned in `POST-MVP-MEDIA-SOURCE-FREEZE-V1.md`.
 
 Expected native concerns:
 
@@ -152,12 +163,17 @@ Requirements:
 
 ### MEDIA-01 — source/legal baseline
 
-Exit only when:
+Current result:
 
-- exact MiaClean revision is pinned;
-- ownership/license/redistribution decision is recorded;
-- reusable engine components are inventoried;
-- no code is copied before legal/source status is explicit.
+- exact MiaClean revision pinned: `PASS`;
+- reusable engine components inventoried: `PASS`;
+- KMP Android/iOS foundation observed: `PASS`;
+- clean reusable engine boundary already complete: `FAIL` — app-domain coupling remains;
+- ownership/license/redistribution decision: `BLOCKED_EXTERNAL / LEGAL_DECISION_REQUIRED`.
+
+Authoritative artifact: `POST-MVP-MEDIA-SOURCE-FREEZE-V1.md`.
+
+No MiaClean source may be copied into NaIA until the legal gate is explicitly resolved.
 
 ### MEDIA-02 — contract freeze
 
