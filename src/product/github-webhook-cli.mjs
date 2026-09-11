@@ -41,13 +41,17 @@ try {
     port: integer(process.env.NAIA_GITHUB_WEBHOOK_PORT, 8788, 'NAIA_GITHUB_WEBHOOK_PORT'),
     path: process.env.NAIA_GITHUB_WEBHOOK_PATH || '/webhook/github',
     maxBytes: integer(process.env.NAIA_GITHUB_WEBHOOK_MAX_BYTES, 256 * 1024, 'NAIA_GITHUB_WEBHOOK_MAX_BYTES'),
-    onAccepted: async (accepted) => writeReceipt(receiptPath, {
-      status: 'PASS',
-      gate: 'LIVE_PROVIDER_EVENT',
-      commit: runtimeCommit,
-      ...accepted,
-      observedAt: new Date().toISOString(),
-    }),
+    onAccepted: async (accepted) => {
+      const { status: objectiveStatus, ...acceptedMetadata } = accepted;
+      await writeReceipt(receiptPath, {
+        status: 'PASS',
+        gate: 'LIVE_PROVIDER_EVENT',
+        commit: runtimeCommit,
+        ...acceptedMetadata,
+        objectiveStatus,
+        observedAt: new Date().toISOString(),
+      });
+    },
   });
   const address = await webhook.start();
   process.stdout.write(`${JSON.stringify({
