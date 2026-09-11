@@ -8,7 +8,8 @@ if (!inputPath) {
   process.exitCode = 2;
 } else {
   try {
-    const input = JSON.parse(await readFile(inputPath, 'utf8'));
+    const raw = await readFile(inputPath, 'utf8');
+    const input = JSON.parse(raw.replace(/^\uFEFF/, ''));
     const result = evaluateMvpReadiness(input);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (result.mvpCoreReady !== 'PASS') process.exitCode = 2;
