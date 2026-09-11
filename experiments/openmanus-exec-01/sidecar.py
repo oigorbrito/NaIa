@@ -1,6 +1,6 @@
 """Deterministic OpenManus execution sidecar for NaIA experiment EXEC-01.
 
-Protocol: one JSON request on stdin, one JSON response on stdout.
+Protocol: one JSON request on stdin, one framed JSON response on stdout.
 This sidecar deliberately bypasses the ReAct/LLM planner and exercises
 OpenManus ToolCollection directly.
 """
@@ -12,6 +12,8 @@ from typing import Any
 
 from app.tool.base import BaseTool, ToolResult
 from app.tool.tool_collection import ToolCollection
+
+RESULT_PREFIX = "NAIA_RESULT:"
 
 
 class UppercaseTool(BaseTool):
@@ -45,6 +47,10 @@ class EchoTool(BaseTool):
 TOOLS = ToolCollection(UppercaseTool(), EchoTool())
 
 
+def emit(response: dict[str, Any]) -> None:
+    print(f"{RESULT_PREFIX}{json.dumps(response, separators=(',', ':'))}", flush=True)
+
+
 async def handle(request: dict[str, Any]) -> dict[str, Any]:
     tool = request.get("tool")
     tool_input = request.get("input") or {}
@@ -73,16 +79,16 @@ async def handle(request: dict[str, Any]) -> dict[str, Any]:
 async def main() -> int:
     raw = sys.stdin.readline()
     if not raw:
-        print(json.dumps({"ok": False, "error": "empty request", "retryable": False}))
+        emit({"ok": False, "error": "empty request", "retryable": False})
         return 2
     try:
         request = json.loads(raw)
     except json.JSONDecodeError:
-        print(json.dumps({"ok": False, "error": "invalid json", "retryable": False}))
+        emit({"ok": False, "error": "invalid json", "retryable": False})
         return 2
 
     response = await handle(request)
-    print(json.dumps(response, separators=(",", ":")))
+    emit(response)
     return 0 if response.get("ok") else 1
 
 
