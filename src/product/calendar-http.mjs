@@ -19,13 +19,35 @@ async function readBoundedBody(response, maxBytes) {
     error.retryable = false;
     throw error;
   }
-  const text = await response.text();
-  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-    const error = new Error(`calendar response exceeds maxBytes (${maxBytes})`);
-    error.retryable = false;
-    throw error;
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel('calendar body limit exceeded');
+        const error = new Error(`calendar response exceeds maxBytes (${maxBytes})`);
+        error.retryable = false;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
   }
-  return text;
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function responseError(status) {
@@ -80,11 +102,15 @@ export function createCalendarHttpProvider({
       });
 
       if ([301, 302, 303, 307, 308].includes(response.status)) {
+        try { await response.body?.cancel(); } catch {}
         const error = new Error('calendar provider redirects are not allowed');
         error.retryable = false;
         throw error;
       }
-      if (response.status >= 400) throw responseError(response.status);
+      if (response.status >= 400) {
+        try { await response.body?.cancel(); } catch {}
+        throw responseError(response.status);
+      }
 
       const text = await readBoundedBody(response, maxBytes);
       if (!text) return null;
