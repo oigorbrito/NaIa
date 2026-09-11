@@ -1,6 +1,7 @@
 param(
     [switch]$Clean,
-    [switch]$ProbeBrowserMcp
+    [switch]$ProbeBrowserMcp,
+    [switch]$LiveBrowser
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +19,31 @@ function Invoke-Checked {
     & $Command
     if ($LASTEXITCODE -ne 0) {
         throw "$Label failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-NativeNonFatal {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Command
+    )
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $PreviousNativePreference = $null
+    $HasNativePreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
+    if ($HasNativePreference) {
+        $PreviousNativePreference = $PSNativeCommandUseErrorActionPreference
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $Command
+        return $LASTEXITCODE
+    } catch {
+        return $(if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { -1 })
+    } finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+        if ($HasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $PreviousNativePreference
+        }
     }
 }
 
@@ -78,26 +104,7 @@ if ($ProbeBrowserMcp) {
     if (-not $Uvx) {
         Write-Host 'BROWSER_MCP_PROBE=BLOCKED_EXTERNAL reason=uvx-not-found'
     } else {
-        $PreviousErrorActionPreference = $ErrorActionPreference
-        $PreviousNativePreference = $null
-        $HasNativePreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
-        if ($HasNativePreference) {
-            $PreviousNativePreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
-        }
-        try {
-            $ErrorActionPreference = 'Continue'
-            & $Uvx.Source browser-use --help 2>&1 | Out-Null
-            $ProbeExit = $LASTEXITCODE
-        } catch {
-            $ProbeExit = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { -1 }
-        } finally {
-            $ErrorActionPreference = $PreviousErrorActionPreference
-            if ($HasNativePreference) {
-                $PSNativeCommandUseErrorActionPreference = $PreviousNativePreference
-            }
-        }
-
+        $ProbeExit = Invoke-NativeNonFatal { & $Uvx.Source browser-use --help 2>&1 | Out-Null }
         if ($ProbeExit -eq 0) {
             Write-Host 'BROWSER_MCP_PROBE=PASS'
         } else {
@@ -108,7 +115,31 @@ if ($ProbeBrowserMcp) {
     Write-Host 'BROWSER_MCP_PROBE=NOT_EXECUTED (use -ProbeBrowserMcp to probe external CLI availability)'
 }
 
+Write-Host '== Optional deterministic live browser task =='
+if ($LiveBrowser) {
+    $Uvx = Get-Command uvx -ErrorAction SilentlyContinue
+    if (-not $Uvx) {
+        Write-Host 'LIVE_BROWSER_TASK=BLOCKED_EXTERNAL reason=uvx-not-found'
+    } else {
+        Push-Location $Root
+        try {
+            $LiveExit = Invoke-NativeNonFatal { node --test experiments/openmanus-reverse-01/live-browser.test.mjs }
+        } finally {
+            Pop-Location
+        }
+        if ($LiveExit -eq 0) {
+            Write-Host 'LIVE_BROWSER_TASK=PASS'
+            Write-Host 'MVP_ADOPTION_GATE=ELIGIBLE_FOR_DECISION'
+        } else {
+            Write-Host "LIVE_BROWSER_TASK=NOT_ACCEPTED exit=$LiveExit"
+            Write-Host 'MVP_ADOPTION_GATE=DEFERRED'
+        }
+    }
+} else {
+    Write-Host 'LIVE_BROWSER_TASK=NOT_EXECUTED (use -LiveBrowser to execute)'
+    Write-Host 'MVP_ADOPTION_GATE=DEFERRED_UNTIL_LIVE_BROWSER_TASK_PASS'
+}
+
 Write-Host '== Reverse integration run complete =='
 Write-Host "OpenManus SHA: $OpenManusSha"
 Write-Host "Clean checkout: $Clean"
-Write-Host 'MVP_ADOPTION_GATE=DEFERRED_UNTIL_LIVE_BROWSER_TASK_PASS'
