@@ -19,6 +19,8 @@ All live receipts are commit-bound. A PASS receipt produced by another checkout 
 
 The final readiness decision is evaluated by the pure Node module `src/product/readiness-evaluator.mjs`, which is covered by product tests. PowerShell only orchestrates executions and collects receipts.
 
+The readiness contract itself is frozen in `src/product/readiness-manifest.mjs`. That manifest is the single source of truth for the readiness schema, required core gates, optional capability gates, and expected product-test count. The PowerShell runner does not carry a second copy of that count.
+
 ## Consolidated command
 
 On Windows:
@@ -68,7 +70,7 @@ npmTest=PASS
 diffCheck=PASS
 ```
 
-Current expected product test count is 74.
+Current expected product test count is **78**, read from `MVP_READINESS_MANIFEST.expectedProductTests`.
 
 ## External scheduler: durable Windows configuration
 
@@ -172,6 +174,7 @@ The access token is never written to the receipt or NaIA persistence.
 
 ```text
 commit
+readinessSchemaVersion
 expectedProductTests
 observedProductTests
 localSuite
