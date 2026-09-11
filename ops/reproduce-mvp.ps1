@@ -10,19 +10,45 @@ $SourceRoot = (Get-Location).Path
 
 function Invoke-Checked {
   param([scriptblock]$Command, [string]$Label)
-  & $Command
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Label failed with exit code $LASTEXITCODE"
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell can surface native stderr (for example git clone progress)
+    # as NativeCommandError even when the process exits successfully. Native exit
+    # code is the authoritative result for these commands.
+    $ErrorActionPreference = 'Continue'
+    & $Command
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
+  if ($ExitCode -ne 0) {
+    throw "$Label failed with exit code $ExitCode"
   }
 }
 
+function Invoke-Captured {
+  param([scriptblock]$Command, [string]$Label)
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $Output = @(& $Command 2>&1)
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
+  if ($ExitCode -ne 0) {
+    throw "$Label failed with exit code $ExitCode"
+  }
+  return (($Output | ForEach-Object { $_.ToString() }) -join "`n").Trim()
+}
+
 if (-not $RepoUrl) {
-  $RepoUrl = (& git config --get remote.origin.url).Trim()
-  if ($LASTEXITCODE -ne 0 -or -not $RepoUrl) { throw 'Unable to resolve git remote.origin.url; pass -RepoUrl explicitly' }
+  $RepoUrl = Invoke-Captured { git config --get remote.origin.url } 'git config remote.origin.url'
+  if (-not $RepoUrl) { throw 'Unable to resolve git remote.origin.url; pass -RepoUrl explicitly' }
 }
 if (-not $Commit) {
-  $Commit = (& git rev-parse HEAD).Trim()
-  if ($LASTEXITCODE -ne 0 -or -not $Commit) { throw 'Unable to resolve HEAD; pass -Commit explicitly' }
+  $Commit = Invoke-Captured { git rev-parse HEAD } 'git rev-parse HEAD'
+  if (-not $Commit) { throw 'Unable to resolve HEAD; pass -Commit explicitly' }
 }
 
 $RunId = [guid]::NewGuid().ToString('N')
@@ -53,13 +79,11 @@ try {
   Push-Location $Checkout
   try {
     Invoke-Checked { git checkout --detach $Commit } 'git checkout'
-    $Receipt.checkedOutCommit = (& git rev-parse HEAD).Trim()
+    $Receipt.checkedOutCommit = Invoke-Captured { git rev-parse HEAD } 'git rev-parse checked-out HEAD'
     if ($Receipt.checkedOutCommit -ne $Commit) { throw "Checked out commit $($Receipt.checkedOutCommit) does not match requested $Commit" }
 
-    $Receipt.node = (& node --version).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'node --version failed' }
-    $Receipt.npm = (& npm --version).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'npm --version failed' }
+    $Receipt.node = Invoke-Captured { node --version } 'node --version'
+    $Receipt.npm = Invoke-Captured { npm --version } 'npm --version'
 
     Invoke-Checked { npm ci } 'npm ci'
     $Receipt.npmCi = 'PASS'
