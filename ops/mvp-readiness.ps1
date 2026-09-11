@@ -44,6 +44,7 @@ function Read-Receipt {
 function Invoke-CleanReproduction {
   param([string]$Name)
   $ReceiptPath = Join-Path $ResolvedReceiptDir $Name
+  Remove-Item $ReceiptPath -Force -ErrorAction SilentlyContinue
   try {
     & (Join-Path $Root 'ops\reproduce-mvp.ps1') -Commit $Head -ReceiptPath $ReceiptPath
   } catch {
@@ -82,10 +83,12 @@ if ($RunSchedulerTask) {
 }
 
 if ($RunLiveGoogle) {
+  $LiveGoogleReceipt = Join-Path $ResolvedReceiptDir 'google-calendar-live.json'
+  Remove-Item $LiveGoogleReceipt -Force -ErrorAction SilentlyContinue
   if ([string]::IsNullOrWhiteSpace($env:NAIA_GOOGLE_CALENDAR_ACCESS_TOKEN)) {
     Write-Warning 'NAIA_GOOGLE_CALENDAR_ACCESS_TOKEN is absent; LIVE_GCAL_READ remains BLOCKED_EXTERNAL.'
   } else {
-    $env:NAIA_GOOGLE_CALENDAR_LIVE_RECEIPT = Join-Path $ResolvedReceiptDir 'google-calendar-live.json'
+    $env:NAIA_GOOGLE_CALENDAR_LIVE_RECEIPT = $LiveGoogleReceipt
     Write-Output '== Google Calendar live read =='
     $LiveRun = Invoke-NativeCapture { npm run live:google-calendar }
     foreach ($Line in $LiveRun.Lines) { Write-Output $Line }
