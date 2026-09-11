@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 
 RESULT_PREFIX = "NAIA_RESULT:"
+TRANSIENT_PREFIX = "TRANSIENT:"
+PERMANENT_PREFIX = "PERMANENT:"
 
 
 def prepare_minimal_openmanus_imports() -> None:
@@ -29,10 +31,6 @@ def prepare_minimal_openmanus_imports() -> None:
     tool_package.__package__ = "app.tool"
     sys.modules["app.tool"] = tool_package
 
-    # tool_collection.py imports app.logger only for duplicate-tool warnings.
-    # The production logger imports app.config, which eagerly constructs the
-    # entire application configuration. Stub only this logging dependency so
-    # EXEC-01 remains scoped to ToolCollection semantics.
     logger_module = types.ModuleType("app.logger")
 
     class MinimalLogger:
@@ -77,11 +75,76 @@ class EchoTool(BaseTool):
         return ToolResult(output={"text": str(text)})
 
 
-TOOLS = ToolCollection(UppercaseTool(), EchoTool())
+class TransientFailureTool(BaseTool):
+    name: str = "fixture.transient_failure"
+    description: str = "Return a controlled transient failure for retry normalization tests."
+    parameters: dict = {"type": "object", "properties": {}, "additionalProperties": False}
+
+    async def execute(self, **_: Any) -> ToolResult:
+        return ToolResult(error=f"{TRANSIENT_PREFIX} temporary provider failure")
+
+
+class PermanentFailureTool(BaseTool):
+    name: str = "fixture.permanent_failure"
+    description: str = "Return a controlled permanent failure for retry normalization tests."
+    parameters: dict = {"type": "object", "properties": {}, "additionalProperties": False}
+
+    async def execute(self, **_: Any) -> ToolResult:
+        return ToolResult(error=f"{PERMANENT_PREFIX} permission denied")
+
+
+class NoteWriteTool(BaseTool):
+    name: str = "note.write"
+    description: str = "Controlled write probe used only after NaIA approval in EXEC-05."
+    parameters: dict = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "content": {"type": "string"},
+        },
+        "required": ["name", "content"],
+        "additionalProperties": False,
+    }
+
+    async def execute(self, name: str, content: str, **_: Any) -> ToolResult:
+        return ToolResult(output={"accepted": True, "name": str(name), "bytes": len(str(content).encode("utf-8"))})
+
+
+class SlowTool(BaseTool):
+    name: str = "fixture.slow"
+    description: str = "Sleep for a controlled interval so adapter timeout behavior can be tested."
+    parameters: dict = {
+        "type": "object",
+        "properties": {"delay_ms": {"type": "integer"}},
+        "required": ["delay_ms"],
+        "additionalProperties": False,
+    }
+
+    async def execute(self, delay_ms: int, **_: Any) -> ToolResult:
+        await asyncio.sleep(max(0, int(delay_ms)) / 1000)
+        return ToolResult(output={"slept_ms": int(delay_ms)})
+
+
+TOOLS = ToolCollection(
+    UppercaseTool(),
+    EchoTool(),
+    TransientFailureTool(),
+    PermanentFailureTool(),
+    NoteWriteTool(),
+    SlowTool(),
+)
 
 
 def emit(response: dict[str, Any]) -> None:
     print(f"{RESULT_PREFIX}{json.dumps(response, separators=(',', ':'))}", flush=True)
+
+
+def normalize_error(error: str) -> dict[str, Any]:
+    if error.startswith(TRANSIENT_PREFIX):
+        return {"ok": False, "error": error[len(TRANSIENT_PREFIX):].strip(), "retryable": True}
+    if error.startswith(PERMANENT_PREFIX):
+        return {"ok": False, "error": error[len(PERMANENT_PREFIX):].strip(), "retryable": False}
+    return {"ok": False, "error": error, "retryable": False}
 
 
 async def handle(request: dict[str, Any]) -> dict[str, Any]:
@@ -98,7 +161,7 @@ async def handle(request: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(exc), "retryable": False}
 
     if result.error:
-        return {"ok": False, "error": result.error, "retryable": False}
+        return normalize_error(str(result.error))
 
     return {
         "ok": True,
