@@ -1,0 +1,125 @@
+{
+  "fixtureVersion": 1,
+  "contractVersion": 1,
+  "description": "Canonical platform-neutral fixture for NaIA media adapter conformance.",
+  "sources": [
+    {
+      "sourceRef": "src-approved-1",
+      "approved": true,
+      "items": [
+        {
+          "itemRef": "item-a",
+          "mediaType": "IMAGE",
+          "mimeType": "image/jpeg",
+          "sizeBytes": 1000,
+          "contentIdentity": "exact-alpha",
+          "perceptualIdentity": "scene-alpha",
+          "category": "PHOTO",
+          "identityToken": "idtok-a-v1"
+        },
+        {
+          "itemRef": "item-b",
+          "mediaType": "IMAGE",
+          "mimeType": "image/jpeg",
+          "sizeBytes": 1000,
+          "contentIdentity": "exact-alpha",
+          "perceptualIdentity": "scene-alpha",
+          "category": "PHOTO",
+          "identityToken": "idtok-b-v1"
+        },
+        {
+          "itemRef": "item-c",
+          "mediaType": "IMAGE",
+          "mimeType": "image/jpeg",
+          "sizeBytes": 900,
+          "contentIdentity": "exact-charlie",
+          "perceptualIdentity": "scene-alpha",
+          "category": "PHOTO",
+          "identityToken": "idtok-c-v1"
+        },
+        {
+          "itemRef": "item-d",
+          "mediaType": "IMAGE",
+          "mimeType": "image/png",
+          "sizeBytes": 400,
+          "contentIdentity": "exact-delta",
+          "perceptualIdentity": "scene-delta",
+          "category": "SCREENSHOT",
+          "identityToken": "idtok-d-v1"
+        },
+        {
+          "itemRef": "item-e",
+          "mediaType": "OTHER",
+          "mimeType": null,
+          "sizeBytes": 200,
+          "contentIdentity": "exact-echo",
+          "perceptualIdentity": null,
+          "category": "UNKNOWN",
+          "identityToken": "idtok-e-v1"
+        }
+      ]
+    },
+    {
+      "sourceRef": "src-outside-scope",
+      "approved": false,
+      "items": [
+        {
+          "itemRef": "item-outside",
+          "mediaType": "IMAGE",
+          "mimeType": "image/jpeg",
+          "sizeBytes": 5000,
+          "contentIdentity": "outside",
+          "perceptualIdentity": "outside",
+          "category": "PHOTO",
+          "identityToken": "idtok-outside-v1"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "approvedScan": {
+      "itemCount": 5,
+      "totalBytes": 3500,
+      "mustExcludeItemRefs": ["item-outside"]
+    },
+    "exactDuplicateGroups": [
+      {
+        "basis": "EXACT_HASH",
+        "itemRefs": ["item-a", "item-b"]
+      }
+    ],
+    "perceptualCandidateGroups": [
+      {
+        "basis": "PERCEPTUAL_HASH",
+        "itemRefs": ["item-a", "item-b", "item-c"]
+      }
+    ],
+    "mustNotReportAsExact": ["item-c"],
+    "unknownClassification": ["item-e"],
+    "cleanupPlan": {
+      "cleanupMode": "TRASH",
+      "selectedItemRefs": ["item-b", "item-c"],
+      "estimatedReclaimableBytes": 1900,
+      "recoverable": true
+    },
+    "changedPlan": {
+      "cleanupMode": "DELETE_PERMANENT",
+      "selectedItemRefs": ["item-b", "item-c"]
+    },
+    "staleIdentityMutation": {
+      "itemRef": "item-c",
+      "oldIdentityToken": "idtok-c-v1",
+      "newIdentityToken": "idtok-c-v2"
+    },
+    "partialSuccess": {
+      "successfulItemRef": "item-b",
+      "failedItemRef": "item-c"
+    }
+  },
+  "privacySentinels": {
+    "sensitiveFilename": "private-family-photo-secret.jpg",
+    "sensitiveMetadata": "person@example.test",
+    "authorizationArtifact": "do-not-persist-auth-artifact",
+    "biometricVector": "do-not-persist-face-embedding"
+  }
+}
