@@ -14,9 +14,12 @@ Methodological controls are defined by:
 - `EMPIRICAL-HARNESS-METHODOLOGY-V1.md`;
 - `METHODOLOGY-SOURCE-MAP-V1.md`;
 - `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md`;
-- `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md`.
+- `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md`;
+- `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md` for scope-preserving registration of pre-existing evidence.
 
 A recommendation presented as required empirical/reproducibility practice must satisfy the suggestion-admissibility rule in those documents. General engineering preference is not a harness requirement unless separately adopted as product policy.
+
+Historical evidence must not be silently upgraded to the current evidence-strength ladder. `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md` records the strongest conclusion supported by each preserved artifact and the conclusions that remain disallowed.
 
 ## 1. Non-negotiable experiment contract
 
@@ -100,6 +103,8 @@ claim -> procedure -> environment -> raw artifacts -> acceptance check -> observ
 If the raw artifacts cannot be located from the completed register, the summary is documentary only and is not decision-eligible.
 
 One register may cite many repetitions only when they share the same experiment contract. Materially changed workloads, fault boundaries, oracle semantics, acceptance meanings or version-specific claims require a new experiment-series identity.
+
+Existing historical artifacts are indexed in `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md`; that register is documentary reconciliation and does not manufacture missing execution metadata.
 
 ## 4. Common runner invocation
 
@@ -359,6 +364,8 @@ Allowed decision language is bounded by evidence class:
 If required evidence is absent, the supported recommendation is to execute/reproduce the missing experiment, not to infer the winner.
 
 A narrative recommendation without exact claim IDs and evidence references is not decision-eligible even when it summarizes otherwise valid runs.
+
+For historical evidence, use the HCE claim IDs in `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md`; those IDs preserve historical scope and are not evidence-strength upgrades.
 
 ## 13. Current environment blockers
 
