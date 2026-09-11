@@ -56,7 +56,7 @@ Transport contract:
 - `POST /events` JSON body `{ start, end, title }`
 - `PATCH /events/<eventId>` JSON body `{ start, end, title }`
 
-Redirects are not followed. Cross-origin movement is therefore impossible inside this provider transport. Response bodies are bounded and timeouts abort the request.
+Redirects are not followed. Cross-origin movement is therefore impossible inside this provider transport. Response bodies are bounded while streaming and timeouts abort the request.
 
 Runtime configuration:
 
@@ -81,6 +81,8 @@ When `NAIA_CALENDAR_BASE_URL` is absent, calendar capabilities are not registere
 - CAL-08 timeout never becomes success.
 - CAL-09 default runtime remains unchanged when calendar config is absent.
 - CAL-10 configured runtime exposes calendar capabilities without exposing token metadata.
+- CAL-11 provider redirects are rejected and never followed.
+- CAL-12 response body cap is enforced during streaming.
 
 ## Reproduction gate
 
@@ -88,8 +90,8 @@ Aggregate expected suite on this branch:
 
 ```text
 35 prior product tests
-+ 10 calendar contracts
-= 45 tests
++ 12 calendar contracts
+= 47 tests
 ```
 
-Acceptance is `tests 45 / pass 45 / fail 0` in the local supported Node environment. Until observed, this block remains `IMPLEMENTED_PENDING_LOCAL_REPRO` rather than PASS.
+Acceptance is `tests 47 / pass 47 / fail 0` in the local supported Node environment. Until observed, this block remains `IMPLEMENTED_PENDING_LOCAL_REPRO` rather than PASS.
