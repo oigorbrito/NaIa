@@ -1,6 +1,7 @@
 import { planIntent } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
+import { sanitizeForPersistence } from './persistence-safety.mjs';
 
 export function assertProductPorts(ports) {
   const required = ['objectives', 'plans', 'evidence', 'planner', 'policy', 'execution'];
@@ -26,16 +27,16 @@ export function createInMemoryPorts() {
   const registry = createToolRegistry({ rootDir: '.naia-test' });
   return {
     objectives: {
-      async save(objective) { objectives.set(objective.id, structuredClone(objective)); return objective; },
+      async save(objective) { objectives.set(objective.id, sanitizeForPersistence(objective)); return objective; },
       async get(id) { const value = objectives.get(id); return value ? structuredClone(value) : null; },
       async list() { return [...objectives.values()].map((value) => structuredClone(value)); },
     },
     plans: {
-      async save(plan) { plans.set(plan.objectiveId, structuredClone(plan)); return plan; },
+      async save(plan) { plans.set(plan.objectiveId, sanitizeForPersistence(plan)); return plan; },
       async get(objectiveId) { const value = plans.get(objectiveId); return value ? structuredClone(value) : null; },
     },
     evidence: {
-      async append(record) { evidence.push(structuredClone(record)); return record; },
+      async append(record) { evidence.push(sanitizeForPersistence(record)); return record; },
       async list({ objectiveId } = {}) {
         const rows = structuredClone(evidence);
         return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;

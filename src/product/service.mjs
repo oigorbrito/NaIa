@@ -4,6 +4,7 @@ import { assertProductPorts } from './ports.mjs';
 async function executePlan(ports, objective, plan) {
   objective.status = ObjectiveStatus.RUNNING;
   objective.updatedAt = new Date().toISOString();
+  objective.attempts = (objective.attempts ?? 0) + 1;
   await ports.objectives.save(objective);
 
   for (const step of plan.steps) {
@@ -54,6 +55,8 @@ async function executePlan(ports, objective, plan) {
     });
 
     if (!result?.ok) {
+      objective.lastError = result?.error ?? 'execution failed';
+      objective.retryDisposition = result?.retryable === false ? 'PERMANENT' : 'TRANSIENT';
       objective.status = ObjectiveStatus.FAILED;
       objective.updatedAt = new Date().toISOString();
       await ports.objectives.save(objective);
@@ -70,9 +73,37 @@ async function executePlan(ports, objective, plan) {
 
 export function createNaiaService(rawPorts) {
   const ports = assertProductPorts(rawPorts);
+  const inFlight = new Map();
 
   return {
+    async recordEvidence(record) {
+      return ports.evidence.append(record);
+    },
+
     async pursue(input) {
+      const key = input?.idempotencyKey;
+      if (!key) return this.pursueInternal(input);
+      const existingFlight = inFlight.get(key);
+      if (existingFlight) return existingFlight;
+      const flight = this.pursueInternal(input).finally(() => inFlight.delete(key));
+      inFlight.set(key, flight);
+      return flight;
+    },
+
+    async pursueInternal(input) {
+      if (input?.idempotencyKey && typeof ports.objectives.list === 'function') {
+        const existing = (await ports.objectives.list()).find(
+          (candidate) => candidate.idempotencyKey === input.idempotencyKey,
+        );
+        if (existing) {
+          if (existing.retryDisposition === 'PERMANENT'
+            || existing.status === ObjectiveStatus.COMPLETED
+            || existing.status === ObjectiveStatus.WAITING_CONFIRMATION) {
+            return { objective: existing, plan: await ports.plans.get(existing.id) };
+          }
+          return this.resume(existing.id);
+        }
+      }
       const objective = createObjective(input);
       const plan = await ports.planner.plan(objective);
       await ports.objectives.save(objective);
@@ -89,6 +120,25 @@ export function createNaiaService(rawPorts) {
         steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
         at: new Date().toISOString(),
       });
+      if (input?.deferConfirmation) {
+        objective.status = ObjectiveStatus.WAITING_CONFIRMATION;
+        objective.updatedAt = new Date().toISOString();
+        await ports.objectives.save(objective);
+        await ports.evidence.append({ type: 'CONFIRMATION_REQUIRED', objectiveId: objective.id, at: objective.updatedAt });
+        return { objective, plan };
+      }
+      return executePlan(ports, objective, plan);
+    },
+
+    async confirm(objectiveId) {
+      const objective = await ports.objectives.get(objectiveId);
+      if (!objective) throw new Error(`objective not found: ${objectiveId}`);
+      if (objective.status !== ObjectiveStatus.WAITING_CONFIRMATION) {
+        throw new Error(`objective is not awaiting confirmation: ${objectiveId}`);
+      }
+      const plan = await ports.plans.get(objectiveId);
+      if (!plan) throw new Error(`plan not found for objective: ${objectiveId}`);
+      await ports.evidence.append({ type: 'CONFIRMED', objectiveId, at: new Date().toISOString() });
       return executePlan(ports, objective, plan);
     },
 

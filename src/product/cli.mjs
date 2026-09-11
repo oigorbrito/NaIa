@@ -34,6 +34,14 @@ if (command === 'pursue') {
   } else {
     print(await naia.approve(objectiveId, tool));
   }
+} else if (command === 'confirm') {
+  const [objectiveId] = args;
+  if (!objectiveId) {
+    console.error('Usage: npm run start:product -- confirm <objectiveId>');
+    process.exitCode = 2;
+  } else {
+    print(await naia.confirm(objectiveId));
+  }
 } else if (command === 'show') {
   const [objectiveId] = args;
   if (!objectiveId) {
@@ -48,6 +56,6 @@ if (command === 'pursue') {
   print(naia.tools());
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error('Commands: pursue, resume, approve, show, history, tools');
+  console.error('Commands: pursue, resume, confirm, approve, show, history, tools');
   process.exitCode = 2;
 }

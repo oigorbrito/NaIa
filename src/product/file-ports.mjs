@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { planIntent } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
+import { sanitizeForPersistence } from './persistence-safety.mjs';
 
 async function readJson(path, fallback) {
   try {
@@ -34,7 +35,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
     objectives: {
       async save(objective) {
         const all = await readMap(objectivesPath);
-        all[objective.id] = structuredClone(objective);
+        all[objective.id] = sanitizeForPersistence(objective);
         await writeJsonAtomic(objectivesPath, all);
         return objective;
       },
@@ -49,7 +50,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
     plans: {
       async save(plan) {
         const all = await readMap(plansPath);
-        all[plan.objectiveId] = structuredClone(plan);
+        all[plan.objectiveId] = sanitizeForPersistence(plan);
         await writeJsonAtomic(plansPath, all);
         return plan;
       },
@@ -61,7 +62,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
     evidence: {
       async append(record) {
         await mkdir(dirname(evidencePath), { recursive: true });
-        await appendFile(evidencePath, `${JSON.stringify(record)}\n`, 'utf8');
+        await appendFile(evidencePath, `${JSON.stringify(sanitizeForPersistence(record))}\n`, 'utf8');
         return record;
       },
       async list({ objectiveId } = {}) {

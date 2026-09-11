@@ -13,7 +13,7 @@ export function planIntent(objective) {
   const lower = intent.toLowerCase();
 
   let action;
-  if (lower === 'time' || lower.includes('what time') || lower.includes('current time')) {
+  if (lower === 'time' || lower === 'what time' || lower === 'current time') {
     action = { tool: 'time.now', input: {}, risk: 'READ_ONLY', requiresApproval: false };
   } else if (/^uppercase\s*:?\s*/i.test(intent)) {
     const text = intent.replace(/^uppercase\s*:?\s*/i, '');
@@ -23,7 +23,9 @@ export function planIntent(objective) {
     if (note) {
       action = { tool: 'note.write', input: note, risk: 'LOCAL_WRITE', requiresApproval: true };
     } else {
-      action = { tool: 'text.echo', input: { text: intent }, risk: 'READ_ONLY', requiresApproval: false };
+      const error = new Error(`unsupported intent: ${intent}`);
+      error.code = 'UNSUPPORTED_INTENT';
+      throw error;
     }
   }
 
