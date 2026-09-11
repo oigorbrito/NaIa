@@ -159,22 +159,26 @@ export function createHttpReadAdapter({
 
           if (![301, 302, 303, 307, 308].includes(response.status)) break;
           if (redirects >= maxRedirects) {
+            await response.body?.cancel();
             const error = new Error(`HTTP redirect limit exceeded (${maxRedirects})`);
             error.retryable = false;
             throw error;
           }
           const location = response.headers.get('location');
           if (!location) {
+            await response.body?.cancel();
             const error = new Error('HTTP redirect missing location');
             error.retryable = false;
             throw error;
           }
           const next = new URL(location, current);
           if (next.origin !== configuredBase.origin) {
+            await response.body?.cancel();
             const error = new Error('HTTP redirect escaped configured origin');
             error.retryable = false;
             throw error;
           }
+          await response.body?.cancel();
           current = next;
           redirects += 1;
         }
