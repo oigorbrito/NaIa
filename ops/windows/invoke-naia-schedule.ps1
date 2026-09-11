@@ -24,6 +24,9 @@ $occurrenceId = "$($env:NAIA_SCHEDULE_AUTOMATION_ID):$bucket"
 
 Push-Location $WorkingDirectory
 try {
+  if (-not $env:NAIA_SCHEDULE_RECEIPT) {
+    $env:NAIA_SCHEDULE_RECEIPT = Join-Path $WorkingDirectory '.reproduction\external-scheduler.json'
+  }
   & npm run schedule:deliver -- $occurrenceId $at.ToString('o')
   if ($LASTEXITCODE -ne 0) {
     throw "NaIA schedule delivery failed with exit code $LASTEXITCODE"
