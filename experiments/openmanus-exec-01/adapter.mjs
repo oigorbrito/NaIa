@@ -3,12 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, delimiter } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const RESULT_PREFIX = 'NAIA_RESULT:';
 
 export function createOpenManusExecutionAdapter({
   python = process.env.NAIA_OPENMANUS_PYTHON || 'python',
   openManusRoot = process.env.NAIA_OPENMANUS_ROOT,
   sidecarPath = join(here, 'sidecar.py'),
-  timeoutMs = 5_000,
+  timeoutMs = 20_000,
 } = {}) {
   if (!openManusRoot) throw new Error('NAIA_OPENMANUS_ROOT is required');
 
@@ -57,13 +58,18 @@ function executeSidecar({ python, openManusRoot, sidecarPath, timeoutMs, request
     child.on('error', (error) => finish({ ok: false, error: error.message, retryable: true }));
     child.on('close', () => {
       const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-      const last = lines.at(-1);
-      if (!last) {
-        finish({ ok: false, error: stderr.trim() || 'OpenManus sidecar returned no response', retryable: true });
+      const framed = [...lines].reverse().find((line) => line.startsWith(RESULT_PREFIX));
+      if (!framed) {
+        finish({
+          ok: false,
+          error: stderr.trim() || 'OpenManus sidecar returned no framed response',
+          retryable: true,
+          diagnostics: { stdout: stdout.trim() },
+        });
         return;
       }
       try {
-        const response = JSON.parse(last);
+        const response = JSON.parse(framed.slice(RESULT_PREFIX.length));
         if (response?.ok === true) {
           finish(response);
           return;
@@ -74,13 +80,23 @@ function executeSidecar({ python, openManusRoot, sidecarPath, timeoutMs, request
           retryable: response?.retryable === true,
         });
       } catch {
-        finish({ ok: false, error: 'OpenManus sidecar returned invalid JSON', retryable: true });
+        finish({
+          ok: false,
+          error: 'OpenManus sidecar returned invalid framed JSON',
+          retryable: true,
+          diagnostics: { stdout: stdout.trim(), stderr: stderr.trim() },
+        });
       }
     });
 
     const timer = setTimeout(() => {
       child.kill();
-      finish({ ok: false, error: `OpenManus sidecar timed out after ${timeoutMs}ms`, retryable: true });
+      finish({
+        ok: false,
+        error: `OpenManus sidecar timed out after ${timeoutMs}ms`,
+        retryable: true,
+        diagnostics: { stdout: stdout.trim(), stderr: stderr.trim() },
+      });
     }, timeoutMs);
 
     child.stdin.end(`${JSON.stringify(request)}\n`);
