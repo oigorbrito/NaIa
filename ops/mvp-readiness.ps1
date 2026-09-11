@@ -7,8 +7,29 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
-$Head = (& git rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $Head) { throw 'Unable to resolve current git HEAD' }
+
+function Invoke-NativeCapture {
+  param([scriptblock]$Command)
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell may convert native stderr into NativeCommandError.
+    # For native programs the process exit code is authoritative.
+    $ErrorActionPreference = 'Continue'
+    $Output = @(& $Command 2>&1)
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $PreviousPreference
+  }
+  return [pscustomobject]@{
+    ExitCode = $ExitCode
+    Lines = $Output
+    Text = (($Output | ForEach-Object { $_.ToString() }) -join "`n")
+  }
+}
+
+$HeadProbe = Invoke-NativeCapture { git rev-parse HEAD }
+$Head = $HeadProbe.Text.Trim()
+if ($HeadProbe.ExitCode -ne 0 -or -not $Head) { throw 'Unable to resolve current git HEAD' }
 
 $ResolvedReceiptDir = if ([IO.Path]::IsPathRooted($ReceiptDir)) { $ReceiptDir } else { Join-Path $Root $ReceiptDir }
 New-Item -ItemType Directory -Force -Path $ResolvedReceiptDir | Out-Null
@@ -51,12 +72,11 @@ $Suite = 'NOT_EXECUTED'
 $ObservedTests = $null
 if (-not $SkipSuite) {
   Write-Output '== Local product suite =='
-  $null = @(& npm test 2>&1 | Tee-Object -Variable Captured)
-  $Exit = $LASTEXITCODE
-  $Text = ($Captured | ForEach-Object { $_.ToString() }) -join "`n"
-  $Matches = [regex]::Matches($Text, '(?im)(?:^|\s)tests\s+(\d+)')
+  $TestRun = Invoke-NativeCapture { npm test }
+  foreach ($Line in $TestRun.Lines) { Write-Output $Line }
+  $Matches = [regex]::Matches($TestRun.Text, '(?im)(?:^|\s)tests\s+(\d+)')
   if ($Matches.Count -gt 0) { $ObservedTests = [int]$Matches[$Matches.Count - 1].Groups[1].Value }
-  $Suite = if ($Exit -eq 0 -and ($null -eq $ObservedTests -or $ObservedTests -eq 67)) { 'PASS' } else { 'FAIL' }
+  $Suite = if ($TestRun.ExitCode -eq 0 -and $ObservedTests -eq 67) { 'PASS' } else { 'FAIL' }
 }
 
 if ($RunClean) {
@@ -72,8 +92,9 @@ if ($RunLiveGoogle) {
   } else {
     $env:NAIA_GOOGLE_CALENDAR_LIVE_RECEIPT = Join-Path $ResolvedReceiptDir 'google-calendar-live.json'
     Write-Output '== Google Calendar live read =='
-    & npm run live:google-calendar
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Google Calendar live run exited $LASTEXITCODE" }
+    $LiveRun = Invoke-NativeCapture { npm run live:google-calendar }
+    foreach ($Line in $LiveRun.Lines) { Write-Output $Line }
+    if ($LiveRun.ExitCode -ne 0) { Write-Warning "Google Calendar live run exited $($LiveRun.ExitCode)" }
   }
 }
 
