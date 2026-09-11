@@ -17,6 +17,8 @@ Google Calendar live read is reported separately as a secretary-capability gate.
 
 All live receipts are commit-bound. A PASS receipt produced by another checkout is classified as `STALE_RECEIPT` and cannot satisfy readiness.
 
+The final readiness decision is evaluated by the pure Node module `src/product/readiness-evaluator.mjs`, which is covered by product tests. PowerShell only orchestrates executions and collects receipts.
+
 ## Consolidated command
 
 On Windows:
@@ -66,7 +68,7 @@ npmTest=PASS
 diffCheck=PASS
 ```
 
-Current expected product test count is 67.
+Current expected product test count is 74.
 
 ## External scheduler: durable Windows configuration
 
