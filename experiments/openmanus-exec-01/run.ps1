@@ -61,11 +61,10 @@ if (-not (Test-Path $VenvDir)) {
 }
 
 $Python = Join-Path $VenvDir 'Scripts\python.exe'
-$Pip = Join-Path $VenvDir 'Scripts\pip.exe'
 
 Invoke-Checked { & $Python --version } 'Experiment Python version check'
-Invoke-Checked { & $Pip install --upgrade pip } 'pip upgrade'
-Invoke-Checked { & $Pip install -r (Join-Path $VendorDir 'requirements.txt') } 'OpenManus requirements install'
+Invoke-Checked { & $Python -m pip install --upgrade pip } 'pip upgrade'
+Invoke-Checked { & $Python -m pip install -r (Join-Path $VendorDir 'requirements.txt') } 'OpenManus requirements install'
 
 $env:NAIA_OPENMANUS_ROOT = $VendorDir
 $env:NAIA_OPENMANUS_PYTHON = $Python
