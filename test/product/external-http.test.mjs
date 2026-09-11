@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { createCapabilityRegistry, createDefaultCapabilityRegistry } from '../../src/product/capabilities.mjs';
+import { createDefaultCapabilityRegistry } from '../../src/product/capabilities.mjs';
 import { createHttpReadAdapter, createHttpReadCapability } from '../../src/product/http-read.mjs';
 import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
@@ -19,15 +19,6 @@ async function withServer(handler, fn) {
     server.close();
     await once(server, 'close');
   }
-}
-
-function createHttpNaia(baseUrl, options = {}) {
-  const capabilities = createCapabilityRegistry([
-    ...createDefaultCapabilityRegistry().list().map((entry) => {
-      throw new Error(`unexpected metadata-only capability in test setup: ${entry.id}`);
-    }),
-  ]);
-  return { capabilities };
 }
 
 function buildPorts(baseUrl, adapterOptions = {}) {
