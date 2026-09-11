@@ -1,4 +1,6 @@
 import { createDefaultCapabilityRegistry } from './capabilities.mjs';
+import { createCalendarCapabilities, createCalendarExecutionAdapter } from './calendar.mjs';
+import { createCalendarHttpProvider } from './calendar-http.mjs';
 import { createHttpReadAdapter, createHttpReadCapability } from './http-read.mjs';
 
 function positiveInteger(value, fallback, name) {
@@ -12,16 +14,30 @@ export function createRuntimeComposition({ env = process.env } = {}) {
   const capabilities = createDefaultCapabilityRegistry();
   const executionAdapters = [];
 
-  const baseUrl = String(env.NAIA_HTTP_BASE_URL ?? '').trim();
-  if (!baseUrl) return { capabilities, executionAdapters };
+  const httpBaseUrl = String(env.NAIA_HTTP_BASE_URL ?? '').trim();
+  if (httpBaseUrl) {
+    const prefix = String(env.NAIA_HTTP_PREFIX ?? 'provider-read').trim();
+    const tool = String(env.NAIA_HTTP_TOOL ?? 'http.read').trim();
+    const timeoutMs = positiveInteger(env.NAIA_HTTP_TIMEOUT_MS, 5000, 'NAIA_HTTP_TIMEOUT_MS');
+    const maxBytes = positiveInteger(env.NAIA_HTTP_MAX_BYTES, 256 * 1024, 'NAIA_HTTP_MAX_BYTES');
 
-  const prefix = String(env.NAIA_HTTP_PREFIX ?? 'provider-read').trim();
-  const tool = String(env.NAIA_HTTP_TOOL ?? 'http.read').trim();
-  const timeoutMs = positiveInteger(env.NAIA_HTTP_TIMEOUT_MS, 5000, 'NAIA_HTTP_TIMEOUT_MS');
-  const maxBytes = positiveInteger(env.NAIA_HTTP_MAX_BYTES, 256 * 1024, 'NAIA_HTTP_MAX_BYTES');
+    capabilities.register(createHttpReadCapability({ id: tool, prefix, tool }));
+    executionAdapters.push(createHttpReadAdapter({ baseUrl: httpBaseUrl, tool, timeoutMs, maxBytes }));
+  }
 
-  capabilities.register(createHttpReadCapability({ id: tool, prefix, tool }));
-  executionAdapters.push(createHttpReadAdapter({ baseUrl, tool, timeoutMs, maxBytes }));
+  const calendarBaseUrl = String(env.NAIA_CALENDAR_BASE_URL ?? '').trim();
+  if (calendarBaseUrl) {
+    const timeoutMs = positiveInteger(env.NAIA_CALENDAR_TIMEOUT_MS, 5000, 'NAIA_CALENDAR_TIMEOUT_MS');
+    const maxBytes = positiveInteger(env.NAIA_CALENDAR_MAX_BYTES, 256 * 1024, 'NAIA_CALENDAR_MAX_BYTES');
+    const provider = createCalendarHttpProvider({
+      baseUrl: calendarBaseUrl,
+      token: env.NAIA_CALENDAR_TOKEN ?? '',
+      timeoutMs,
+      maxBytes,
+    });
+    for (const capability of createCalendarCapabilities()) capabilities.register(capability);
+    executionAdapters.push(createCalendarExecutionAdapter({ provider }));
+  }
 
   return { capabilities, executionAdapters };
 }
