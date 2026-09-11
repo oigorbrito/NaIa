@@ -12,7 +12,9 @@ This runbook operationalizes `reproduction-profiles.v1.json`, `fault-suite.v1.js
 Methodological controls are defined by:
 
 - `EMPIRICAL-HARNESS-METHODOLOGY-V1.md`;
-- `METHODOLOGY-SOURCE-MAP-V1.md`.
+- `METHODOLOGY-SOURCE-MAP-V1.md`;
+- `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md`;
+- `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md`.
 
 A recommendation presented as required empirical/reproducibility practice must satisfy the suggestion-admissibility rule in those documents. General engineering preference is not a harness requirement unless separately adopted as product policy.
 
@@ -74,7 +76,7 @@ A command in this runbook marked `TO_VERIFY` is a prepared reproduction command,
 
 ### 3.1 Minimum reproducibility package
 
-Before a result is labeled `REPEATABLE_LOCAL`, the run directory or linked artifact package must let a reviewer determine, without private corrective communication:
+Before a result is labeled `REPEATABLE_LOCAL`, complete `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md` for the experiment series. The run directory or linked artifact package must let a reviewer determine, without private corrective communication:
 
 - what candidate/version was evaluated;
 - what harness/adapter version was used;
@@ -89,13 +91,15 @@ Before a result is labeled `REPRODUCED_INDEPENDENT`, the independent environment
 
 ### 3.2 Claim-to-evidence linkage
 
-Every benchmark-relevant run or batch summary must identify a `claimId` and link that claim to:
+Every benchmark-relevant run or batch summary must instantiate `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md` with a unique `claimId` and link that claim to:
 
 ```text
 claim -> procedure -> environment -> raw artifacts -> acceptance check -> observed result -> decision
 ```
 
-If the raw artifacts cannot be located from the summary, the summary is documentary only and is not decision-eligible.
+If the raw artifacts cannot be located from the completed register, the summary is documentary only and is not decision-eligible.
+
+One register may cite many repetitions only when they share the same experiment contract. Materially changed workloads, fault boundaries, oracle semantics, acceptance meanings or version-specific claims require a new experiment-series identity.
 
 ## 4. Common runner invocation
 
@@ -336,11 +340,13 @@ Before candidate-scale execution, verify that the package is:
 - `EXERCISABLE`: setup/run/cleanup commands can be invoked as documented;
 - `VERIFIABLE`: harness controls expose evidence that expected PASS/FAIL/BLOCKED/INCONCLUSIVE states are distinguishable.
 
+Use `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md` as the auditable checklist for identity/provenance, environment, procedure, raw evidence, repetition completeness, result classification, comparability and evidence-strength labels.
+
 This check qualifies the artifact package. It does not qualify any candidate as PASS and does not constitute independent reproduction.
 
 ## 12. Decision/reporting rule
 
-Every recommendation to select, reject, rank or replace a chassis must cite the claim-to-evidence records supporting it.
+Every recommendation to select, reject, rank or replace a chassis must cite completed claim-to-evidence records created from `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md`.
 
 Allowed decision language is bounded by evidence class:
 
@@ -351,6 +357,8 @@ Allowed decision language is bounded by evidence class:
 - `DECISION_ELIGIBLE` -> use the result in benchmark selection if all comparison gates are also satisfied.
 
 If required evidence is absent, the supported recommendation is to execute/reproduce the missing experiment, not to infer the winner.
+
+A narrative recommendation without exact claim IDs and evidence references is not decision-eligible even when it summarizes otherwise valid runs.
 
 ## 13. Current environment blockers
 
