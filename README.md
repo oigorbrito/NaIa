@@ -1,22 +1,53 @@
-# NaIa
+# NaIA
 
-NaIa is currently in evidence-driven research and pre-implementation.
+NaIA has two active engineering tracks:
 
-No durable-execution chassis, reference architecture, or MVP scope has been selected yet.
+1. **Product track** — executable MVP work on `product/mvp-foundation-v1`.
+2. **Research track** — chassis qualification and benchmark work, still authoritative for any future chassis-winner claim.
 
-Current engineering artifacts:
+## Product track
 
-- [Qualified Chassis Gate V1](docs/research/CHASSIS-QUALIFICATION-PROTOCOL.md)
-- [Chassis Candidates V1](docs/research/CHASSIS-CANDIDATES-V1.md)
-- [Common Fault Mutants T1–T16](docs/research/FAULT-MUTANTS-T1-T16.md)
-- [Machine-readable fault suite](research/chassis/fault-suite.v1.json)
-- [Project Plan Baseline](docs/status/PROJECT-PLAN.md)
+Current executable path:
+
+`intent -> actionable plan -> tool selection -> policy -> execution -> evidence -> persisted state/history`
+
+The product branch now includes:
+
+- persisted objectives, plans and append-only evidence;
+- resume semantics;
+- deterministic intent planning;
+- a local tool registry;
+- read-only tools that execute directly;
+- explicit approval before local write side effects;
+- CLI history and evidence inspection;
+- focused product CI.
+
+Local commands on the product branch:
+
+```bash
+npm test
+npm run start:product -- tools
+npm run start:product -- pursue "uppercase: hello naia"
+npm run start:product -- pursue "note release-plan: ship capability"
+npm run start:product -- approve <objectiveId> note.write
+npm run start:product -- show <objectiveId>
+npm run start:product -- resume <objectiveId>
+npm run start:product -- history
+```
+
+See:
+
+- [Product Foundation V1](docs/product/PRODUCT-FOUNDATION-V1.md)
+- [First Useful Capability V1](docs/product/FIRST-USEFUL-CAPABILITY-V1.md)
+
+## Research track
+
+Research artifacts remain available under `research/chassis/` and `docs/research/`. The formal benchmark is still required before selecting `BENCHMARK_TO_BEAT` or `CHASSIS_WINNER`.
 
 Current decision state:
 
+- `PRODUCT_FOUNDATION_V1 = COMPLETE`
+- `FIRST_USEFUL_CAPABILITY_V1 = COMPLETE`
 - `CHASSIS_WINNER = NOT_SELECTED`
 - `BENCHMARK_TO_BEAT = NOT_SELECTED`
-- `REFERENCE_ARCHITECTURE = NOT_FROZEN`
-- `MVP_SCOPE = NOT_FROZEN`
-
-The next engineering milestone is to implement and execute the common T1–T16 chassis harness against finalist configurations, then deliberately search GitHub for challengers capable of beating the resulting benchmark.
+- `DURABLE_EXECUTION_ADAPTER = NOT_SELECTED`

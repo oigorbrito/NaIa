@@ -1,9 +1,11 @@
 {
-  "name": "naia-research-harness",
+  "name": "naia",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:chassis",
+    "test": "npm run test:product",
+    "test:product": "node --test test/product/*.test.mjs",
+    "start:product": "node src/product/cli.mjs",
     "test:chassis": "node --test research/chassis/harness/*.test.mjs",
     "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
     "single:chassis": "node research/chassis/harness/formal-single-run.mjs",
