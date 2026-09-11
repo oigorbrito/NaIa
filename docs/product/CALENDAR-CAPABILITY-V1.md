@@ -1,6 +1,6 @@
 # NaIA Calendar Capability V1
 
-Status: IMPLEMENTING
+Status: IMPLEMENTED_PENDING_LOCAL_REPRO
 
 ## Goal
 
@@ -58,7 +58,18 @@ Transport contract:
 
 Redirects are not followed. Cross-origin movement is therefore impossible inside this provider transport. Response bodies are bounded and timeouts abort the request.
 
-## Gates
+Runtime configuration:
+
+```text
+NAIA_CALENDAR_BASE_URL
+NAIA_CALENDAR_TOKEN            optional bearer token
+NAIA_CALENDAR_TIMEOUT_MS       optional, default 5000
+NAIA_CALENDAR_MAX_BYTES        optional, default 262144
+```
+
+When `NAIA_CALENDAR_BASE_URL` is absent, calendar capabilities are not registered and default product behavior is unchanged.
+
+## Gates implemented
 
 - CAL-01 list is read-only and completes without approval.
 - CAL-02 create stops before provider dispatch.
@@ -70,3 +81,15 @@ Redirects are not followed. Cross-origin movement is therefore impossible inside
 - CAL-08 timeout never becomes success.
 - CAL-09 default runtime remains unchanged when calendar config is absent.
 - CAL-10 configured runtime exposes calendar capabilities without exposing token metadata.
+
+## Reproduction gate
+
+Aggregate expected suite on this branch:
+
+```text
+35 prior product tests
++ 10 calendar contracts
+= 45 tests
+```
+
+Acceptance is `tests 45 / pass 45 / fail 0` in the local supported Node environment. Until observed, this block remains `IMPLEMENTED_PENDING_LOCAL_REPRO` rather than PASS.
