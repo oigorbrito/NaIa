@@ -56,7 +56,13 @@ test('skipped suite cannot satisfy MVP readiness', () => {
 test('clean reproduction from another commit is stale, not pass', () => {
   const stale = clean();
   stale.checkedOutCommit = 'old';
-  const result = baseline({ cleanRun1: stale });
+  let result = baseline({ cleanRun1: stale });
+  assert.equal(result.cleanReproduction1, 'STALE_RECEIPT');
+  assert.equal(result.mvpCoreReady, 'NOT_READY');
+
+  stale.status = 'FAIL';
+  stale.npmTest = 'FAIL';
+  result = baseline({ cleanRun1: stale });
   assert.equal(result.cleanReproduction1, 'STALE_RECEIPT');
   assert.equal(result.mvpCoreReady, 'NOT_READY');
 });
@@ -64,7 +70,12 @@ test('clean reproduction from another commit is stale, not pass', () => {
 test('live scheduler receipt from another commit is stale, not pass', () => {
   const stale = gate('EXTERNAL_SCHEDULER_DELIVERY');
   stale.commit = 'old';
-  const result = baseline({ externalScheduler: stale });
+  let result = baseline({ externalScheduler: stale });
+  assert.equal(result.externalScheduler, 'STALE_RECEIPT');
+  assert.equal(result.mvpCoreReady, 'NOT_READY');
+
+  stale.status = 'FAIL';
+  result = baseline({ externalScheduler: stale });
   assert.equal(result.externalScheduler, 'STALE_RECEIPT');
   assert.equal(result.mvpCoreReady, 'NOT_READY');
 });
