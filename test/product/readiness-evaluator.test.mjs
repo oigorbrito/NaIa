@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { evaluateMvpReadiness } from '../../src/product/readiness-evaluator.mjs';
+import { MVP_READINESS_MANIFEST } from '../../src/product/readiness-manifest.mjs';
+import { resolveRuntimeCommit } from '../../src/product/runtime-identity.mjs';
 
 const commit = 'abc123';
 const clean = () => ({
@@ -76,4 +81,45 @@ test('Google Calendar live failure does not redefine historical core MVP readine
   const result = baseline({ liveGoogleCalendarRead: failedGoogle });
   assert.equal(result.liveGoogleCalendarRead, 'FAIL');
   assert.equal(result.mvpCoreReady, 'PASS');
+});
+
+test('readiness manifest freezes the historical core gate set', () => {
+  assert.deepEqual(MVP_READINESS_MANIFEST.coreGates, [
+    'LOCAL_PRODUCT_SUITE',
+    'CLEAN_REPRODUCTION_1',
+    'CLEAN_REPRODUCTION_2',
+    'EXTERNAL_SCHEDULER_DELIVERY',
+    'LIVE_PROVIDER_EVENT',
+  ]);
+  assert.deepEqual(MVP_READINESS_MANIFEST.optionalCapabilityGates, ['LIVE_GCAL_READ']);
+  assert.equal(MVP_READINESS_MANIFEST.expectedProductTests, 78);
+  assert.equal(Object.isFrozen(MVP_READINESS_MANIFEST), true);
+});
+
+test('readiness evaluator defaults expected test count from the manifest', () => {
+  const result = evaluateMvpReadiness({
+    commit,
+    observedProductTests: 78,
+    suiteExitCode: 0,
+    suiteExecuted: true,
+  });
+  assert.equal(result.expectedProductTests, 78);
+  assert.equal(result.readinessSchemaVersion, 1);
+  assert.equal(result.localSuite, 'PASS');
+  assert.equal(result.mvpCoreReady, 'NOT_READY');
+});
+
+test('runtime commit identity prefers explicit NAIA_COMMIT_SHA', () => {
+  const resolved = resolveRuntimeCommit({ env: { NAIA_COMMIT_SHA: ' explicit-sha ' }, cwd: process.cwd() });
+  assert.equal(resolved, 'explicit-sha');
+});
+
+test('runtime commit identity fails closed outside git when no explicit commit exists', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'naia-runtime-identity-'));
+  try {
+    const resolved = resolveRuntimeCommit({ env: {}, cwd: root });
+    assert.equal(resolved, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
