@@ -7,6 +7,7 @@
     "test:product": "node --test test/product/*.test.mjs",
     "start:product": "node src/product/cli.mjs",
     "schedule:deliver": "node src/product/schedule-delivery-cli.mjs",
+    "live:google-calendar": "node experiments/google-calendar-live/run.mjs",
     "test:chassis": "node --test research/chassis/harness/*.test.mjs",
     "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
     "single:chassis": "node research/chassis/harness/formal-single-run.mjs",
