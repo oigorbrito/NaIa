@@ -17,8 +17,7 @@ const gate = (name) => ({ status: 'PASS', gate: name, commit });
 function baseline(overrides = {}) {
   return evaluateMvpReadiness({
     commit,
-    expectedProductTests: 74,
-    observedProductTests: 74,
+    observedProductTests: 78,
     suiteExitCode: 0,
     cleanRun1: clean(),
     cleanRun2: clean(),
@@ -38,7 +37,7 @@ test('readiness passes only when every historical core gate passes', () => {
 });
 
 test('suite with wrong observed test count fails closed even with exit code zero', () => {
-  const result = baseline({ observedProductTests: 73 });
+  const result = baseline({ observedProductTests: 77 });
   assert.equal(result.localSuite, 'FAIL');
   assert.equal(result.mvpCoreReady, 'NOT_READY');
 });
