@@ -14,8 +14,16 @@ $ErrorActionPreference = 'Stop'
 
 $repo = (Resolve-Path $WorkingDirectory).Path
 $wrapper = Join-Path $repo 'ops\windows\invoke-naia-schedule.ps1'
+$configPath = Join-Path $repo '.naia\ops\schedule.json'
+$secretPath = Join-Path $repo '.naia\ops\schedule.secret'
 if (-not (Test-Path $wrapper)) {
   throw "schedule wrapper not found: $wrapper"
+}
+if (-not (Test-Path $configPath)) {
+  throw "schedule config not found: $configPath; run configure-naia-schedule.ps1 first"
+}
+if (-not (Test-Path $secretPath)) {
+  throw "schedule secret not found: $secretPath; run configure-naia-schedule.ps1 first"
 }
 
 $time = [DateTime]::ParseExact($DailyAt, 'HH:mm', $null)
