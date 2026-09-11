@@ -9,13 +9,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Root = (Get-Location).Path
+$ExpectedProductTests = 74
 
 function Invoke-NativeCapture {
   param([scriptblock]$Command)
   $PreviousPreference = $ErrorActionPreference
   try {
-    # Windows PowerShell may convert native stderr into NativeCommandError.
-    # For native programs the process exit code is authoritative.
     $ErrorActionPreference = 'Continue'
     $Output = @(& $Command 2>&1)
     $ExitCode = $LASTEXITCODE
@@ -43,34 +42,6 @@ function Read-Receipt {
   try { return Get-Content -Raw $Path | ConvertFrom-Json } catch { return $null }
 }
 
-function Clean-Repro-Pass {
-  param($Receipt)
-  return $null -ne $Receipt -and
-    $Receipt.status -eq 'PASS' -and
-    $Receipt.cleanClone -eq $true -and
-    $Receipt.requestedCommit -eq $Head -and
-    $Receipt.checkedOutCommit -eq $Head -and
-    $Receipt.npmCi -eq 'PASS' -and
-    $Receipt.npmTest -eq 'PASS' -and
-    $Receipt.diffCheck -eq 'PASS'
-}
-
-function Gate-Pass {
-  param($Receipt, [string]$Gate)
-  return $null -ne $Receipt -and
-    $Receipt.status -eq 'PASS' -and
-    $Receipt.gate -eq $Gate -and
-    $Receipt.commit -eq $Head
-}
-
-function Gate-Status {
-  param($Receipt, [string]$Gate, [string]$Missing = 'NOT_EXECUTED')
-  if ($null -eq $Receipt) { return $Missing }
-  if (Gate-Pass $Receipt $Gate) { return 'PASS' }
-  if ($Receipt.status -eq 'PASS' -and $Receipt.gate -eq $Gate -and $Receipt.commit -ne $Head) { return 'STALE_RECEIPT' }
-  return 'FAIL'
-}
-
 function Invoke-CleanReproduction {
   param([string]$Name)
   $ReceiptPath = Join-Path $ResolvedReceiptDir $Name
@@ -81,15 +52,16 @@ function Invoke-CleanReproduction {
   }
 }
 
-$Suite = 'NOT_EXECUTED'
+$SuiteExecuted = -not $SkipSuite
+$SuiteExitCode = $null
 $ObservedTests = $null
-if (-not $SkipSuite) {
+if ($SuiteExecuted) {
   Write-Output '== Local product suite =='
   $TestRun = Invoke-NativeCapture { npm test }
   foreach ($Line in $TestRun.Lines) { Write-Output $Line }
+  $SuiteExitCode = $TestRun.ExitCode
   $Matches = [regex]::Matches($TestRun.Text, '(?im)(?:^|\s)tests\s+(\d+)')
   if ($Matches.Count -gt 0) { $ObservedTests = [int]$Matches[$Matches.Count - 1].Groups[1].Value }
-  $Suite = if ($TestRun.ExitCode -eq 0 -and $ObservedTests -eq 67) { 'PASS' } else { 'FAIL' }
 }
 
 if ($RunClean) {
@@ -122,38 +94,37 @@ if ($RunLiveGoogle) {
   }
 }
 
-$Run1 = Read-Receipt 'run-01.json'
-$Run2 = Read-Receipt 'run-02.json'
-$Scheduler = Read-Receipt 'external-scheduler.json'
-$ProviderEvent = Read-Receipt 'provider-event.json'
-$Google = Read-Receipt 'google-calendar-live.json'
-
-$Clean1 = if (Clean-Repro-Pass $Run1) { 'PASS' } elseif ($null -eq $Run1) { 'NOT_EXECUTED' } else { 'FAIL' }
-$Clean2 = if (Clean-Repro-Pass $Run2) { 'PASS' } elseif ($null -eq $Run2) { 'NOT_EXECUTED' } else { 'FAIL' }
-$SchedulerGate = Gate-Status $Scheduler 'EXTERNAL_SCHEDULER_DELIVERY'
-$ProviderEventGate = Gate-Status $ProviderEvent 'LIVE_PROVIDER_EVENT'
-$GoogleGate = Gate-Status $Google 'LIVE_GCAL_READ' 'BLOCKED_EXTERNAL_OR_NOT_EXECUTED'
-
-$CoreReady = $Suite -eq 'PASS' -and $Clean1 -eq 'PASS' -and $Clean2 -eq 'PASS' -and $SchedulerGate -eq 'PASS' -and $ProviderEventGate -eq 'PASS'
-
-$Status = [ordered]@{
+$EvaluatorInput = [ordered]@{
   commit = $Head
-  expectedProductTests = 67
+  expectedProductTests = $ExpectedProductTests
   observedProductTests = $ObservedTests
-  localSuite = $Suite
-  cleanReproduction1 = $Clean1
-  cleanReproduction2 = $Clean2
-  externalScheduler = $SchedulerGate
-  liveProviderEvent = $ProviderEventGate
-  liveGoogleCalendarRead = $GoogleGate
-  mvpCoreReady = if ($CoreReady) { 'PASS' } else { 'NOT_READY' }
+  suiteExitCode = $SuiteExitCode
+  suiteExecuted = $SuiteExecuted
+  cleanRun1 = Read-Receipt 'run-01.json'
+  cleanRun2 = Read-Receipt 'run-02.json'
+  externalScheduler = Read-Receipt 'external-scheduler.json'
+  liveProviderEvent = Read-Receipt 'provider-event.json'
+  liveGoogleCalendarRead = Read-Receipt 'google-calendar-live.json'
   generatedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
 
-$StatusPath = Join-Path $ResolvedReceiptDir 'mvp-readiness.json'
-$Json = $Status | ConvertTo-Json -Depth 6
-Set-Content -Path $StatusPath -Value $Json -Encoding utf8
-Write-Output '== NaIA MVP readiness =='
-Write-Output $Json
+$InputPath = Join-Path $ResolvedReceiptDir 'readiness-input.json'
+$EvaluatorInput | ConvertTo-Json -Depth 12 | Set-Content -Path $InputPath -Encoding utf8
+$Evaluation = Invoke-NativeCapture { node src/product/readiness-evaluator-cli.mjs $InputPath }
+if ($Evaluation.ExitCode -ne 0 -and $Evaluation.ExitCode -ne 2) {
+  foreach ($Line in $Evaluation.Lines) { Write-Output $Line }
+  throw "readiness evaluator failed with exit code $($Evaluation.ExitCode)"
+}
 
-if (-not $CoreReady) { exit 2 }
+try {
+  $Status = $Evaluation.Text | ConvertFrom-Json
+} catch {
+  throw 'readiness evaluator returned invalid JSON'
+}
+
+$StatusPath = Join-Path $ResolvedReceiptDir 'mvp-readiness.json'
+$Status | ConvertTo-Json -Depth 12 | Set-Content -Path $StatusPath -Encoding utf8
+Write-Output '== NaIA MVP readiness =='
+Write-Output ($Status | ConvertTo-Json -Depth 12)
+
+if ($Status.mvpCoreReady -ne 'PASS') { exit 2 }
