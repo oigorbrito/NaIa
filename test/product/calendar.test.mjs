@@ -52,6 +52,10 @@ test('CAL-01 list is read-only and completes without approval', async () => {
   assert.equal(result.plan.capabilityId, 'calendar.list');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, 'list');
+  assert.deepEqual(calls[0].input, {
+    from: '2026-09-11T00:00:00.000Z',
+    to: '2026-09-12T00:00:00.000Z',
+  });
   assert.equal(result.plan.steps[1].action.requiresApproval, false);
 });
 
