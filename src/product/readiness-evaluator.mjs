@@ -2,25 +2,21 @@ import { MVP_READINESS_MANIFEST } from './readiness-manifest.mjs';
 
 function cleanReproductionStatus(receipt, commit) {
   if (!receipt) return 'NOT_EXECUTED';
+  const sameCommit = receipt.requestedCommit === commit && receipt.checkedOutCommit === commit;
+  if (!sameCommit && (receipt.requestedCommit || receipt.checkedOutCommit)) return 'STALE_RECEIPT';
   const pass = receipt.status === 'PASS'
     && receipt.cleanClone === true
-    && receipt.requestedCommit === commit
-    && receipt.checkedOutCommit === commit
+    && sameCommit
     && receipt.npmCi === 'PASS'
     && receipt.npmTest === 'PASS'
     && receipt.diffCheck === 'PASS';
-  if (pass) return 'PASS';
-  if (receipt.status === 'PASS'
-      && (receipt.requestedCommit !== commit || receipt.checkedOutCommit !== commit)) {
-    return 'STALE_RECEIPT';
-  }
-  return 'FAIL';
+  return pass ? 'PASS' : 'FAIL';
 }
 
 function liveGateStatus(receipt, gate, commit, missing = 'NOT_EXECUTED') {
   if (!receipt) return missing;
+  if (receipt.gate === gate && receipt.commit && receipt.commit !== commit) return 'STALE_RECEIPT';
   if (receipt.status === 'PASS' && receipt.gate === gate && receipt.commit === commit) return 'PASS';
-  if (receipt.status === 'PASS' && receipt.gate === gate && receipt.commit !== commit) return 'STALE_RECEIPT';
   return 'FAIL';
 }
 
