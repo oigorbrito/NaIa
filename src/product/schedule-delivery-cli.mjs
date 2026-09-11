@@ -2,6 +2,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { createExternalScheduleDelivery } from './external-schedule.mjs';
+import { resolveRuntimeCommit } from './runtime-identity.mjs';
 
 async function writeReceipt(path, receipt) {
   if (!path) return;
@@ -29,6 +30,7 @@ if (!occurrenceId) {
     const receipt = {
       status: 'PASS',
       gate: 'EXTERNAL_SCHEDULER_DELIVERY',
+      commit: resolveRuntimeCommit(),
       occurrenceId,
       automationId: runtime.registration.automationId,
       objectiveId: result.objective.id,
