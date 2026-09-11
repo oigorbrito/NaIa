@@ -9,6 +9,13 @@ Decision state:
 
 This runbook operationalizes `reproduction-profiles.v1.json`, `fault-suite.v1.json`, the common external oracle, crash controller, and common runner. Documentation and source review define the hypothesis and the executable setup; only runtime evidence emitted by the common runner can produce candidate PASS/FAIL evidence.
 
+Methodological controls are defined by:
+
+- `EMPIRICAL-HARNESS-METHODOLOGY-V1.md`;
+- `METHODOLOGY-SOURCE-MAP-V1.md`.
+
+A recommendation presented as required empirical/reproducibility practice must satisfy the suggestion-admissibility rule in those documents. General engineering preference is not a harness requirement unless separately adopted as product policy.
+
 ## 1. Non-negotiable experiment contract
 
 Use the same chain for every candidate:
@@ -39,6 +46,8 @@ Expected harness controls:
 
 Do not proceed to 100-run candidate repetitions if these controls are not discriminating correctly.
 
+A control result is harness-validation evidence; it is not candidate evidence.
+
 ## 3. Evidence file convention
 
 Store candidate evidence under a run-specific directory, for example:
@@ -62,6 +71,31 @@ For every run also record, outside or alongside `evidence.json`:
 - blocker or inconclusive reason, if any.
 
 A command in this runbook marked `TO_VERIFY` is a prepared reproduction command, not evidence that it has already executed successfully.
+
+### 3.1 Minimum reproducibility package
+
+Before a result is labeled `REPEATABLE_LOCAL`, the run directory or linked artifact package must let a reviewer determine, without private corrective communication:
+
+- what candidate/version was evaluated;
+- what harness/adapter version was used;
+- what environment and dependencies were used;
+- what input/workload and fault primitive were applied;
+- how to invoke setup, run and cleanup;
+- where the raw observations are stored;
+- what acceptance rule converted observations into the verdict;
+- whether any prerequisite remained unavailable or substituted.
+
+Before a result is labeled `REPRODUCED_INDEPENDENT`, the independent environment/person must record its own environment manifest, invocation, raw evidence and verdict. Reusing the original investigator's summary alone is insufficient.
+
+### 3.2 Claim-to-evidence linkage
+
+Every benchmark-relevant run or batch summary must identify a `claimId` and link that claim to:
+
+```text
+claim -> procedure -> environment -> raw artifacts -> acceptance check -> observed result -> decision
+```
+
+If the raw artifacts cannot be located from the summary, the summary is documentary only and is not decision-eligible.
 
 ## 4. Common runner invocation
 
@@ -282,13 +316,43 @@ Cleanup must cancel/finish disposable runs and remove self-host resources create
 
 `INCONCLUSIVE` is reserved for an experiment where the required fault boundary was not actually exercised, including killpoint not reached or a controller-loss mode that does not represent the required worker crash.
 
+Infrastructure failure is not candidate failure unless that infrastructure component is itself part of the predeclared candidate claim under test.
+
 ## 10. Repetition protocol
 
 First prove one run is instrumented correctly. Only then scale the corresponding critical mutant to the repetition requirement in `fault-suite.v1.json` (currently 100 for relevant critical mutants).
 
 For each repetition, use a fresh `objectiveId`; the runner generates one by default. Preserve all evidence files. A batch result must not hide individual failures, blockers, or inconclusive runs.
 
-## 11. Current environment blockers
+Do not merge runs from materially different experiment contracts into one success rate. A change to workload semantics, fault boundary, acceptance rule, oracle semantics or version-specific candidate identity starts a new experiment series unless comparability is explicitly justified.
+
+## 11. Documentation and artifact quality check
+
+Before candidate-scale execution, verify that the package is:
+
+- `DOCUMENTED`: inventory, environment requirements and invocation instructions exist;
+- `CONSISTENT`: the supplied artifacts correspond to the claim being tested;
+- `COMPLETE`: required components are present or their acquisition procedure is documented;
+- `EXERCISABLE`: setup/run/cleanup commands can be invoked as documented;
+- `VERIFIABLE`: harness controls expose evidence that expected PASS/FAIL/BLOCKED/INCONCLUSIVE states are distinguishable.
+
+This check qualifies the artifact package. It does not qualify any candidate as PASS and does not constitute independent reproduction.
+
+## 12. Decision/reporting rule
+
+Every recommendation to select, reject, rank or replace a chassis must cite the claim-to-evidence records supporting it.
+
+Allowed decision language is bounded by evidence class:
+
+- `DOCUMENTED` -> describe documented capability only;
+- `STATIC_VERIFIED` -> describe validated contract/static property only;
+- `REPEATABLE_LOCAL` -> describe locally observed runtime behavior under the declared conditions;
+- `REPRODUCED_INDEPENDENT` -> state independent reproduction for the specific claim;
+- `DECISION_ELIGIBLE` -> use the result in benchmark selection if all comparison gates are also satisfied.
+
+If required evidence is absent, the supported recommendation is to execute/reproduce the missing experiment, not to infer the winner.
+
+## 13. Current environment blockers
 
 `B001` remains the candidate-runtime installation/bootstrap blocker observed in the prior execution environment. It is not candidate failure.
 
