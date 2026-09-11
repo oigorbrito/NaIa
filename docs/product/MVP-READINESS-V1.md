@@ -15,6 +15,8 @@ The historical MVP core readiness definition remains:
 
 Google Calendar live read is reported separately as a secretary-capability gate. It does not retroactively redefine the historical core MVP gate.
 
+All live receipts are commit-bound. A PASS receipt produced by another checkout is classified as `STALE_RECEIPT` and cannot satisfy readiness.
+
 ## Consolidated command
 
 On Windows:
@@ -36,6 +38,8 @@ The runner writes:
 ```
 
 and exits with code 0 only when `mvpCoreReady=PASS`.
+
+Native process success is determined by exit code. Git/npm progress written to stderr is not treated as a PowerShell failure.
 
 ## Local suite + clean reproductions
 
@@ -62,36 +66,80 @@ npmTest=PASS
 diffCheck=PASS
 ```
 
-## External scheduler receipt
+Current expected product test count is 67.
 
-The Windows Task Scheduler wrapper now defaults the delivery receipt to:
+## External scheduler: durable Windows configuration
+
+Do not rely on environment variables defined only in an interactive shell. Configure the scheduler once with non-secret settings plus a DPAPI-protected secret:
+
+```powershell
+.\ops\windows\configure-naia-schedule.ps1 `
+  -WorkingDirectory 'C:\Projetos\naia' `
+  -AutomationId 'mvp-schedule' `
+  -ScheduleExpression 'daily' `
+  -Intent 'uppercase: external scheduler'
+```
+
+The HMAC secret is requested as a `SecureString` and stored through Windows DPAPI for the current user under `.naia\ops`. It is not stored in the Scheduled Task definition or readiness receipt.
+
+Register the real task:
+
+```powershell
+.\ops\windows\register-naia-schedule.ps1 `
+  -TaskName 'NaIA-MVP-Schedule' `
+  -WorkingDirectory 'C:\Projetos\naia' `
+  -DailyAt '09:00'
+```
+
+Exercise the actual Task Scheduler boundary immediately:
+
+```powershell
+.\ops\windows\verify-naia-schedule.ps1 `
+  -TaskName 'NaIA-MVP-Schedule' `
+  -WorkingDirectory 'C:\Projetos\naia'
+```
+
+or let the consolidated runner invoke it:
+
+```powershell
+.\ops\mvp-readiness.ps1 -RunSchedulerTask -SchedulerTaskName 'NaIA-MVP-Schedule'
+```
+
+A valid invocation produces:
 
 ```text
 .reproduction/external-scheduler.json
-```
-
-A real scheduled invocation must produce:
-
-```text
 status=PASS
 gate=EXTERNAL_SCHEDULER_DELIVERY
+commit=<current HEAD>
 ```
 
-The secret remains runtime-only and is not included in the receipt.
+## Live provider event: durable Windows configuration
 
-## Live provider event receipt
-
-Before starting the GitHub webhook server, set:
+Configure the GitHub webhook ingress and its HMAC secret:
 
 ```powershell
-$env:NAIA_GITHUB_WEBHOOK_RECEIPT = '.reproduction\provider-event.json'
+.\ops\windows\configure-naia-github-webhook.ps1 `
+  -WorkingDirectory 'C:\Projetos\naia' `
+  -AutomationId 'mvp-provider-event' `
+  -EventType 'push' `
+  -Intent 'uppercase: provider event'
 ```
 
-A real accepted GitHub webhook writes:
+The webhook secret is protected with Windows DPAPI for the current user. Start the ingress from the persisted configuration:
+
+```powershell
+.\ops\windows\invoke-naia-github-webhook.ps1 `
+  -WorkingDirectory 'C:\Projetos\naia'
+```
+
+The configured listen address must be exposed through a user-controlled/publicly reachable HTTPS endpoint before GitHub can deliver the real webhook. A real accepted GitHub delivery writes:
 
 ```text
+.reproduction/provider-event.json
 status=PASS
 gate=LIVE_PROVIDER_EVENT
+commit=<current HEAD>
 ```
 
 Receipt persistence is telemetry only: failure to write the receipt does not turn an already accepted webhook into an HTTP failure or cause unnecessary provider retry.
@@ -109,13 +157,9 @@ The live harness writes:
 
 ```text
 .reproduction/google-calendar-live.json
-```
-
-with:
-
-```text
 status=PASS
 gate=LIVE_GCAL_READ
+commit=<current HEAD>
 ```
 
 The access token is never written to the receipt or NaIA persistence.
@@ -138,10 +182,8 @@ mvpCoreReady
 generatedAt
 ```
 
-Current expected product test count on this branch is 67.
-
 ## Interpretation
 
-`mvpCoreReady=PASS` is only emitted when every historical core gate has observed PASS evidence for the current checkout/reproduction state.
+`mvpCoreReady=PASS` is only emitted when every historical core gate has observed PASS evidence for the current checkout.
 
-Missing external receipts remain `NOT_EXECUTED`; missing Google credentials remain `BLOCKED_EXTERNAL_OR_NOT_EXECUTED`. No missing gate is silently upgraded to PASS.
+Missing external receipts remain `NOT_EXECUTED`; a valid receipt for another commit becomes `STALE_RECEIPT`; missing Google credentials remain `BLOCKED_EXTERNAL_OR_NOT_EXECUTED`. No missing or stale gate is silently upgraded to PASS.
