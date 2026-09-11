@@ -1,6 +1,8 @@
 param(
   [string]$ReceiptDir = '.reproduction',
   [switch]$RunClean,
+  [switch]$RunSchedulerTask,
+  [string]$SchedulerTaskName = 'NaIA-MVP-Schedule',
   [switch]$RunLiveGoogle,
   [switch]$SkipSuite
 )
@@ -95,6 +97,17 @@ if ($RunClean) {
   Invoke-CleanReproduction 'run-01.json'
   Write-Output '== Clean reproduction #2 =='
   Invoke-CleanReproduction 'run-02.json'
+}
+
+if ($RunSchedulerTask) {
+  Write-Output '== Windows Task Scheduler external delivery =='
+  try {
+    & (Join-Path $Root 'ops\windows\verify-naia-schedule.ps1') `
+      -TaskName $SchedulerTaskName `
+      -WorkingDirectory $Root
+  } catch {
+    Write-Warning "External scheduler verification did not complete: $($_.Exception.Message)"
+  }
 }
 
 if ($RunLiveGoogle) {
