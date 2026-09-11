@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { createFilePorts } from '../../src/product/file-ports.mjs';
 import { createRuntimeComposition } from '../../src/product/runtime-config.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
+import { resolveRuntimeCommit } from '../../src/product/runtime-identity.mjs';
 
 function required(value, name) {
   const normalized = String(value ?? '').trim();
@@ -70,6 +71,7 @@ try {
   const receipt = {
     status: 'PASS',
     gate: 'LIVE_GCAL_READ',
+    commit: resolveRuntimeCommit(),
     objectiveId: result.objective.id,
     from,
     to,
