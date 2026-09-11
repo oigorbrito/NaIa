@@ -64,16 +64,20 @@ try {
     Pop-Location
 }
 
+Write-Host '== Capability value inventory =='
+Push-Location $Root
+try {
+    Invoke-Checked { node --test experiments/openmanus-reverse-01/value-inventory.test.mjs } 'Capability value inventory'
+} finally {
+    Pop-Location
+}
+
 Write-Host '== Optional Browser Use MCP availability probe =='
 if ($ProbeBrowserMcp) {
     $Uvx = Get-Command uvx -ErrorAction SilentlyContinue
     if (-not $Uvx) {
         Write-Host 'BROWSER_MCP_PROBE=BLOCKED_EXTERNAL reason=uvx-not-found'
     } else {
-        # External availability must never abort the experiment. PowerShell can
-        # surface native stderr (including download progress) as NativeCommandError
-        # when the script-wide ErrorActionPreference is Stop, so downgrade error
-        # handling only for this probe and classify solely by the native exit code.
         $PreviousErrorActionPreference = $ErrorActionPreference
         $PreviousNativePreference = $null
         $HasNativePreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
@@ -107,3 +111,4 @@ if ($ProbeBrowserMcp) {
 Write-Host '== Reverse integration run complete =='
 Write-Host "OpenManus SHA: $OpenManusSha"
 Write-Host "Clean checkout: $Clean"
+Write-Host 'MVP_ADOPTION_GATE=DEFERRED_UNTIL_LIVE_BROWSER_TASK_PASS'
