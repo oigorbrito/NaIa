@@ -90,8 +90,10 @@ export function createGitHubWebhookServer({
         status: result.objective.status,
         eventType: suppliedEvent,
       };
+      if (onAccepted) {
+        try { await onAccepted(accepted); } catch {}
+      }
       writeJson(res, 202, { ok: true, ...accepted });
-      if (onAccepted) Promise.resolve(onAccepted(accepted)).catch(() => {});
     } catch (error) {
       const status = error?.code === 'INVALID_TRIGGER_AUTH' ? 401
         : error?.code === 'TRIGGER_MISMATCH' ? 422
