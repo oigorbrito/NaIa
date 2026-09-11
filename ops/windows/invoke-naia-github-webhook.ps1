@@ -28,6 +28,10 @@ $env:NAIA_GITHUB_WEBHOOK_PATH = [string]$config.path
 $env:NAIA_GITHUB_WEBHOOK_MAX_BYTES = [string]$config.maxBytes
 $env:NAIA_GITHUB_WEBHOOK_RECEIPT = Join-Path $repo ([string]$config.receiptPath)
 
+# A new listener verification run must require a new accepted delivery.
+# Remove any prior receipt, including one from the same commit, before listening.
+Remove-Item $env:NAIA_GITHUB_WEBHOOK_RECEIPT -Force -ErrorAction SilentlyContinue
+
 Push-Location $repo
 try {
   $previousPreference = $ErrorActionPreference
