@@ -56,7 +56,7 @@ export function createTriggerRuntime({ service, secret, automation }) {
         objectiveId: result.objective.id,
         deliveryId,
         automationId: automation.id,
-        payload,
+        payload: '[REDACTED]',
       });
       return { deliveryId, automationId: automation.id, ...result };
     },
