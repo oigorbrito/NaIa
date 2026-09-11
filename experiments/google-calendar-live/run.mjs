@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { createFilePorts } from '../../src/product/file-ports.mjs';
 import { createRuntimeComposition } from '../../src/product/runtime-config.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
@@ -30,11 +30,19 @@ async function persistedText(rootDir) {
   return chunks.join('\n');
 }
 
+async function writeReceipt(path, receipt) {
+  if (!path) return;
+  const target = isAbsolute(path) ? path : resolve(process.cwd(), path);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+}
+
 const token = required(process.env.NAIA_GOOGLE_CALENDAR_ACCESS_TOKEN, 'NAIA_GOOGLE_CALENDAR_ACCESS_TOKEN');
 const defaults = defaultRange();
 const from = process.env.NAIA_GOOGLE_CALENDAR_LIVE_FROM || defaults.from;
 const to = process.env.NAIA_GOOGLE_CALENDAR_LIVE_TO || defaults.to;
 const keep = process.env.NAIA_GOOGLE_CALENDAR_LIVE_KEEP === '1';
+const receiptPath = String(process.env.NAIA_GOOGLE_CALENDAR_LIVE_RECEIPT ?? '').trim();
 const rootDir = await mkdtemp(join(tmpdir(), 'naia-google-calendar-live-'));
 
 try {
@@ -59,7 +67,7 @@ try {
   if (stored.includes(token)) throw new Error('Google Calendar access token leaked into persisted state');
 
   const events = execution.output?.result ?? [];
-  process.stdout.write(`${JSON.stringify({
+  const receipt = {
     status: 'PASS',
     gate: 'LIVE_GCAL_READ',
     objectiveId: result.objective.id,
@@ -67,7 +75,10 @@ try {
     to,
     eventCount: Array.isArray(events) ? events.length : null,
     dataDir: keep ? rootDir : null,
-  }, null, 2)}\n`);
+    observedAt: new Date().toISOString(),
+  };
+  await writeReceipt(receiptPath, receipt);
+  process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
 } finally {
   if (!keep) await rm(rootDir, { recursive: true, force: true });
 }
