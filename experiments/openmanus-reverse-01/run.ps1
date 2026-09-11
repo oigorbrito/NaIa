@@ -70,11 +70,34 @@ if ($ProbeBrowserMcp) {
     if (-not $Uvx) {
         Write-Host 'BROWSER_MCP_PROBE=BLOCKED_EXTERNAL reason=uvx-not-found'
     } else {
-        & uvx browser-use --help *> $null
-        if ($LASTEXITCODE -eq 0) {
+        # External availability must never abort the experiment. PowerShell can
+        # surface native stderr (including download progress) as NativeCommandError
+        # when the script-wide ErrorActionPreference is Stop, so downgrade error
+        # handling only for this probe and classify solely by the native exit code.
+        $PreviousErrorActionPreference = $ErrorActionPreference
+        $PreviousNativePreference = $null
+        $HasNativePreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
+        if ($HasNativePreference) {
+            $PreviousNativePreference = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $Uvx.Source browser-use --help 2>&1 | Out-Null
+            $ProbeExit = $LASTEXITCODE
+        } catch {
+            $ProbeExit = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { -1 }
+        } finally {
+            $ErrorActionPreference = $PreviousErrorActionPreference
+            if ($HasNativePreference) {
+                $PSNativeCommandUseErrorActionPreference = $PreviousNativePreference
+            }
+        }
+
+        if ($ProbeExit -eq 0) {
             Write-Host 'BROWSER_MCP_PROBE=PASS'
         } else {
-            Write-Host "BROWSER_MCP_PROBE=BLOCKED_EXTERNAL exit=$LASTEXITCODE"
+            Write-Host "BROWSER_MCP_PROBE=BLOCKED_EXTERNAL exit=$ProbeExit"
         }
     }
 } else {
