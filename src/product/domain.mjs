@@ -9,6 +9,13 @@ export const ObjectiveStatus = Object.freeze({
   FAILED: 'FAILED',
 });
 
+export function approvalToken(tool, scope = null) {
+  const normalizedTool = String(tool ?? '').trim();
+  if (!normalizedTool) throw new Error('tool approval is required');
+  const normalizedScope = scope == null ? '' : String(scope).trim();
+  return normalizedScope ? `${normalizedTool}::${normalizedScope}` : normalizedTool;
+}
+
 export function createObjective({ title, description = '', id = randomUUID(), idempotencyKey = null, createdAt = new Date().toISOString() }) {
   if (!title || !title.trim()) throw new Error('objective title is required');
   return {
@@ -26,10 +33,9 @@ export function createObjective({ title, description = '', id = randomUUID(), id
   };
 }
 
-export function approveTool(objective, tool) {
-  if (!tool || !tool.trim()) throw new Error('tool approval is required');
+export function approveTool(objective, tool, scope = null) {
   const approvals = new Set(Array.isArray(objective.approvals) ? objective.approvals : []);
-  approvals.add(tool.trim());
+  approvals.add(approvalToken(tool, scope));
   objective.approvals = [...approvals];
   objective.updatedAt = new Date().toISOString();
   return objective;
