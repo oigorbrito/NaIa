@@ -92,6 +92,18 @@ npm run mvp:readiness
 
 `MVP_CORE_READY=PASS` may be declared only when the consolidated receipt reports every core gate as `PASS` for the same current commit.
 
+## Explicit post-MVP roadmap items
+
+The frozen MVP is not expanded by these items; they begin only after the readiness contract above closes unless the change is documentation/research only.
+
+### Cross-platform mobile media management
+
+Planned in `docs/product/POST-MVP-MOBILE-MEDIA-V1.md`.
+
+Requirement: NaIA media management MUST target both Android and iOS from the capability-contract design stage. The existing `gmailum/MiaClean` project is an Android implementation/reference engine, not a reason to make the NaIA media contract Android-specific.
+
+The planned NaIA-facing contract is platform-neutral (`media.scan`, `media.duplicates.find`, `media.classify`, `media.storage.report`, `media.cleanup.plan`, `media.cleanup.execute`). Android and iOS provide native adapters behind that contract. Destructive media actions remain subject to explicit NaIA approval plus any platform-native authorization/confirmation.
+
 ## Framework status
 
 OpenManus remains an accepted experimental candidate for the minimal execution/reverse-authority contracts, but it is not required by the frozen MVP. Chassis adoption remains a post-MVP or explicitly re-scoped decision.
