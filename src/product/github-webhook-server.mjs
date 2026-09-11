@@ -41,6 +41,7 @@ export function createGitHubWebhookServer({
   port = 0,
   path = '/webhook/github',
   maxBytes = 256 * 1024,
+  onAccepted = null,
 } = {}) {
   if (!service?.pursue) throw new Error('GitHub webhook server requires NaIA service');
   const webhookSecret = required(secret, 'GitHub webhook secret');
@@ -52,6 +53,7 @@ export function createGitHubWebhookServer({
   if (!route.startsWith('/')) throw new Error('GitHub webhook path must start with /');
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('GitHub webhook port must be 0..65535');
   if (!Number.isInteger(maxBytes) || maxBytes <= 0) throw new Error('GitHub webhook maxBytes must be positive');
+  if (onAccepted !== null && typeof onAccepted !== 'function') throw new Error('GitHub webhook onAccepted must be a function');
 
   const trigger = createTriggerRuntime({
     service,
@@ -81,13 +83,15 @@ export function createGitHubWebhookServer({
         deliveryId,
         eventType: suppliedEvent,
       });
-      writeJson(res, 202, {
-        ok: true,
+      const accepted = {
         deliveryId: result.deliveryId,
         automationId: result.automationId,
         objectiveId: result.objective.id,
         status: result.objective.status,
-      });
+        eventType: suppliedEvent,
+      };
+      if (onAccepted) await onAccepted(accepted);
+      writeJson(res, 202, { ok: true, ...accepted });
     } catch (error) {
       const status = error?.code === 'INVALID_TRIGGER_AUTH' ? 401
         : error?.code === 'TRIGGER_MISMATCH' ? 422
