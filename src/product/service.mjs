@@ -23,6 +23,7 @@ async function executePlan(ports, objective, plan) {
         stepId: step.id,
         tool: authorization.tool ?? step.action?.tool ?? null,
         risk: authorization.risk ?? step.action?.risk ?? null,
+        scope: authorization.scope ?? step.action?.approvalScope ?? null,
         reason: authorization.reason,
         at: objective.updatedAt,
       });
@@ -117,6 +118,7 @@ export function createNaiaService(rawPorts) {
       await ports.evidence.append({
         type: 'PLAN_CREATED',
         objectiveId: objective.id,
+        capabilityId: plan.capabilityId ?? null,
         steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
         at: new Date().toISOString(),
       });
@@ -142,20 +144,25 @@ export function createNaiaService(rawPorts) {
       return executePlan(ports, objective, plan);
     },
 
-    async approve(objectiveId, tool) {
+    async approve(objectiveId, tool, scope = null) {
       const objective = await ports.objectives.get(objectiveId);
       if (!objective) throw new Error(`objective not found: ${objectiveId}`);
       const plan = await ports.plans.get(objectiveId);
       if (!plan) throw new Error(`plan not found for objective: ${objectiveId}`);
       const action = plan.steps.find((step) => step.action?.tool === tool)?.action;
       if (!action) throw new Error(`tool is not part of objective plan: ${tool}`);
-      approveTool(objective, tool);
+      const expectedScope = action.approvalScope ?? null;
+      if (expectedScope !== null && String(scope ?? '').trim() !== String(expectedScope)) {
+        throw new Error(`approval scope mismatch for tool ${tool}`);
+      }
+      approveTool(objective, tool, expectedScope);
       await ports.objectives.save(objective);
       await ports.evidence.append({
         type: 'TOOL_APPROVED',
         objectiveId,
         tool,
         risk: action.risk,
+        scope: expectedScope,
         at: objective.updatedAt,
       });
       return executePlan(ports, objective, plan);
