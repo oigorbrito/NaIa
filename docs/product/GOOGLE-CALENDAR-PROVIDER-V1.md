@@ -1,6 +1,6 @@
 # NaIA Google Calendar Provider V1
 
-Status: IMPLEMENTING
+Status: IMPLEMENTED_PENDING_LOCAL_REPRO
 
 ## Purpose
 
@@ -25,7 +25,7 @@ NAIA_GOOGLE_CALENDAR_MAX_BYTES      optional, default 262144
 NAIA_GOOGLE_CALENDAR_API_BASE_URL   optional test/override, default https://www.googleapis.com
 ```
 
-The access token is provider construction state only. It must never be copied into objective, plan, action input, capability metadata, or evidence.
+The access token is provider construction state only. It is never copied into objective, plan, action input, capability metadata, or evidence.
 
 ## Mapping
 
@@ -40,13 +40,13 @@ NaIA `calendar.update({eventId,start,end,title})` -> Google `PATCH /calendar/v3/
 - bearer token only in Authorization header;
 - fixed API origin at provider construction;
 - no redirects;
-- bounded response body;
+- bounded response body while streaming;
 - timeout abort;
 - 5xx/429 retryable;
 - other 4xx permanent;
 - generic calendar HTTP provider and Google provider cannot be enabled simultaneously.
 
-## Gates
+## Gates implemented
 
 - GCAL-01 list request shape and normalization.
 - GCAL-02 create request shape.
@@ -56,3 +56,17 @@ NaIA `calendar.update({eventId,start,end,title})` -> Google `PATCH /calendar/v3/
 - GCAL-06 timeout never becomes success.
 - GCAL-07 runtime composition registers Google-backed calendar capabilities.
 - GCAL-08 ambiguous dual calendar provider configuration fails closed.
+
+## Reproduction state
+
+The provider contracts use a local HTTP fixture and do not require Google credentials. The aggregate expected suite is:
+
+```text
+47 prior product tests
++ 8 Google Calendar provider tests
+= 55 tests
+```
+
+Acceptance target: `tests 55 / pass 55 / fail 0`.
+
+A real Google OAuth/live-calendar E2E requires user-owned credentials and is therefore tracked separately as `BLOCKED_EXTERNAL` until those credentials are intentionally supplied. That external gate does not invalidate the deterministic provider contract tests.
