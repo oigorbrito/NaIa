@@ -1,6 +1,8 @@
-import { planIntent } from './planner.mjs';
+import { createDefaultCapabilityRegistry } from './capabilities.mjs';
+import { createExecutionRouter } from './execution-router.mjs';
+import { createCapabilityPlanner } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
-import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
+import { createToolRegistry } from './tools.mjs';
 import { sanitizeForPersistence } from './persistence-safety.mjs';
 
 export function assertProductPorts(ports) {
@@ -20,11 +22,12 @@ export function assertProductPorts(ports) {
   return ports;
 }
 
-export function createInMemoryPorts() {
+export function createInMemoryPorts({ capabilities = createDefaultCapabilityRegistry(), tools = [], executionAdapters = [] } = {}) {
   const objectives = new Map();
   const plans = new Map();
   const evidence = [];
-  const registry = createToolRegistry({ rootDir: '.naia-test' });
+  const registry = createToolRegistry({ rootDir: '.naia-test', tools });
+  const planner = createCapabilityPlanner({ capabilities });
   return {
     objectives: {
       async save(objective) { objectives.set(objective.id, sanitizeForPersistence(objective)); return objective; },
@@ -42,9 +45,10 @@ export function createInMemoryPorts() {
         return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
       },
     },
-    planner: { async plan(objective) { return planIntent(objective); } },
+    planner,
     policy: createApprovalPolicy(),
-    execution: createLocalExecutionAdapter({ registry }),
+    execution: createExecutionRouter({ registry, adapters: executionAdapters }),
     tools: registry,
+    capabilities,
   };
 }
