@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 import { createFilePorts } from './file-ports.mjs';
+import { createRuntimeComposition } from './runtime-config.mjs';
 import { createNaiaService } from './service.mjs';
 
 const [command = 'pursue', ...args] = process.argv.slice(2);
-const ports = createFilePorts({ rootDir: process.env.NAIA_DATA_DIR || '.naia' });
+const runtime = createRuntimeComposition({ env: process.env });
+const ports = createFilePorts({
+  rootDir: process.env.NAIA_DATA_DIR || '.naia',
+  capabilities: runtime.capabilities,
+  executionAdapters: runtime.executionAdapters,
+});
 const naia = createNaiaService(ports);
 
 function print(value) {
