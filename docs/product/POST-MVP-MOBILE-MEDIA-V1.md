@@ -1,4 +1,4 @@
-# Post-MVP Mobile Media Capability v1
+# Post-MVP Device Media Capability v1
 
 Status: PLANNED_POST_MVP
 
@@ -6,7 +6,7 @@ This roadmap item adds device media management to NaIA after the current MVP rea
 
 ## Product intent
 
-NaIA should be able to act as a mobile storage/media secretary on both Android and iOS. The user should ask NaIA for outcomes such as:
+NaIA should be able to act as a storage/media secretary on Android, iOS, and Windows. The user should ask NaIA for outcomes such as:
 
 - scan my media;
 - find duplicate photos/videos;
@@ -19,12 +19,13 @@ The user should not need to interact with a separate MiaClean product surface fo
 
 ## Platform requirement
 
-Support for both platforms is a first-class requirement from the contract design stage:
+Support for all three target platforms is a first-class requirement from the contract design stage:
 
 - Android: native implementation may reuse/refactor the existing `gmailum/MiaClean` engine and its MediaStore/SAF, hashing, classification and deletion capabilities.
 - iOS: provide an equivalent native adapter using Apple platform media APIs and platform-native authorization/consent semantics.
+- Windows: provide a native desktop adapter using Windows/filesystem media APIs, user-scoped file access, recycle-bin semantics where available, and platform-native authorization/confirmation where required.
 
-NaIA core MUST NOT depend on Android-only or iOS-only API vocabulary.
+NaIA core MUST NOT depend on Android-only, iOS-only, or Windows-only API vocabulary.
 
 ## Cross-platform capability contract
 
@@ -45,24 +46,26 @@ Platform-specific details remain behind adapters. `media.cleanup.execute` receiv
 User
   -> NaIA objective / planning
   -> NaIA policy / approval
-  -> Mobile media capability contract
+  -> Device media capability contract
       -> Android media adapter (MiaClean-derived engine)
       -> iOS media adapter
+      -> Windows media adapter
   -> platform authorization / confirmation where required
   -> result + minimized evidence
 ```
 
-NaIA remains the authority layer. Mobile adapters provide competence only.
+NaIA remains the authority layer. Platform adapters provide competence only.
 
 ## Authority and safety rules
 
 1. Read-only operations (`scan`, duplicate discovery, classification, storage reporting, cleanup planning) do not require destructive-action approval.
 2. Any operation that removes, trashes, hides, moves or otherwise mutates user media requires explicit NaIA approval.
-3. Platform-native consent dialogs MUST NOT be bypassed. NaIA approval and OS authorization are separate gates.
+3. Platform-native consent/authorization MUST NOT be bypassed. NaIA approval and OS authorization are separate gates.
 4. A cleanup plan MUST be inspectable before mutation and tied to the exact media set/action being approved.
 5. Approval MUST NOT automatically transfer to a materially different media set or cleanup mode.
 6. Raw photos/videos should not be persisted in NaIA evidence. Evidence should prefer aggregate counts, stable operation ids, sizes, categories and outcomes.
 7. Secrets, access tokens and platform authorization artifacts remain runtime-only.
+8. On Windows, permanent deletion MUST be treated as distinct from recycle-bin/trash behavior and require an appropriately stronger approval scope.
 
 ## Implementation direction
 
@@ -85,7 +88,7 @@ Do not pull MiaClean-specific concerns into NaIA core unless independently requi
 - standalone settings/product identity;
 - launcher widgets unrelated to NaIA workflows.
 
-For iOS, implement the same NaIA capability contract natively rather than attempting to emulate Android storage semantics.
+For iOS and Windows, implement the same NaIA capability contract natively rather than attempting to emulate Android storage semantics.
 
 ## Proposed delivery waves
 
@@ -99,7 +102,8 @@ For iOS, implement the same NaIA capability contract natively rather than attemp
 
 - freeze request/response schema for the six `media.*` capabilities;
 - freeze risk classes and approval semantics;
-- define platform capability discovery and unsupported-mode behavior.
+- define platform capability discovery and unsupported-mode behavior;
+- define one conformance suite that every platform adapter must satisfy.
 
 ### MEDIA-03 — Android read-only
 
@@ -116,39 +120,55 @@ For iOS, implement the same NaIA capability contract natively rather than attemp
 - demonstrate equivalent end-to-end behavior;
 - document platform differences without leaking them into NaIA core.
 
-### MEDIA-05 — Android cleanup
+### MEDIA-05 — Windows read-only
+
+- implement the same read-only contract on Windows;
+- support user-selected folders/libraries and supported media locations;
+- demonstrate equivalent end-to-end behavior;
+- document platform differences without leaking them into NaIA core.
+
+### MEDIA-06 — Android cleanup
 
 - bind cleanup execution to explicit NaIA approval;
 - preserve Android system confirmation where applicable;
 - verify replay/idempotency and evidence minimization.
 
-### MEDIA-06 — iOS cleanup
+### MEDIA-07 — iOS cleanup
 
 - bind iOS cleanup execution to explicit NaIA approval;
 - preserve platform-native authorization/confirmation;
 - verify replay/idempotency and evidence minimization.
 
-### MEDIA-07 — cross-platform conformance
+### MEDIA-08 — Windows cleanup
 
-- run the same capability contract tests against Android and iOS adapters;
+- bind Windows cleanup execution to explicit NaIA approval;
+- prefer recycle-bin/recoverable cleanup where supported;
+- distinguish recoverable trash from permanent deletion in policy and approval scope;
+- verify replay/idempotency and evidence minimization.
+
+### MEDIA-09 — cross-platform conformance
+
+- run the same capability contract tests against Android, iOS, and Windows adapters;
 - verify identical policy behavior for equivalent operations;
 - record documented platform-specific capability differences;
-- require real-device E2E on at least one supported Android device and one supported iOS device before declaring the capability production-ready.
+- require real-device/runtime E2E on at least one supported Android device, one supported iOS device, and one supported Windows machine before declaring the capability production-ready.
 
 ## Acceptance criteria
 
 This roadmap item is accepted only when:
 
-1. Android and iOS both implement the same NaIA-facing `media.*` contract.
+1. Android, iOS, and Windows all implement the same NaIA-facing `media.*` contract.
 2. Read-only operations are usable without destructive approval.
 3. Cleanup operations cannot execute before explicit NaIA approval.
-4. Platform-native consent remains enforced.
+4. Platform-native consent/authorization remains enforced where applicable.
 5. Approval is scoped to the intended media set/action.
 6. Raw media is not copied into NaIA evidence by default.
-7. Cross-platform contract tests pass for both adapters.
+7. Cross-platform contract tests pass for all three adapters.
 8. Android real-device E2E passes.
 9. iOS real-device E2E passes.
-10. licensing/redistribution status of reused MiaClean code is resolved before shipping.
+10. Windows real-machine E2E passes.
+11. Recoverable cleanup and permanent deletion are represented as distinct policy outcomes where the platform supports that distinction.
+12. Licensing/redistribution status of reused MiaClean code is resolved before shipping.
 
 ## MVP relationship
 
