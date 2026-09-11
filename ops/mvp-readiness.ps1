@@ -55,7 +55,18 @@ function Clean-Repro-Pass {
 
 function Gate-Pass {
   param($Receipt, [string]$Gate)
-  return $null -ne $Receipt -and $Receipt.status -eq 'PASS' -and $Receipt.gate -eq $Gate
+  return $null -ne $Receipt -and
+    $Receipt.status -eq 'PASS' -and
+    $Receipt.gate -eq $Gate -and
+    $Receipt.commit -eq $Head
+}
+
+function Gate-Status {
+  param($Receipt, [string]$Gate, [string]$Missing = 'NOT_EXECUTED')
+  if ($null -eq $Receipt) { return $Missing }
+  if (Gate-Pass $Receipt $Gate) { return 'PASS' }
+  if ($Receipt.status -eq 'PASS' -and $Receipt.gate -eq $Gate -and $Receipt.commit -ne $Head) { return 'STALE_RECEIPT' }
+  return 'FAIL'
 }
 
 function Invoke-CleanReproduction {
@@ -106,9 +117,9 @@ $Google = Read-Receipt 'google-calendar-live.json'
 
 $Clean1 = if (Clean-Repro-Pass $Run1) { 'PASS' } elseif ($null -eq $Run1) { 'NOT_EXECUTED' } else { 'FAIL' }
 $Clean2 = if (Clean-Repro-Pass $Run2) { 'PASS' } elseif ($null -eq $Run2) { 'NOT_EXECUTED' } else { 'FAIL' }
-$SchedulerGate = if (Gate-Pass $Scheduler 'EXTERNAL_SCHEDULER_DELIVERY') { 'PASS' } elseif ($null -eq $Scheduler) { 'NOT_EXECUTED' } else { 'FAIL' }
-$ProviderEventGate = if (Gate-Pass $ProviderEvent 'LIVE_PROVIDER_EVENT') { 'PASS' } elseif ($null -eq $ProviderEvent) { 'NOT_EXECUTED' } else { 'FAIL' }
-$GoogleGate = if (Gate-Pass $Google 'LIVE_GCAL_READ') { 'PASS' } elseif ($null -eq $Google) { 'BLOCKED_EXTERNAL_OR_NOT_EXECUTED' } else { 'FAIL' }
+$SchedulerGate = Gate-Status $Scheduler 'EXTERNAL_SCHEDULER_DELIVERY'
+$ProviderEventGate = Gate-Status $ProviderEvent 'LIVE_PROVIDER_EVENT'
+$GoogleGate = Gate-Status $Google 'LIVE_GCAL_READ' 'BLOCKED_EXTERNAL_OR_NOT_EXECUTED'
 
 $CoreReady = $Suite -eq 'PASS' -and $Clean1 -eq 'PASS' -and $Clean2 -eq 'PASS' -and $SchedulerGate -eq 'PASS' -and $ProviderEventGate -eq 'PASS'
 
