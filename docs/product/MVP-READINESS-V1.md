@@ -1,6 +1,6 @@
 # NaIA MVP Readiness V1
 
-Status: IMPLEMENTED_PENDING_EXECUTION
+Status: FROZEN_PENDING_EVIDENCE
 
 ## Purpose
 
@@ -17,9 +17,9 @@ Google Calendar live read is reported separately as a secretary-capability gate.
 
 All live receipts are commit-bound. A PASS receipt produced by another checkout is classified as `STALE_RECEIPT` and cannot satisfy readiness.
 
-The final readiness decision is evaluated by the pure Node module `src/product/readiness-evaluator.mjs`, which is covered by product tests. PowerShell only orchestrates executions and collects receipts.
+The final readiness decision is evaluated by the pure Node module `src/product/readiness-evaluator.mjs`, using the frozen contract in `src/product/readiness-manifest.mjs`. PowerShell only orchestrates executions and collects receipts.
 
-The readiness contract itself is frozen in `src/product/readiness-manifest.mjs`. That manifest is the single source of truth for the readiness schema, required core gates, optional capability gates, and expected product-test count. The PowerShell runner does not carry a second copy of that count.
+The MVP implementation surface is frozen by `docs/product/MVP-FREEZE-V1.md` until the outstanding evidence gates close or an explicit versioned scope decision supersedes the freeze.
 
 ## Consolidated command
 
@@ -44,6 +44,17 @@ The runner writes:
 and exits with code 0 only when `mvpCoreReady=PASS`.
 
 Native process success is determined by exit code. Git/npm progress written to stderr is not treated as a PowerShell failure.
+
+## Evidence hygiene
+
+Both runtime state and local reproduction evidence are intentionally untracked:
+
+```text
+.naia/
+.reproduction/
+```
+
+Secrets remain runtime-only or DPAPI-protected for the current Windows user. The webhook readiness receipt contains operational identifiers only and does not persist the signed provider payload.
 
 ## Local suite + clean reproductions
 
@@ -70,7 +81,7 @@ npmTest=PASS
 diffCheck=PASS
 ```
 
-Current expected product test count is **78**, read from `MVP_READINESS_MANIFEST.expectedProductTests`.
+Current expected product test count is 78, sourced from `MVP_READINESS_MANIFEST`.
 
 ## External scheduler: durable Windows configuration
 
@@ -146,7 +157,7 @@ gate=LIVE_PROVIDER_EVENT
 commit=<current HEAD>
 ```
 
-Receipt persistence is telemetry only: failure to write the receipt does not turn an already accepted webhook into an HTTP failure or cause unnecessary provider retry.
+Receipt persistence is telemetry only: failure to write the receipt does not turn an already accepted webhook into an HTTP failure or cause unnecessary provider retry. The signed request body is not included in the readiness receipt.
 
 ## Google Calendar live capability receipt
 
