@@ -46,7 +46,7 @@ export function createCalendarCapabilities() {
         const parts = parseParts(intent, 'calendar list', 2);
         if (!parts) return null;
         const range = assertRange(parts[0], parts[1]);
-        return range;
+        return { from: range.start, to: range.end };
       },
       buildAction({ match }) {
         return {
