@@ -15,11 +15,14 @@ Methodological controls are defined by:
 - `METHODOLOGY-SOURCE-MAP-V1.md`;
 - `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md`;
 - `REPRODUCIBILITY-PACKAGE-CHECKLIST-V1.md`;
-- `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md` for scope-preserving registration of pre-existing evidence.
+- `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md` for scope-preserving registration of pre-existing evidence;
+- `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md` for claim-domain isolation between product readiness and chassis research evidence.
 
 A recommendation presented as required empirical/reproducibility practice must satisfy the suggestion-admissibility rule in those documents. General engineering preference is not a harness requirement unless separately adopted as product policy.
 
 Historical evidence must not be silently upgraded to the current evidence-strength ladder. `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md` records the strongest conclusion supported by each preserved artifact and the conclusions that remain disallowed.
+
+Before evidence is interpreted, the claim domain and the evidence-producing domain must be declared. Cross-domain evidence may provide context or provenance, but it cannot silently satisfy a missing claim in another domain.
 
 ## 1. Non-negotiable experiment contract
 
@@ -94,17 +97,32 @@ Before a result is labeled `REPRODUCED_INDEPENDENT`, the independent environment
 
 ### 3.2 Claim-to-evidence linkage
 
-Every benchmark-relevant run or batch summary must instantiate `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md` with a unique `claimId` and link that claim to:
+Every benchmark-relevant run or batch summary must instantiate `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md` with a unique `claimId` and a declared `claimDomain`.
+
+Before interpreting an artifact, also record its `evidenceProducingDomain` and evaluate domain compatibility according to `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md`.
+
+The minimum linkage is:
 
 ```text
-claim -> procedure -> environment -> raw artifacts -> acceptance check -> observed result -> decision
+claim
+-> claimDomain
+-> evidenceProducingDomain
+-> procedure
+-> environment
+-> raw artifacts
+-> acceptance check
+-> observed result
+-> evidence-strength label
+-> decision
 ```
+
+A domain mismatch does not automatically invalidate an artifact; it limits what the artifact can establish. Contextual or provenance evidence from another domain must be labeled as such and cannot replace the missing claim-domain evidence.
 
 If the raw artifacts cannot be located from the completed register, the summary is documentary only and is not decision-eligible.
 
 One register may cite many repetitions only when they share the same experiment contract. Materially changed workloads, fault boundaries, oracle semantics, acceptance meanings or version-specific claims require a new experiment-series identity.
 
-Existing historical artifacts are indexed in `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md`; that register is documentary reconciliation and does not manufacture missing execution metadata.
+Existing historical artifacts are indexed in `HISTORICAL-CLAIM-EVIDENCE-REGISTER-V1.md`; that register is documentary reconciliation and does not manufacture missing execution metadata. Its domain labels preserve the strongest historical scope supported by the underlying artifacts and are not evidence-strength upgrades.
 
 ## 4. Common runner invocation
 
@@ -360,6 +378,8 @@ Allowed decision language is bounded by evidence class:
 - `REPEATABLE_LOCAL` -> describe locally observed runtime behavior under the declared conditions;
 - `REPRODUCED_INDEPENDENT` -> state independent reproduction for the specific claim;
 - `DECISION_ELIGIBLE` -> use the result in benchmark selection if all comparison gates are also satisfied.
+
+Decision eligibility additionally requires domain compatibility: the evidence used for the decisive claim must come from the claim's required evidence domain, or the record must explicitly explain why a cross-domain artifact is contextual only and not substituting for missing evidence.
 
 If required evidence is absent, the supported recommendation is to execute/reproduce the missing experiment, not to infer the winner.
 
