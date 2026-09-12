@@ -133,6 +133,24 @@ If any required decisive claim is missing, keep the benchmark/winner state `NOT_
 
 ## K. Documentary change control
 
-Documentation-only edits to wording, inventories, provenance instructions, artifact references, or terminology do not by themselves invalidate runtime evidence.
+Documentation-only edits to wording, inventories, provenance instructions, artifact references, claim-domain boundaries, or terminology do not by themselves invalidate runtime evidence.
 
 Any change to workload, fault boundary, oracle semantics, acceptance meaning, measurement meaning, or version-specific claim MUST be treated as an experiment-contract change and handled through rerun or explicit comparability analysis.
+
+## L. Claim-domain boundary
+
+Before reusing or citing evidence produced elsewhere in the repository:
+
+- [ ] the claim domain answered by the source artifact is identified;
+- [ ] the claim domain of the target conclusion is identified;
+- [ ] source and target claims are the same, or the relationship is explicitly bounded as contextual/documentary only;
+- [ ] exact source revision/procedure identity is retained;
+- [ ] a merge, cherry-pick, branch move, or documentary reconciliation is not represented as a fresh runtime execution;
+- [ ] evidence strength is not transferred from one claim domain to another;
+- [ ] pre-execution infrastructure failure is not converted into system-under-test behavioral failure;
+- [ ] product-readiness evidence is not used to satisfy chassis benchmark claims;
+- [ ] chassis benchmark/control evidence is not used to redefine product-readiness gates or thresholds.
+
+The repository-local product/chassis application of this rule is documented in `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md`.
+
+This section is a provenance and claim-scope control. It adds no benchmark mutant, product gate, threshold, repetition count, or candidate acceptance criterion.
