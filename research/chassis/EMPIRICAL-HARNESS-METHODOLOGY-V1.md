@@ -20,6 +20,7 @@ The harness design is derived from the following methodological requirements:
 10. Independent reproduction is stronger evidence than an author-only rerun and must not be conflated with local repeatability.
 11. Artifact quality claims must distinguish documentation/completeness/exercisability from actual reproduced results.
 12. Candidate comparisons are valid only when the experimental claim, workload semantics, measurement protocol, and acceptance rule remain equivalent.
+13. Evidence is claim-scoped: evidence produced for one measured claim or evaluation domain must not be silently reused as proof of a different claim merely because it shares repository, branch, or source lineage.
 
 Primary methodological sources used for these constraints:
 
@@ -66,6 +67,32 @@ Every benchmark-relevant claim SHALL be traceable through a minimum record with 
 
 A summary without raw-artifact references is not sufficient to support a benchmark-selection claim.
 
+## Claim-domain isolation
+
+Evidence SHALL remain scoped to the claim domain it actually measures.
+
+When an artifact from another repository area or validation flow is cited, the harness SHALL record:
+
+- the source claim domain;
+- the target claim being supported;
+- the exact source/procedure identity;
+- whether the artifact is runtime evidence for the same claim or only contextual/documentary evidence;
+- the strongest conclusion the artifact actually licenses.
+
+Evidence strength cannot be transferred across unrelated claims. In particular:
+
+```text
+PRODUCT_READINESS_PASS != CHASSIS_CANDIDATE_PASS
+HARNESS_CONTROL_PASS != CANDIDATE_PASS
+STATIC_VERIFIED != RUNTIME_PASS
+REPEATABLE_LOCAL != REPRODUCED_INDEPENDENT
+PRE_EXECUTION_INFRA_FAILURE != SYSTEM_UNDER_TEST_FAIL
+```
+
+A merge, cherry-pick, branch movement, or documentary reconciliation may preserve a historical evidence reference but does not manufacture a new execution on the resulting revision.
+
+The current NaIA product-readiness/chassis application of this rule is documented in `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md`. That document adds no new product gate or benchmark criterion.
+
 ## Evidence classes
 
 The harness SHALL keep the following classes distinct:
@@ -77,6 +104,8 @@ The harness SHALL keep the following classes distinct:
 5. `DECISION_ELIGIBLE`: all evidence required by the benchmark gate exists at the required class and the candidates are comparable.
 
 No evidence class may be silently promoted. `DOCUMENTED` or `STATIC_VERIFIED` does not imply runtime PASS; `REPEATABLE_LOCAL` does not imply independent reproduction.
+
+Evidence-class labels are attached to claims, not to repositories or commits globally. A revision may contain strong evidence for one claim and no executed evidence for another.
 
 ## Required experiment phases
 
@@ -176,6 +205,8 @@ The harness SHALL keep these classes separate:
 
 No lower class may be promoted to a higher class without the corresponding artifact.
 
+Different validation domains SHALL also remain separate when they answer different questions. A product-readiness receipt may be preserved as product evidence but cannot substitute for missing chassis experiment records; conversely, chassis evidence cannot redefine product gates or product-readiness thresholds.
+
 ## Raw-data preservation
 
 For each execution the harness SHALL preserve:
@@ -201,6 +232,8 @@ Candidate comparisons are valid only when the semantic workload, acceptance rule
 If equivalence cannot be established, report `INCOMPARABLE` at the comparison layer rather than manufacturing a rank.
 
 A post-hoc change to the acceptance rule or workload semantics requires either re-execution of all compared candidates under the revised contract or an explicit `INCOMPARABLE`/new-series classification.
+
+Similarity of repository revision, product feature set, or implementation architecture is not by itself evidence of experimental comparability; comparability is claim/procedure/measurement-specific.
 
 ## Documentation quality gate
 
