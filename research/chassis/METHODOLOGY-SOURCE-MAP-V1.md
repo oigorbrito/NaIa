@@ -59,8 +59,12 @@ Harness-relevant concepts used here:
 | Keep workload/acceptance semantics comparable | NIST comparability | frozen experiment contract or new experiment series |
 | Distinguish local repeatability from independent reproduction | ACM result-reproduction distinction; RDaF reproducibility | separate evidence-class label and independent receipt |
 | Trace decisions to claims and observations | RDaF provenance; empirical validation | claim-to-evidence record |
+| Keep evidence from different claim domains non-interchangeable | RDaF provenance; NIST measurement meaning/comparability; empirical validation | explicit claim-domain identity and bounded conclusion |
+| Preserve exact source/procedure identity across documentary reconciliation | RDaF provenance/versioning; ACM consistency/completeness | commit/procedure references without manufacturing a fresh execution |
 | Do not recommend a chassis winner without required evidence | empirical validation | benchmark decision guard |
 | Do not label unsupported preference as methodology | scope discipline derived from the source set | `UNSUPPORTED_SUGGESTION` until source/measurement mapping exists |
+
+The product-readiness/chassis separation is instantiated in `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md`. That document applies the rules above; it does not create a new methodological source or a new experiment criterion.
 
 ## Suggestion admissibility template
 
@@ -72,12 +76,15 @@ Claim/risk addressed:
 Source category:
 Observed gap or reproducibility failure mode:
 Artifact/measurement added or strengthened:
+Claim domain affected:
 Does it change workload/acceptance semantics? yes/no
 Required re-execution if semantics change:
 Decision impact:
 ```
 
 If these fields cannot be completed from the source set and the current harness evidence, the suggestion may still be an engineering idea, but it SHALL NOT be described as a methodological requirement.
+
+`Claim domain affected` identifies the empirical claim whose evidence is being strengthened (for example chassis benchmark evidence, harness-control evidence, or product-readiness evidence). Evidence from one domain must not be used to satisfy another domain's claim merely because both exist in the same repository or share a commit lineage.
 
 ## Evidence-strength ladder
 
@@ -93,9 +100,11 @@ DOCUMENTED
 
 A higher label requires its own artifact. No level is inferred from the previous level alone.
 
+Evidence strength is claim-scoped. A strong result in one claim domain does not promote evidence for a different claim domain.
+
 ## Change-control rule
 
-Documentation-only changes that improve inventory, provenance, procedures, artifact references or terminology do not by themselves invalidate prior runtime evidence.
+Documentation-only changes that improve inventory, provenance, procedures, artifact references, claim-domain boundaries or terminology do not by themselves invalidate prior runtime evidence.
 
 Changes to any of the following are experiment-contract changes and require explicit comparability treatment:
 
