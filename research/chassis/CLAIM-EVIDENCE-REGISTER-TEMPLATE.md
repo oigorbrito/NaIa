@@ -4,11 +4,12 @@ Status: DOCUMENTARY_CONTROL
 
 Purpose: provide a repeatable, auditable record connecting an empirical claim to the exact procedure, observations, artifacts, acceptance checks, and decision it supports. This template does not create evidence by itself.
 
-Methodological basis: empirical-validation discipline, artifact/reproducibility guidance, provenance/versioning, repeatability/comparability/verifiability, and explicit separation of observed results from inference.
+Methodological basis: empirical-validation discipline, artifact/reproducibility guidance, provenance/versioning, repeatability/comparability/verifiability, explicit separation of observed results from inference, and claim-domain isolation as defined by `PRODUCT-READINESS-EVIDENCE-BOUNDARY-V1.md`.
 
 ## Record identity
 
 - `claimId`:
+- `claimDomain`: one of `PRODUCT_READINESS`, `HARNESS_VALIDATION`, `CHASSIS_CANDIDATE`, `CHASSIS_COMPARISON`, or another explicitly documented domain justified by the applicable study design.
 - `experimentSeriesId`:
 - `candidateId`:
 - `candidateVersion`:
@@ -18,6 +19,8 @@ Methodological basis: empirical-validation discipline, artifact/reproducibility 
 - `recordedAt`:
 - `recordedBy`:
 
+`claimDomain` is mandatory for any record used to support a runtime or decision claim. Documentary records that do not fit an experiment series must still declare the domain whose conclusion they constrain.
+
 ## Claim
 
 - **Claim text:**
@@ -26,6 +29,42 @@ Methodological basis: empirical-validation discipline, artifact/reproducibility 
 - **Exclusions:** what the claim explicitly does not establish.
 
 A claim MUST NOT be broader than the evidence series that supports it.
+
+A record MUST NOT use evidence from another claim domain to increase its evidence-strength label or to satisfy a missing acceptance condition unless a documented methodological argument establishes that the evidence measures the same claim under an equivalent procedure. Mere repository co-location, shared commit ancestry, or shared tooling is insufficient.
+
+## Claim-domain compatibility
+
+Before interpreting the evidence, record:
+
+- **Evidence-producing domain(s):**
+- **Same domain as `claimDomain`:** yes/no
+- **Cross-domain evidence used:** yes/no
+- **If yes, methodological basis for compatibility:**
+- **Does cross-domain evidence change evidence strength:** yes/no
+- **Disallowed inference explicitly checked:**
+
+Default rule:
+
+```text
+PRODUCT_READINESS evidence -> PRODUCT_READINESS claims only
+HARNESS_VALIDATION evidence -> HARNESS_VALIDATION claims only
+CHASSIS_CANDIDATE evidence -> exact candidate/runtime claim only
+CHASSIS_COMPARISON evidence -> comparison claim only when comparability rules pass
+```
+
+Cross-domain evidence may provide context, provenance, or a blocker classification, but it does not inherit decision authority by default.
+
+Examples of prohibited silent promotion include:
+
+```text
+PRODUCT_READINESS_PASS -> CHASSIS_CANDIDATE_PASS
+HARNESS_CONTROL_PASS -> CHASSIS_CANDIDATE_PASS
+STATIC_VERIFIED -> RUNTIME_PASS
+REPEATABLE_LOCAL -> REPRODUCED_INDEPENDENT
+PRE_EXEC_INFRA_FAILURE -> SYSTEM_UNDER_TEST_FAIL
+```
+
+If domain compatibility cannot be established, retain the evidence as contextual/documentary and record the target claim as unsupported by that artifact.
 
 ## Hypothesis and acceptance rule
 
@@ -115,6 +154,9 @@ If any material semantic difference prevents valid comparison, classify the comp
 - **Evidence-strength label actually earned:**
 - **Acceptance checks passed/failed:**
 - **Reasoning limited to observed artifacts:**
+- **Claim-domain compatibility satisfied:** yes/no
+
+A `no` domain-compatibility result prevents the incompatible artifact from supporting the target claim, even if the artifact is valid evidence for a different claim domain.
 
 ## Decision
 
@@ -123,7 +165,7 @@ If any material semantic difference prevents valid comparison, classify the comp
 - **Next missing evidence, if any:**
 - **Does this record make the candidate decision-eligible?** yes/no
 
-A recommendation to select, reject, rank, or replace a candidate MUST cite one or more completed claim–evidence records whose evidence class is sufficient for that decision.
+A recommendation to select, reject, rank, or replace a candidate MUST cite one or more completed claim–evidence records whose evidence class is sufficient for that decision and whose claim domain is compatible with the decision being made.
 
 ## Suggestion admissibility
 
