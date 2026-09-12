@@ -15,10 +15,26 @@ This register is a navigation and scope-control artifact. The underlying evidenc
 5. Harness-readiness evidence is not candidate evidence.
 6. A missing raw artifact or exact-checkout reproduction limits the evidence class; the register does not fill the gap by inference.
 7. `CHASSIS_WINNER` and `BENCHMARK_TO_BEAT` remain `NOT_SELECTED` unless the benchmark gate is satisfied by executed comparable candidate evidence.
+8. Every historical claim is assigned a `claimDomain` and an `evidenceProducingDomain`; those labels describe the scope of the preserved artifact and do not upgrade its evidence strength.
+9. Cross-domain evidence may provide context, provenance, or a boundary condition, but it cannot supply a missing candidate-runtime result unless the original artifact actually measured candidate runtime behavior under the declared experiment contract.
+
+Domain labels used in this register:
+
+- `ENVIRONMENT_PREREQUISITE`: observations about execution prerequisites or infrastructure availability before candidate behavior is measured;
+- `HARNESS_READINESS`: observations about whether the experiment machinery/executors are ready to run the declared benchmark;
+- `CANDIDATE_STATIC`: source/configuration/contract observations about a candidate without runtime behavioral execution;
+- `HARNESS_CONTROL`: executions intended to validate the discrimination or semantics of the harness/control itself;
+- `CHASSIS_CANDIDATE_RUNTIME`: runtime evidence from an actual candidate execution under the declared experiment contract.
+
+The first four domains do not imply `CHASSIS_CANDIDATE_RUNTIME` evidence.
 
 ## HCE-001 — Candidate runtime bootstrap was blocked in the observed environment
 
 Claim ID: `HCE-001`
+
+Claim domain: `ENVIRONMENT_PREREQUISITE`
+
+Evidence-producing domain: `ENVIRONMENT_PREREQUISITE`
 
 Claim:
 
@@ -49,6 +65,7 @@ Allowed conclusion:
 Disallowed conclusion:
 
 - any candidate PASS/FAIL for T7, T8, T15, or other benchmark mutant
+- any promotion to `CHASSIS_CANDIDATE_RUNTIME`
 
 Decision impact:
 
@@ -58,6 +75,10 @@ Decision impact:
 ## HCE-002 — The full benchmark ledger was not execution-ready
 
 Claim ID: `HCE-002`
+
+Claim domain: `HARNESS_READINESS`
+
+Evidence-producing domain: `HARNESS_READINESS`
 
 Claim:
 
@@ -88,6 +109,7 @@ Allowed conclusion:
 Disallowed conclusion:
 
 - any chassis ranking or candidate PASS/FAIL
+- any promotion to `CHASSIS_CANDIDATE_RUNTIME`
 
 Decision impact:
 
@@ -97,6 +119,10 @@ Decision impact:
 ## HCE-003 — Restate exposes static mechanisms relevant to T5, but formal T5 runtime execution was not available
 
 Claim ID: `HCE-003`
+
+Claim domain: `CANDIDATE_STATIC`
+
+Evidence-producing domain: `CANDIDATE_STATIC`
 
 Claim:
 
@@ -129,6 +155,7 @@ Disallowed conclusion:
 
 - Restate T5 PASS or FAIL
 - inference that source-level fencing automatically satisfies the benchmark runtime invariant
+- any promotion from `CANDIDATE_STATIC` to `CHASSIS_CANDIDATE_RUNTIME`
 
 Decision impact:
 
@@ -137,6 +164,10 @@ Decision impact:
 ## HCE-004 — T11 neutral controls discriminated the declared safe and unsafe semantics in reconstructed execution
 
 Claim ID: `HCE-004`
+
+Claim domain: `HARNESS_CONTROL`
+
+Evidence-producing domain: `HARNESS_CONTROL`
 
 Claim:
 
@@ -172,6 +203,7 @@ Disallowed conclusion:
 - any candidate T11 PASS/FAIL
 - `REPRODUCED_INDEPENDENT`
 - formal benchmark eligibility based solely on the reconstructed control
+- any promotion from `HARNESS_CONTROL` to `CHASSIS_CANDIDATE_RUNTIME`
 
 Decision impact:
 
@@ -180,6 +212,10 @@ Decision impact:
 ## HCE-005 — T5 neutral controls discriminated the corrected ownership-race semantics in reconstructed execution
 
 Claim ID: `HCE-005`
+
+Claim domain: `HARNESS_CONTROL`
+
+Evidence-producing domains: `HARNESS_CONTROL` plus bounded `CANDIDATE_STATIC` observations
 
 Claim:
 
@@ -216,6 +252,7 @@ Disallowed conclusion:
 
 - any Temporal/DBOS/Restate/Trigger.dev T5 PASS or FAIL
 - chassis ranking
+- any promotion of the control/static observations to `CHASSIS_CANDIDATE_RUNTIME`
 
 Decision impact:
 
@@ -224,13 +261,15 @@ Decision impact:
 
 ## Evidence-class summary
 
-| Claim | Artifact type | Strongest supported statement | Not supported |
-| --- | --- | --- | --- |
-| HCE-001 | environment preflight | runtime bootstrap blocked in observed environment | candidate verdict |
-| HCE-002 | harness-readiness reconstruction | full benchmark not ready under declared executor/mode contract | candidate ranking |
-| HCE-003 | static source audit | Restate mechanisms statically confirmed; executor gap documented | Restate runtime verdict |
-| HCE-004 | reconstructed neutral control | T11 control discriminated recorded safe/unsafe semantics | candidate T11 verdict / independent reproduction |
-| HCE-005 | reconstructed neutral control + static findings | T5 control discriminated recorded schedules | candidate T5 verdict / chassis winner |
+| Claim | Claim domain | Evidence-producing domain | Strongest supported statement | Not supported |
+| --- | --- | --- | --- | --- |
+| HCE-001 | `ENVIRONMENT_PREREQUISITE` | `ENVIRONMENT_PREREQUISITE` | runtime bootstrap blocked in observed environment | candidate verdict |
+| HCE-002 | `HARNESS_READINESS` | `HARNESS_READINESS` | full benchmark not ready under declared executor/mode contract | candidate ranking |
+| HCE-003 | `CANDIDATE_STATIC` | `CANDIDATE_STATIC` | Restate mechanisms statically confirmed; executor gap documented | Restate runtime verdict |
+| HCE-004 | `HARNESS_CONTROL` | `HARNESS_CONTROL` | T11 control discriminated recorded safe/unsafe semantics | candidate T11 verdict / independent reproduction |
+| HCE-005 | `HARNESS_CONTROL` | `HARNESS_CONTROL` + `CANDIDATE_STATIC` | T5 control discriminated recorded schedules | candidate T5 verdict / chassis winner |
+
+No HCE entry above is classified as `CHASSIS_CANDIDATE_RUNTIME`.
 
 ## Open evidence gaps
 
