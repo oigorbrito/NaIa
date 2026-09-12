@@ -142,7 +142,34 @@ Examples of conditional rather than universal fields include baselines, independ
 
 Unsupported engineering preferences remain outside the empirical harness requirement set.
 
-## 7. No change to historical gates
+## 7. Claim-domain review procedure
+
+Before a new or historical artifact is used to support a conclusion, complete the following documentary sequence:
+
+1. State the exact claim in `CLAIM-EVIDENCE-REGISTER-TEMPLATE.md`.
+2. Assign a `claimDomain` before interpreting the artifact.
+3. Record the evidence-producing domain for every artifact cited by the claim.
+4. Verify exact source/procedure identity for runtime evidence.
+5. Check whether the evidence-producing domain matches the claim domain.
+6. If evidence crosses domains, record the methodological basis for compatibility; otherwise keep it contextual only.
+7. Apply the evidence-strength ladder only inside the supported claim scope.
+8. Record disallowed inferences explicitly when there is a known risk of silent promotion.
+9. Only then evaluate decision eligibility or comparison consequences.
+
+Minimum compatibility matrix:
+
+| Evidence-producing domain | Directly supports | Does not directly support |
+| --- | --- | --- |
+| `PRODUCT_READINESS` | exact product-readiness claims | chassis runtime verdict/ranking |
+| `HARNESS_VALIDATION` | harness discrimination/validation claims | candidate runtime verdict |
+| `CHASSIS_CANDIDATE` | exact candidate/runtime claim | product-readiness state or another candidate |
+| `CHASSIS_COMPARISON` | comparison claim after comparability checks | unrelated product or candidate claims |
+
+A cross-domain reference is permitted for provenance, historical context, blocker classification, or explicit methodological comparison, but it does not acquire the target domain's decision authority merely by being cited.
+
+This review is documentary. It does not require rerunning an experiment unless the target claim actually lacks the execution evidence required by its own experiment/reproducibility contract.
+
+## 8. No change to historical gates
 
 This document introduces no new product gate, threshold, mutant, repetition count, candidate requirement, or benchmark ranking rule.
 
@@ -153,4 +180,5 @@ CHASSIS_ACCEPTANCE_RULE_CHANGED = NO
 CHASSIS_WINNER_SELECTED = NO
 BENCHMARK_TO_BEAT_SELECTED = NO
 DOCUMENTARY_EVIDENCE_BOUNDARY_ADDED = YES
+CLAIM_DOMAIN_REVIEW_PROCEDURE_ADDED = YES
 ```
