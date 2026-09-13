@@ -7,7 +7,12 @@ import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import { createFilePorts } from '../../src/product/file-ports.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createIntentPlanner } from '../../src/product/planner.mjs';
-import { createPlatformRegistry, createPlatformRuntime } from '../../src/product/platform.mjs';
+import {
+  createPlatformCapability,
+  createPlatformRegistry,
+  createPlatformRuntime,
+  createReferenceAdapters,
+} from '../../src/product/platform.mjs';
 import { createProductShell } from '../../src/product/shell.mjs';
 import { createProviderRegistry, createProviderRouter } from '../../src/product/providers.mjs';
 
@@ -247,6 +252,37 @@ test('platform runtime exposes only the selected client adapter', async () => {
   assert.deepEqual(await runtime.invoke('notifications.show'), {
     capability: 'notifications.show', platform: 'android',
   });
+});
+
+test('reference adapters share neutral capability contracts and explicit availability states', async () => {
+  const registry = createPlatformRegistry();
+  const adapters = createReferenceAdapters();
+  registry.register('web', adapters.web);
+  registry.register('windows', adapters.windows);
+
+  for (const platform of ['web', 'windows']) {
+    assert.deepEqual(registry.capabilities(platform), ['files.list', 'notifications.show', 'media.read']);
+    assert.deepEqual(registry.describe(platform, 'files.list'), {
+      name: 'files.list', platform, operations: ['list'], risk: 'READ_ONLY', permissions: [], availability: 'AVAILABLE',
+    });
+    assert.deepEqual(await registry.invoke(platform, 'files.list', { operation: 'list', entries: ['a.txt'] }), { entries: ['a.txt'] });
+    await assert.rejects(registry.invoke(platform, 'media.read', { operation: 'read' }), /unavailable: UNSUPPORTED/);
+    await assert.rejects(registry.invoke(platform, 'notifications.show', { operation: 'show' }), /unavailable: PERMISSION_REQUIRED/);
+    await assert.rejects(registry.invoke(platform, 'files.list', { operation: 'delete' }), /operation not supported/);
+  }
+  await assert.rejects(registry.invoke('linux', 'files.list'), /platform adapter not registered/);
+  assert.notEqual(registry.describe('web', 'files.list'), registry.describe('windows', 'files.list'));
+});
+
+test('capability contracts validate risk and availability without platform-specific imports', () => {
+  assert.deepEqual(createPlatformCapability({
+    name: 'credentials.read', platform: 'web', operations: ['read'], risk: 'SENSITIVE', permissions: ['credentials'], availability: 'AVAILABLE',
+  }), {
+    name: 'credentials.read', platform: 'web', operations: ['read'], risk: 'SENSITIVE', permissions: ['credentials'], availability: 'AVAILABLE',
+  });
+  assert.throws(() => createPlatformCapability({
+    name: 'files.list', platform: 'web', operations: ['list'], risk: 'LOCAL_WRITE', availability: 'BROKEN',
+  }), /unsupported capability availability/);
 });
 
 test('reminder intent creates a persisted task after approval', async () => {
