@@ -7,6 +7,7 @@ import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import { createFilePorts } from '../../src/product/file-ports.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createIntentPlanner } from '../../src/product/planner.mjs';
+import { interpretText } from '../../src/product/intent.mjs';
 import {
   createPlatformCapability,
   createPlatformRegistry,
@@ -156,6 +157,49 @@ test('intent planner accepts registered capability rules before the default plan
   assert.equal(result.objective.status, 'COMPLETED');
   assert.equal(result.plan.steps[1].action.tool, 'text.reverse');
   assert.equal(result.plan.steps[1].action.input.text, 'NaIA');
+});
+
+test('intent interpretation returns a normalized objective and provenance', async () => {
+  const interpretation = await interpretText('uppercase: hello');
+  assert.equal(interpretation.intent, 'TEXT_TRANSFORM');
+  assert.equal(interpretation.state, 'RECOGNIZED');
+  assert.deepEqual(interpretation.parameters, { operation: 'UPPERCASE', text: 'hello' });
+  assert.equal(interpretation.objective.originalText, 'uppercase: hello');
+  assert.equal(interpretation.provenance, 'deterministic.uppercase');
+});
+
+test('registered runtime rules participate in provider-neutral interpretation', async () => {
+  const planner = createIntentPlanner();
+  planner.register({
+    name: 'status-rule',
+    match: (input) => input.toLowerCase() === 'status',
+    interpret: () => ({ intent: 'STATUS_QUERY', state: 'RECOGNIZED', parameters: { scope: 'product' } }),
+    action: () => ({ tool: 'time.now', risk: 'READ_ONLY', requiresApproval: false }),
+  });
+  const interpretation = await planner.interpret('status');
+  assert.equal(interpretation.intent, 'STATUS_QUERY');
+  assert.equal(interpretation.provenance, 'status-rule');
+  assert.deepEqual(interpretation.parameters, { scope: 'product' });
+});
+
+test('intent interpretation exposes unknown, ambiguity, and missing parameters', async () => {
+  assert.equal((await interpretText('do something surprising')).state, 'UNRECOGNIZED');
+  const ambiguous = await interpretText('manda isso pra ele');
+  assert.equal(ambiguous.state, 'AMBIGUOUS');
+  assert.deepEqual(ambiguous.objective.missingParameters, ['recipient']);
+  const missing = await interpretText('uppercase:');
+  assert.equal(missing.state, 'MISSING_PARAMETER');
+  assert.deepEqual(missing.objective.missingParameters, ['text']);
+});
+
+test('planner consumes normalized interpretation and refuses ambiguous side effects', async () => {
+  const planner = createIntentPlanner();
+  const valid = await planner.plan({ id: 'objective-intent', title: 'uppercase: hello' });
+  assert.equal(valid.interpretation.intent, 'TEXT_TRANSFORM');
+  assert.deepEqual(valid.normalizedObjective.parameters, { operation: 'UPPERCASE', text: 'hello' });
+  const ambiguous = await planner.plan({ id: 'objective-ambiguous', title: 'apaga os arquivos antigos' });
+  assert.equal(ambiguous.interpretation.state, 'AMBIGUOUS');
+  assert.equal(ambiguous.steps[1].action, null);
 });
 
 test('intent planner rejects malformed capability actions before execution', async () => {

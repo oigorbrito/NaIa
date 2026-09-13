@@ -74,6 +74,37 @@ naia.registerCapability({
 });
 ```
 
+### Natural-language intent boundary
+
+The provider-neutral intent layer converts user text into a normalized
+interpretation/objective before the planner is called. It does not execute
+tools, authorize effects, or replace policy and approval.
+
+```js
+const interpretation = await planner.interpret('uppercase: hello');
+// interpretation.intent === 'TEXT_TRANSFORM'
+// interpretation.objective.parameters === { operation: 'UPPERCASE', text: 'hello' }
+// interpretation.provenance === 'deterministic.uppercase'
+```
+
+Registered deterministic rules can provide interpretation and provenance:
+
+```js
+planner.register({
+  name: 'status-rule',
+  match: (text) => text.toLowerCase() === 'status',
+  interpret: () => ({
+    intent: 'STATUS_QUERY', state: 'RECOGNIZED', parameters: { scope: 'product' },
+  }),
+  action: () => ({ tool: 'time.now', risk: 'READ_ONLY', requiresApproval: false }),
+});
+```
+
+Interpretations can be `RECOGNIZED`, `UNRECOGNIZED`, `AMBIGUOUS`, or
+`MISSING_PARAMETER`. Ambiguous or incomplete text is propagated by the
+planner without producing a side-effect action. Authorization, risk checks,
+approval, execution, and evidence remain downstream responsibilities.
+
 ## Research track
 
 Research artifacts remain available under `research/chassis/` and `docs/research/`. The formal benchmark is still required before selecting `BENCHMARK_TO_BEAT` or `CHASSIS_WINNER`.

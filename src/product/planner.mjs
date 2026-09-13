@@ -29,20 +29,35 @@ export function interpretIntent(title) {
   return { kind: 'TEXT_ECHO', text: intent };
 }
 
-export function planIntent(objective) {
+export async function planIntent(objective) {
   const intent = normalize(objective.title);
-  const interpreted = interpretIntent(intent);
+  const interpreted = await interpretText(intent);
+  const normalized = normalizeObjective(objective, interpreted);
+
+  if (interpreted.state === 'AMBIGUOUS' || interpreted.state === 'MISSING_PARAMETER') {
+    return {
+      objectiveId: objective.id,
+      intent: interpreted.intent ?? 'UNRECOGNIZED',
+      normalizedObjective: normalized.normalizedIntent,
+      interpretation: interpreted,
+      steps: [
+        { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'COMPLETED', action: null },
+        { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'FAILED', action: null, error: interpreted.state },
+        { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null },
+      ],
+    };
+  }
 
   let action;
-  if (interpreted.kind === 'TIME_QUERY') {
+  if (interpreted.intent === 'TIME_QUERY') {
     action = { tool: 'time.now', input: {}, risk: 'READ_ONLY', requiresApproval: false };
-  } else if (interpreted.kind === 'TEXT_TRANSFORM') {
-    action = { tool: 'text.uppercase', input: { text: interpreted.text }, risk: 'READ_ONLY', requiresApproval: false };
+  } else if (interpreted.intent === 'TEXT_TRANSFORM') {
+    action = { tool: 'text.uppercase', input: { text: interpreted.parameters.text }, risk: 'READ_ONLY', requiresApproval: false };
   } else {
-    if (interpreted.kind === 'NOTE_WRITE') {
-      action = { tool: 'note.write', input: interpreted, risk: 'LOCAL_WRITE', requiresApproval: true };
-    } else if (interpreted.kind === 'TASK_CREATE') {
-      action = { tool: 'task.create', input: interpreted, risk: 'LOCAL_WRITE', requiresApproval: true };
+    if (interpreted.intent === 'NOTE_WRITE') {
+      action = { tool: 'note.write', input: interpreted.parameters, risk: 'LOCAL_WRITE', requiresApproval: true };
+    } else if (interpreted.intent === 'TASK_CREATE') {
+      action = { tool: 'task.create', input: interpreted.parameters, risk: 'LOCAL_WRITE', requiresApproval: true };
     } else {
       action = { tool: 'text.echo', input: { text: intent }, risk: 'READ_ONLY', requiresApproval: false };
     }
@@ -50,7 +65,9 @@ export function planIntent(objective) {
 
   return {
     objectiveId: objective.id,
-    intent,
+    intent: interpreted.intent ?? interpreted.objective.type,
+    normalizedObjective: normalized.normalizedIntent,
+    interpretation: interpreted,
     steps: [
       { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING', action: null },
       { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING', action },
@@ -84,6 +101,9 @@ export function createIntentPlanner({ rules = [] } = {}) {
       registered.push(rule);
       return rule;
     },
+    async interpret(text, context = {}) {
+      return interpretText(text, context, { rules: registered });
+    },
     async plan(objective) {
       for (const rule of registered) {
         if (await rule.match(objective)) {
@@ -103,3 +123,4 @@ export function createIntentPlanner({ rules = [] } = {}) {
     },
   };
 }
+import { interpretText, normalizeObjective } from './intent.mjs';
