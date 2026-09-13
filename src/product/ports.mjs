@@ -19,7 +19,7 @@ export function assertProductPorts(ports) {
   return ports;
 }
 
-export function createInMemoryPorts() {
+export function createInMemoryPorts({ planner = null } = {}) {
   const objectives = new Map();
   const plans = new Map();
   const evidence = [];
@@ -41,8 +41,8 @@ export function createInMemoryPorts() {
         return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
       },
     },
-    planner: { async plan(objective) { return planIntent(objective); } },
-    policy: createApprovalPolicy(),
+    planner: planner ?? { async plan(objective) { return planIntent(objective); } },
+    policy: createApprovalPolicy({ registry }),
     execution: createLocalExecutionAdapter({ registry }),
     tools: registry,
   };

@@ -78,7 +78,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
       },
     },
     planner: { async plan(objective) { return planIntent(objective); } },
-    policy: createApprovalPolicy(),
+    policy: createApprovalPolicy({ registry }),
     execution: createLocalExecutionAdapter({ registry }),
     tools: registry,
   };

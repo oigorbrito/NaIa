@@ -19,6 +19,7 @@ The product branch now includes:
 - a local tool registry;
 - read-only tools that execute directly;
 - explicit approval before local write side effects;
+- runtime capability registration with planner rules and risk validation;
 - CLI history and evidence inspection;
 - focused product CI.
 
@@ -39,6 +40,39 @@ See:
 
 - [Product Foundation V1](docs/product/PRODUCT-FOUNDATION-V1.md)
 - [First Useful Capability V1](docs/product/FIRST-USEFUL-CAPABILITY-V1.md)
+
+### Extending capabilities
+
+The service can register a tool and its intent rule without modifying the default
+planner. The registered action must declare one of `READ_ONLY`, `LOCAL_WRITE`,
+`EXTERNAL_WRITE` or `SENSITIVE`; policy compares that declaration with the tool's
+registered risk and fails closed on a mismatch.
+
+```js
+const planner = createIntentPlanner();
+const ports = createInMemoryPorts({ planner });
+const naia = createNaiaService(ports);
+
+naia.registerCapability({
+  name: 'text.reverse',
+  tool: {
+    risk: 'READ_ONLY',
+    capability: 'text.transform',
+    async run(input) {
+      return { text: [...String(input.text)].reverse().join('') };
+    },
+  },
+  rule: {
+    match: ({ title }) => title.startsWith('reverse: '),
+    action: ({ title }) => ({
+      tool: 'text.reverse',
+      input: { text: title.slice(9) },
+      risk: 'READ_ONLY',
+      requiresApproval: false,
+    }),
+  },
+});
+```
 
 ## Research track
 
