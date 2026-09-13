@@ -32,6 +32,17 @@ export function interpretIntent(title) {
 export async function planIntent(objective) {
   const intent = normalize(objective.title);
   const interpreted = await interpretText(intent);
+  const structured = objective.normalizedIntent ?? objective.intentObjective;
+  if (structured?.type && ['CALENDAR_LIST', 'CALENDAR_CREATE', 'CALENDAR_UPDATE', 'HTTP_READ'].includes(structured.type)) {
+    const operation = structured.type === 'CALENDAR_LIST' ? 'list' : structured.type === 'CALENDAR_CREATE' ? 'create' : structured.type === 'CALENDAR_UPDATE' ? 'update' : 'read';
+    const tool = structured.type === 'HTTP_READ' ? 'http.read' : `calendar.${operation}`;
+    const risk = structured.type === 'CALENDAR_LIST' || structured.type === 'HTTP_READ' ? 'READ_ONLY' : 'EXTERNAL_WRITE';
+    return { objectiveId: objective.id, intent: structured.type, normalizedObjective: structured, interpretation: null, steps: [
+      { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING', action: null },
+      { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING', action: { tool, input: structured.parameters ?? {}, risk, requiresApproval: risk !== 'READ_ONLY' } },
+      { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null },
+    ] };
+  }
   const normalized = normalizeObjective(objective, interpreted);
 
   if (interpreted.state === 'AMBIGUOUS' || interpreted.state === 'MISSING_PARAMETER') {

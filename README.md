@@ -105,6 +105,26 @@ Interpretations can be `RECOGNIZED`, `UNRECOGNIZED`, `AMBIGUOUS`, or
 planner without producing a side-effect action. Authorization, risk checks,
 approval, execution, and evidence remain downstream responsibilities.
 
+### Calendar and configured HTTP capabilities
+
+The provider-neutral calendar contract exposes `calendar.list`,
+`calendar.create`, and `calendar.update`. The latter two are `EXTERNAL_WRITE`
+and therefore require the existing policy approval; `calendar.list` is
+`READ_ONLY`. A concrete provider (such as a future Google adapter) is kept
+outside this contract. The current reference provider is deterministic and
+in-memory for tests only.
+
+Configured HTTP reads use `http.read` with a registered `targetId`, never an
+arbitrary URL. A target declares its endpoint, allowed `GET`/`HEAD` method,
+description, availability, and non-secret configuration. Unknown targets,
+unavailable targets, and write methods fail explicitly; secrets are not
+included in results or evidence.
+
+Both capabilities follow the same boundary: intent interprets, the planner
+creates an action, policy validates risk and approval, the tool/provider
+executes, and evidence records the result. The intent layer itself never
+executes Calendar or HTTP.
+
 ## Research track
 
 Research artifacts remain available under `research/chassis/` and `docs/research/`. The formal benchmark is still required before selecting `BENCHMARK_TO_BEAT` or `CHASSIS_WINNER`.

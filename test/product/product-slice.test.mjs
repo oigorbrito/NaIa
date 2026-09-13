@@ -16,6 +16,7 @@ import {
 } from '../../src/product/platform.mjs';
 import { createProductShell } from '../../src/product/shell.mjs';
 import { createProviderRegistry, createProviderRouter } from '../../src/product/providers.mjs';
+import { createHttpReadCapability, createHttpTargetRegistry, createMemoryCalendarProvider, registerProductCapabilities } from '../../src/product/capabilities.mjs';
 
 test('read-only intent is planned, invoked, and evidenced without approval', async () => {
   const ports = createInMemoryPorts();
@@ -430,4 +431,38 @@ test('workspace duplicate detection is hash-based and non-destructive', async ()
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
+});
+
+test('memory calendar implements list/create/update with stable event identity', async () => {
+  const calendar = createMemoryCalendarProvider();
+  assert.deepEqual(await calendar.run('list'), { events: [] });
+  const created = await calendar.run('create', { title: 'Demo', start: '2026-09-14T10:00:00', end: '2026-09-14T11:00:00', timezone: 'America/Sao_Paulo' });
+  assert.equal(created.event.id, 'event-1');
+  assert.equal((await calendar.run('list')).events.length, 1);
+  const updated = await calendar.run('update', { eventId: created.event.id, changes: { title: 'Updated' } });
+  assert.equal(updated.event.title, 'Updated');
+  await assert.rejects(calendar.run('update', { eventId: 'missing', changes: { title: 'x' } }), /event not found/);
+  await assert.rejects(calendar.run('create', { title: 'Incomplete', start: 'x' }), /end or duration/);
+});
+
+test('calendar and configured HTTP capabilities integrate with registry, planner and policy', async () => {
+  const ports = createInMemoryPorts();
+  const targets = createHttpTargetRegistry();
+  targets.register({ id: 'status-service', endpoint: 'https://configured.invalid/status', method: 'GET', description: 'Status' });
+  const calls = [];
+  registerProductCapabilities({ registry: ports.tools, httpTargets: targets, httpExecutor: async ({ target }) => { calls.push(target.id); return { status: 200, result: { ok: true }, executor: 'test-double' }; } });
+  assert.equal(ports.tools.describe('calendar.list').risk, 'READ_ONLY');
+  assert.equal(ports.tools.describe('calendar.create').risk, 'EXTERNAL_WRITE');
+  assert.equal(ports.tools.describe('http.read').risk, 'READ_ONLY');
+  assert.deepEqual(await ports.tools.run('http.read', { targetId: 'status-service' }), { targetId: 'status-service', operation: 'read', method: 'GET', status: 200, result: { ok: true }, executor: 'test-double' });
+  assert.deepEqual(calls, ['status-service']);
+  await assert.rejects(ports.tools.run('http.read', { targetId: 'missing' }), /not registered/);
+  await assert.rejects(ports.tools.run('http.read', { targetId: 'status-service', url: 'https://arbitrary.invalid' }), /arbitrary URL/);
+  const planner = createIntentPlanner();
+  const plan = await planner.plan({ id: 'calendar-1', title: 'structured', normalizedIntent: { type: 'CALENDAR_CREATE', parameters: { title: 'Demo', start: 'x', end: 'y' } } });
+  assert.equal(plan.steps[1].action.tool, 'calendar.create');
+  const auth = await ports.policy.authorize({ objective: { approvals: [] }, plan, step: plan.steps[1] });
+  assert.equal(auth.allowed, false);
+  const readPlan = await planner.plan({ id: 'http-1', title: 'structured', normalizedIntent: { type: 'HTTP_READ', parameters: { targetId: 'status-service' } } });
+  assert.equal((await ports.policy.authorize({ objective: { approvals: [] }, plan: readPlan, step: readPlan.steps[1] })).allowed, true);
 });
