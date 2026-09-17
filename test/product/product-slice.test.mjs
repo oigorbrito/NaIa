@@ -107,3 +107,20 @@ test('tool catalog exposes risk classification', () => {
   assert.deepEqual(tools.find((tool) => tool.name === 'note.write'), { name: 'note.write', risk: 'LOCAL_WRITE' });
   assert.deepEqual(tools.find((tool) => tool.name === 'text.uppercase'), { name: 'text.uppercase', risk: 'READ_ONLY' });
 });
+
+test('file ports handle concurrent save calls without data loss', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'naia-concurrent-'));
+  try {
+    const ports = createFilePorts({ rootDir });
+    const objs = Array.from({ length: 10 }, (_, i) => ({ id: `obj-${i}`, title: `Title ${i}` }));
+    await Promise.all(objs.map((obj) => ports.objectives.save(obj)));
+
+    const list = await ports.objectives.list();
+    assert.equal(list.length, 10);
+    for (let i = 0; i < 10; i++) {
+      assert.ok(list.some((item) => item.id === `obj-${i}`));
+    }
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
