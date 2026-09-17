@@ -107,3 +107,28 @@ test('tool catalog exposes risk classification', () => {
   assert.deepEqual(tools.find((tool) => tool.name === 'note.write'), { name: 'note.write', risk: 'LOCAL_WRITE' });
   assert.deepEqual(tools.find((tool) => tool.name === 'text.uppercase'), { name: 'text.uppercase', risk: 'READ_ONLY' });
 });
+
+test('note.write input validation prevents path traversal, hidden files, and excessive lengths', async () => {
+  const ports = createInMemoryPorts();
+  const registry = ports.tools;
+
+  await assert.rejects(
+    registry.run('note.write', { name: '..', content: 'test' }),
+    /note name is required/
+  );
+
+  await assert.rejects(
+    registry.run('note.write', { name: 'a'.repeat(300), content: 'test' }),
+    /note name exceeds maximum length/
+  );
+
+  // Path traversal and leading dot attempts are sanitized safely into valid filenames
+  const sanitizedPathTraversal = await registry.run('note.write', { name: '../secret', content: 'test' });
+  assert.ok(sanitizedPathTraversal.path.endsWith('/workspace/notes/secret.txt'));
+
+  const sanitizedHidden = await registry.run('note.write', { name: '.hidden', content: 'test' });
+  assert.ok(sanitizedHidden.path.endsWith('/workspace/notes/hidden.txt'));
+
+  const res = await registry.run('note.write', { name: '  valid-note.txt  ', content: 'hello' });
+  assert.ok(res.path.endsWith('valid-note.txt'));
+});
