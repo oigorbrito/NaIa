@@ -1,10 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, relative, sep } from 'node:path';
 
 function safeNoteName(name) {
-  const value = String(name ?? '').trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  if (!value) throw new Error('note name is required');
-  return value.endsWith('.txt') ? value : `${value}.txt`;
+  const raw = String(name ?? '').trim();
+  const sanitized = raw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[\s._-]+|[\s._-]+$/g, '');
+  if (!sanitized) throw new Error('note name is required');
+  const filename = sanitized.endsWith('.txt') ? sanitized : `${sanitized}.txt`;
+  if (filename.length > 255) throw new Error('note name exceeds maximum length');
+  return filename;
 }
 
 export function createToolRegistry({ rootDir = '.naia' } = {}) {
@@ -31,9 +34,14 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
       risk: 'LOCAL_WRITE',
       async run(input) {
         const notesDir = join(rootDir, 'workspace', 'notes');
-        await mkdir(notesDir, { recursive: true });
         const filename = safeNoteName(input?.name);
-        const path = join(notesDir, filename);
+        const resolvedNotesDir = resolve(notesDir);
+        const path = resolve(notesDir, filename);
+        const rel = relative(resolvedNotesDir, path);
+        if (rel.startsWith('..') || rel.includes(`..${sep}`)) {
+          throw new Error('invalid note path');
+        }
+        await mkdir(notesDir, { recursive: true });
         await writeFile(path, `${String(input?.content ?? '')}\n`, 'utf8');
         return { path, bytes: Buffer.byteLength(`${String(input?.content ?? '')}\n`, 'utf8') };
       },
