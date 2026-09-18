@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve, relative } from 'node:path';
 
 function safeNoteName(name) {
-  const value = String(name ?? '').trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  if (!value) throw new Error('note name is required');
+  const raw = String(name ?? '').trim();
+  if (raw.includes('/') || raw.includes('\\')) {
+    throw new Error('invalid note name: path separators are not allowed');
+  }
+  const value = raw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!value || value === '.' || value === '..') throw new Error('note name is required');
   return value.endsWith('.txt') ? value : `${value}.txt`;
 }
 
@@ -30,10 +34,14 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
     ['note.write', {
       risk: 'LOCAL_WRITE',
       async run(input) {
-        const notesDir = join(rootDir, 'workspace', 'notes');
+        const notesDir = resolve(rootDir, 'workspace', 'notes');
         await mkdir(notesDir, { recursive: true });
         const filename = safeNoteName(input?.name);
-        const path = join(notesDir, filename);
+        const path = resolve(notesDir, filename);
+        const rel = relative(notesDir, path);
+        if (rel.startsWith('..') || resolve(path) !== path || rel === '..') {
+          throw new Error('invalid note path: path traversal detected');
+        }
         await writeFile(path, `${String(input?.content ?? '')}\n`, 'utf8');
         return { path, bytes: Buffer.byteLength(`${String(input?.content ?? '')}\n`, 'utf8') };
       },

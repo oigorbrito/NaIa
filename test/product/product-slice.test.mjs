@@ -107,3 +107,28 @@ test('tool catalog exposes risk classification', () => {
   assert.deepEqual(tools.find((tool) => tool.name === 'note.write'), { name: 'note.write', risk: 'LOCAL_WRITE' });
   assert.deepEqual(tools.find((tool) => tool.name === 'text.uppercase'), { name: 'text.uppercase', risk: 'READ_ONLY' });
 });
+
+test('note.write prevents path traversal attacks', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'naia-path-traversal-test-'));
+  try {
+    const ports = createFilePorts({ rootDir });
+    const registry = ports.tools;
+
+    await assert.rejects(
+      async () => registry.run('note.write', { name: '../../evil', content: 'hacked' }),
+      /invalid note name: path separators are not allowed/
+    );
+
+    await assert.rejects(
+      async () => registry.run('note.write', { name: 'sub/file', content: 'hacked' }),
+      /invalid note name: path separators are not allowed/
+    );
+
+    await assert.rejects(
+      async () => registry.run('note.write', { name: '..', content: 'hacked' }),
+      /note name is required/
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
