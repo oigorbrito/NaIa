@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile, appendFile, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { planIntent } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
@@ -26,8 +26,55 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
   const evidencePath = join(rootDir, 'evidence.jsonl');
   const registry = createToolRegistry({ rootDir });
 
+  // Cache JSON maps by file path and modification time (mtimeMs) to eliminate redundant disk reads/parses
+  const mapCache = new Map();
+
   async function readMap(path) {
-    return readJson(path, {});
+    try {
+      const st = await stat(path);
+      const cached = mapCache.get(path);
+      if (cached && cached.mtimeMs === st.mtimeMs) {
+        return structuredClone(cached.data);
+      }
+      const data = await readJson(path, {});
+      mapCache.set(path, { mtimeMs: st.mtimeMs, data });
+      return structuredClone(data);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return {};
+      throw error;
+    }
+  }
+
+  async function saveMap(path, value) {
+    await writeJsonAtomic(path, value);
+    try {
+      const st = await stat(path);
+      mapCache.set(path, { mtimeMs: st.mtimeMs, data: structuredClone(value) });
+    } catch {
+      mapCache.delete(path);
+    }
+  }
+
+  const evidenceCache = { mtimeMs: 0, rows: [] };
+
+  async function readEvidence() {
+    try {
+      const st = await stat(evidencePath);
+      if (evidenceCache.mtimeMs > 0 && st.mtimeMs === evidenceCache.mtimeMs) {
+        return structuredClone(evidenceCache.rows);
+      }
+      const text = await readFile(evidencePath, 'utf8');
+      const rows = text
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      evidenceCache.mtimeMs = st.mtimeMs;
+      evidenceCache.rows = rows;
+      return structuredClone(rows);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return [];
+      throw error;
+    }
   }
 
   return {
@@ -35,7 +82,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
       async save(objective) {
         const all = await readMap(objectivesPath);
         all[objective.id] = structuredClone(objective);
-        await writeJsonAtomic(objectivesPath, all);
+        await saveMap(objectivesPath, all);
         return objective;
       },
       async get(id) {
@@ -50,7 +97,7 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
       async save(plan) {
         const all = await readMap(plansPath);
         all[plan.objectiveId] = structuredClone(plan);
-        await writeJsonAtomic(plansPath, all);
+        await saveMap(plansPath, all);
         return plan;
       },
       async get(objectiveId) {
@@ -62,19 +109,21 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
       async append(record) {
         await mkdir(dirname(evidencePath), { recursive: true });
         await appendFile(evidencePath, `${JSON.stringify(record)}\n`, 'utf8');
+        try {
+          const st = await stat(evidencePath);
+          if (evidenceCache.mtimeMs > 0) {
+            evidenceCache.mtimeMs = st.mtimeMs;
+            evidenceCache.rows.push(structuredClone(record));
+          }
+        } catch {
+          evidenceCache.mtimeMs = 0;
+          evidenceCache.rows = [];
+        }
         return record;
       },
       async list({ objectiveId } = {}) {
-        try {
-          const rows = (await readFile(evidencePath, 'utf8'))
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((line) => JSON.parse(line));
-          return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
-        } catch (error) {
-          if (error?.code === 'ENOENT') return [];
-          throw error;
-        }
+        const rows = await readEvidence();
+        return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
       },
     },
     planner: { async plan(objective) { return planIntent(objective); } },
