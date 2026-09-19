@@ -60,7 +60,12 @@ export async function planIntent(objective) {
   }
 
   let action;
-  if (interpreted.intent === 'TIME_QUERY') {
+  if (['CALENDAR_LIST', 'CALENDAR_CREATE', 'CALENDAR_UPDATE', 'HTTP_READ'].includes(interpreted.intent)) {
+    const operation = interpreted.intent === 'CALENDAR_LIST' ? 'list' : interpreted.intent === 'CALENDAR_CREATE' ? 'create' : interpreted.intent === 'CALENDAR_UPDATE' ? 'update' : 'read';
+    const tool = interpreted.intent === 'HTTP_READ' ? 'http.read' : `calendar.${operation}`;
+    const risk = interpreted.intent === 'CALENDAR_LIST' || interpreted.intent === 'HTTP_READ' ? 'READ_ONLY' : 'EXTERNAL_WRITE';
+    action = { tool, input: interpreted.parameters ?? {}, risk, requiresApproval: risk !== 'READ_ONLY' };
+  } else if (interpreted.intent === 'TIME_QUERY') {
     action = { tool: 'time.now', input: {}, risk: 'READ_ONLY', requiresApproval: false };
   } else if (interpreted.intent === 'TEXT_TRANSFORM') {
     action = { tool: 'text.uppercase', input: { text: interpreted.parameters.text }, risk: 'READ_ONLY', requiresApproval: false };
