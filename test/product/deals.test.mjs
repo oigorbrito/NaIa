@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { createDealService, dealToWatchObservation } from '../../src/product/deals.mjs';
+import { createDealService, createFileDealStore, dealToRadarSignal, dealToWatchObservation } from '../../src/product/deals.mjs';
 
 function service(){ let i=0; return createDealService({idFactory:()=> 'obs-'+(++i),now:()=> '2026-09-19T13:00:00Z'}); }
 
@@ -87,4 +90,50 @@ test('deal result bridge preserves positive and insufficient states for conditio
   const observation=dealToWatchObservation(insufficient);
   assert.equal(observation.state,'INSUFFICIENT_EVIDENCE');
   assert.equal(observation.available,false);
+});
+
+test('deal history and duplicate suppression survive file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-deals-'));
+  try{
+    let i=0;
+    const first=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`,now:()=> '2026-09-19T13:00:00Z'});
+    await first.record({targetId:'phone',offerId:'a',source:'store',observedAt:'2026-09-18T10:00:00Z',price:1000});
+    await first.record({targetId:'phone',offerId:'a',source:'store',observedAt:'2026-09-19T12:00:00Z',price:800});
+    const second=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`,now:()=> '2026-09-19T13:00:00Z'});
+    const duplicate=await second.record({targetId:'phone',offerId:'a',source:'store',observedAt:'2026-09-20T12:00:00Z',price:800});
+    assert.equal(duplicate.duplicate,true);
+    assert.equal((await second.history('phone')).length,2);
+    const result=await second.evaluate('phone',{offerId:'a',minHistory:1,asOf:'2026-09-19T13:00:00Z'});
+    assert.ok(result.signals.includes('NEW_LOW'));
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('positive deal signals become Radar alerts with transparent reference basis',async()=>{
+  const deals=service();
+  await deals.record({targetId:'phone',offerId:'a',source:'store',observedAt:'2026-09-18T10:00:00Z',price:1000,provenance:{url:'offer-a'}});
+  await deals.record({targetId:'phone',offerId:'a',source:'store',observedAt:'2026-09-19T12:00:00Z',price:800,provenance:{url:'offer-a'}});
+  const result=await deals.evaluate('phone',{offerId:'a',minHistory:1,asOf:'2026-09-19T13:00:00Z'});
+  const signal=dealToRadarSignal(result,{targetId:'phone',title:'Phone deal'});
+  assert.equal(signal.type,'ALERT');
+  assert.equal(signal.title,'Phone deal');
+  assert.equal(signal.metadata.offerId,'a');
+  assert.equal(signal.metadata.reference.historyCount,1);
+  assert.equal(signal.metadata.confidence,'DERIVED_FROM_HISTORY');
+  assert.deepEqual(signal.metadata.provenance,{url:'offer-a'});
+});
+
+test('stale, insufficient-evidence and no-deal results do not become Radar alerts',async()=>{
+  const deals=service();
+  await deals.record({targetId:'x',offerId:'o',source:'s',observedAt:'2026-09-18T00:00:00Z',price:100});
+  const stale=await deals.evaluate('x',{offerId:'o',maxCurrentAgeMs:60*60*1000,asOf:'2026-09-19T13:00:00Z'});
+  assert.equal(dealToRadarSignal(stale,{targetId:'x'}),null);
+  const insufficient=await deals.evaluate('x',{offerId:'o',minHistory:2,maxCurrentAgeMs:7*24*60*60*1000,asOf:'2026-09-19T13:00:00Z'});
+  assert.equal(dealToRadarSignal(insufficient,{targetId:'x'}),null);
+  const normal=service();
+  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-17T10:00:00Z',price:100});
+  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-18T10:00:00Z',price:100});
+  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-19T12:00:00Z',price:100});
+  const noDeal=await normal.evaluate('y',{offerId:'o',minHistory:2,materialBelowPct:10,asOf:'2026-09-19T13:00:00Z'});
+  assert.ok(noDeal.signals.includes('NO_DEAL'));
+  assert.equal(dealToRadarSignal(noDeal,{targetId:'y'}),null);
 });
