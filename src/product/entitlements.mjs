@@ -16,6 +16,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
       'executions.monthly': 500,
       'scheduledTasks.active': 5,
       'modelUnits.monthly': 100,
+      'objectives.concurrent': 1,
     }),
   }),
   PRO: Object.freeze({
@@ -27,6 +28,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
       'executions.monthly': 5000,
       'scheduledTasks.active': 50,
       'modelUnits.monthly': 2500,
+      'objectives.concurrent': 2,
     }),
   }),
   ULTRA: Object.freeze({
@@ -38,6 +40,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
       'executions.monthly': 25000,
       'scheduledTasks.active': 100,
       'modelUnits.monthly': 15000,
+      'objectives.concurrent': 5,
     }),
   }),
 });
