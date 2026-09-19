@@ -3,13 +3,17 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import {
   createFileFoodDiaryStore,
   createFixtureNutritionProvider,
+  createFoodDiaryInboundHandler,
   createFoodDiaryService,
   createMemoryFoodDiaryStore,
   formatFoodDiaryReply,
   parseMealText,
+  registerFoodDiaryCapabilities,
 } from '../../src/product/food-diary.mjs';
 
 function provider(){
@@ -172,4 +176,54 @@ test('file-backed diary preserves preferences meals and webhook idempotency acro
     const retry=await second.logText({userId:'u1',text:'comi 100g de arroz',source:{channel:'whatsapp',messageId:'wamid-1'}});
     assert.equal(retry.duplicate,true);
   }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('explicit inbound WhatsApp handler updates preference without creating meal',async()=>{
+  const diary=service();
+  const handler=createFoodDiaryInboundHandler({service:diary,userId:'u1',channel:'whatsapp'});
+  assert.equal(handler.explicitUserInputOnly,true);
+  const result=await handler.handleText({text:'só registra, sem dicas',messageId:'pref-1'});
+  assert.equal(result.kind,'PREFERENCE_UPDATED');
+  assert.equal(result.preference.coachingFrequency,'never');
+  assert.equal((await diary.dailyTotals('u1','2026-09-19')).mealCount,0);
+});
+
+test('explicit inbound WhatsApp handler logs and deduplicates direct user meal message',async()=>{
+  const diary=service();
+  const handler=createFoodDiaryInboundHandler({service:diary,userId:'u1',channel:'whatsapp'});
+  const first=await handler.handleText({text:'comi 100g de arroz',messageId:'wamid-direct'});
+  const retry=await handler.handleText({text:'comi 100g de arroz',messageId:'wamid-direct'});
+  assert.equal(first.kind,'FOOD_LOG');
+  assert.equal(first.result.duplicate,false);
+  assert.equal(retry.result.duplicate,true);
+  assert.match(first.reply,/Registrado/);
+});
+
+test('inbound handler rejects calls without concrete source message identity',async()=>{
+  const diary=service();
+  const handler=createFoodDiaryInboundHandler({service:diary,userId:'u1'});
+  await assert.rejects(handler.handleText({text:'comi arroz'}),/messageId is required/);
+  await assert.rejects(handler.handleTranscript({transcript:'comi arroz'}),/messageId is required/);
+  await assert.rejects(handler.handleDetections({detections:[{name:'arroz'}]}),/messageId is required/);
+});
+
+test('generic runtime food write remains approval-gated',async()=>{
+  const diary=service();
+  const naia=createNaiaService(createInMemoryPorts());
+  registerFoodDiaryCapabilities(naia,{service:diary,userId:'u1'});
+  const pending=await naia.pursueAction({title:'Log meal',action:{tool:'food.log',input:{text:'comi 100g de arroz'},risk:'LOCAL_WRITE',requiresApproval:true}});
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
+  assert.equal((await diary.dailyTotals('u1','2026-09-19')).mealCount,0);
+  const completed=await naia.approve(pending.objective.id,'food.log');
+  assert.equal(completed.objective.status,'COMPLETED');
+  assert.equal((await diary.dailyTotals('u1','2026-09-19')).mealCount,1);
+});
+
+test('generic runtime food read is treated as sensitive and approval-gated',async()=>{
+  const diary=service();
+  await diary.logText({userId:'u1',text:'comi 100g de arroz'});
+  const naia=createNaiaService(createInMemoryPorts());
+  registerFoodDiaryCapabilities(naia,{service:diary,userId:'u1'});
+  const pending=await naia.pursueAction({title:'Daily food total',action:{tool:'food.daily',input:{date:'2026-09-19'},risk:'SENSITIVE',requiresApproval:true}});
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
 });
