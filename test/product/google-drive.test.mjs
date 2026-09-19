@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   createDriveService,
+  createFileDriveConnectionStore,
   createFixtureDriveProvider,
   createMemoryDriveConnectionStore,
   registerDriveCapabilities,
@@ -86,4 +90,39 @@ test('Drive capabilities are sensitive reads, never external writes', () => {
     { name: 'drive.read', risk: 'SENSITIVE' },
   ]);
   assert.ok(definitions.every((definition) => definition.tool.risk !== 'EXTERNAL_WRITE'));
+});
+
+test('file-backed connection metadata survives restart without persisting OAuth token', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'naia-drive-'));
+  try {
+    const provider=createFixtureDriveProvider({token:'persist-never',scopes:['drive.readonly']});
+    const store=createFileDriveConnectionStore({rootDir:dir});
+    const first=createDriveService({store,now:()=> '2026-09-19T12:00:00Z'});
+    await first.connect({userId:'u1',provider,credentialRef:'secure://drive/u1'});
+    const second=createDriveService({store:createFileDriveConnectionStore({rootDir:dir})});
+    const restored=await second.connection('u1');
+    assert.equal(restored.state,'CONNECTED');
+    assert.deepEqual(restored.scopes,['drive.readonly']);
+    assert.equal(restored.credentialRef,'secure://drive/u1');
+    const text=await readFile(store.path,'utf8');
+    assert.equal(text.includes('persist-never'),false);
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('connector rejects non-read-only Drive scopes instead of silently over-privileging', async () => {
+  const service=createDriveService();
+  const provider=createFixtureDriveProvider({scopes:['https://www.googleapis.com/auth/drive']});
+  await assert.rejects(service.connect({userId:'u1',provider}),(error)=>error.code==='UNSAFE_DRIVE_SCOPE'&&error.scopes.length===1);
+  assert.equal(await service.connection('u1'),null);
+});
+
+test('canonical Google read-only scope URLs are accepted and persisted for audit', async () => {
+  const service=createDriveService();
+  const provider=createFixtureDriveProvider({scopes:['https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/drive.metadata.readonly']});
+  const connected=await service.connect({userId:'u1',provider});
+  assert.equal(connected.status,'CONNECTED');
+  assert.deepEqual(connected.connection.scopes,[
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/drive.metadata.readonly',
+  ]);
 });
