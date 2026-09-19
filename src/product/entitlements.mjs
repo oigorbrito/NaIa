@@ -8,6 +8,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
   FREE: Object.freeze({
     id: 'FREE',
     capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary']),
+    attributes: Object.freeze({ supportPriority: 'STANDARD' }),
     limits: Object.freeze({
       'executions.daily': 25,
       'executions.monthly': 500,
@@ -18,6 +19,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
   PRO: Object.freeze({
     id: 'PRO',
     capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary', 'finance.read', 'drive.read', 'email.read', 'email.send', 'media.intake', 'model.advanced']),
+    attributes: Object.freeze({ supportPriority: 'PRIORITY' }),
     limits: Object.freeze({
       'executions.daily': 250,
       'executions.monthly': 5000,
@@ -28,6 +30,7 @@ export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
   ULTRA: Object.freeze({
     id: 'ULTRA',
     capabilities: Object.freeze(['*']),
+    attributes: Object.freeze({ supportPriority: 'PRIORITY' }),
     limits: Object.freeze({
       'executions.daily': 1000,
       'executions.monthly': 25000,
@@ -45,6 +48,7 @@ export function createPlanCatalog(definitions = DEFAULT_PLAN_DEFINITIONS) {
     plans.set(id, {
       id,
       capabilities: [...new Set((definition?.capabilities ?? []).map(normalizeCapability).filter(Boolean))],
+      attributes: { ...(definition?.attributes ?? {}) },
       limits: { ...(definition?.limits ?? {}) },
     });
   }
@@ -134,6 +138,12 @@ export function createEntitlementService({
       const resolved = await resolve(userId);
       const value = resolved.effectivePlan.limits[limitName];
       return { limitName, value: Number.isFinite(value) ? value : null, planId: resolved.planId, billingState: resolved.billingState };
+    },
+
+    async attribute(userId, name) {
+      const resolved = await resolve(userId);
+      const value = resolved.effectivePlan.attributes?.[name] ?? null;
+      return { name, value, planId: resolved.planId, billingState: resolved.billingState };
     },
   };
 }
