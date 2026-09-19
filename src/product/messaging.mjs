@@ -69,12 +69,16 @@ export function createMessagingService({store=createMemoryMessagingStore(),idFac
     async scheduleApproved({sessionId,conversationId,text,sendAt,idempotencyKey=null}){
       await requireSession(sessionId,'messages.send');
       const approvedAt=now();
+      if(!String(conversationId??'').trim()||!String(text??'').trim()||!String(sendAt??'').trim()) throw new Error('conversationId, text and sendAt are required');
       const row={id:idFactory(),sessionId,conversationId:String(conversationId),text:String(text),sendAt:String(sendAt),approvedAt,idempotencyKey:idempotencyKey??null,state:'SCHEDULED',createdAt:approvedAt,updatedAt:approvedAt};
       await store.saveSchedule(row);return clone(row);
     },
     async deliverScheduled(scheduleId,{occurrenceKey}){
       const row=await store.getSchedule(scheduleId);if(!row)throw new Error('scheduled message not found: '+scheduleId);
-      if(row.state==='CANCELLED')return {delivered:false,reason:'cancelled'}; if(!occurrenceKey)throw new Error('occurrenceKey is required');
+      if(row.state==='CANCELLED')return {delivered:false,reason:'cancelled'};
+      if(row.state==='DELIVERED')return {delivered:false,duplicate:true,reason:'already-delivered'};
+      if(!occurrenceKey)throw new Error('occurrenceKey is required');
+      if(new Date(now()).getTime()<new Date(row.sendAt).getTime()) return {delivered:false,reason:'not-due',sendAt:row.sendAt};
       const key=row.idempotencyKey??`scheduled:${row.id}:${occurrenceKey}`;
       const result=await this.send({sessionId:row.sessionId,conversationId:row.conversationId,text:row.text,idempotencyKey:key});
       row.state='DELIVERED';row.updatedAt=now();await store.saveSchedule(row);return {delivered:true,duplicate:result.duplicate,result};
