@@ -32,6 +32,7 @@ export function createMobileClient({frontendApi,platform,cache=createMemoryMobil
   return {
     platform:platform.platform,
     capabilities(){return platform.capabilities();},
+    invokeDevice(capability,input={}){return platform.invoke(capability,input);},
     setOnline(value){online=Boolean(value);return online;},
     isOnline(){return online;},
 
@@ -85,6 +86,13 @@ export function createMobileClient({frontendApi,platform,cache=createMemoryMobil
       return items?{...clone(items),offline:true}:{ok:false,offline:true,error:{code:'NOT_AVAILABLE_OFFLINE',retryable:true}};
     },
     async cancelAutomation(id){await requireOnline();return frontendApi.cancelAutomation(id);},
+
+    async scheduleBackground({id,task}){
+      return platform.invoke('background.schedule',{operation:'schedule',id,task:clone(task)});
+    },
+    async cancelBackground(id){
+      return platform.invoke('background.schedule',{operation:'cancel',id});
+    },
 
     async showNotification({title,body,context}){
       return platform.invoke('notifications.show',{operation:'show',title,body,context:clone(context??null)});
