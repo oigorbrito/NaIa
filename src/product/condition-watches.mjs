@@ -17,6 +17,17 @@ function normalizeObservation(input,now){
   };
 }
 
+function normalizeCadence(value='HOURLY'){
+  if(typeof value==='string'){
+    const named=String(value).toUpperCase();
+    if(named==='HOURLY') return {kind:'INTERVAL',minutes:60};
+    if(named==='DAILY') return {kind:'INTERVAL',minutes:1440};
+    throw new Error('unsupported watch cadence: '+value);
+  }
+  const minutes=Number(value?.minutes);
+  if(!Number.isInteger(minutes)||minutes<60) throw new Error('watch cadence must be at least 60 minutes');
+  return {kind:'INTERVAL',minutes};
+}
 function semanticSignature(observation){
   return signature({source:observation.source,value:observation.value,state:observation.state,inStock:observation.inStock,available:observation.available,slots:observation.slots});
 }
@@ -61,7 +72,7 @@ export function createConditionWatchService({store=createMemoryConditionWatchSto
         trigger:{kind:'EVENT',event:'condition.watch.matched',source:'condition-watch'},
         action,metadata:{watch:true},
       });
-      const row={id:idFactory(),userId,name:String(name).trim(),predicate:clone(predicate),cadence,source,maxAgeMs:Number(maxAgeMs),status:'ACTIVE',automationId:automation.id,lastSignature:null,lastObservation:null,lastMatched:false,notificationSequence:0,createdAt:now(),updatedAt:now()};
+      const row={id:idFactory(),userId,name:String(name).trim(),predicate:clone(predicate),cadence:normalizeCadence(cadence),source,maxAgeMs:Number(maxAgeMs),status:'ACTIVE',automationId:automation.id,lastSignature:null,lastObservation:null,lastMatched:false,notificationSequence:0,createdAt:now(),updatedAt:now()};
       await store.saveWatch(row); return clone(row);
     },
     async get(id){ return requireWatch(id); },
