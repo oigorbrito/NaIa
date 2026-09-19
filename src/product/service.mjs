@@ -1,13 +1,40 @@
 import { approveTool, confirmChoice, createObjective, ObjectiveStatus } from './domain.mjs';
 import { assertProductPorts } from './ports.mjs';
 
-async function executePlan(ports, objective, plan) {
+async function executePlan(ports, objective, plan, runtime = {}) {
   objective.status = ObjectiveStatus.RUNNING;
   objective.updatedAt = new Date().toISOString();
   await ports.objectives.save(objective);
 
   for (const step of plan.steps) {
     if (step.status === 'COMPLETED') continue;
+
+    const descriptor = step.action?.tool && typeof ports.tools?.describe === 'function' ? ports.tools.describe(step.action.tool) : null;
+    const flagId = descriptor?.featureFlag ?? step.action?.featureFlag ?? null;
+    if (flagId && runtime.featureFlags?.evaluate) {
+      const decision = await runtime.featureFlags.evaluate({ flagId, userId: runtime.userId ?? 'anonymous' });
+      await ports.evidence.append({
+        type: 'FEATURE_FLAG_DECISION',
+        objectiveId: objective.id,
+        stepId: step.id,
+        tool: step.action?.tool ?? null,
+        flagId,
+        enabled: Boolean(decision.enabled),
+        reason: decision.reason,
+        bucket: decision.bucket ?? null,
+        planId: decision.planId ?? null,
+        at: new Date().toISOString(),
+      });
+      if (!decision.enabled) {
+        step.status = 'FAILED';
+        step.error = 'FEATURE_NOT_ENABLED';
+        await ports.plans.save(plan);
+        objective.status = ObjectiveStatus.FAILED;
+        objective.updatedAt = new Date().toISOString();
+        await ports.objectives.save(objective);
+        return { objective, plan, featureFlag: decision };
+      }
+    }
 
     const confirmation = step.confirmation;
     const confirmationId = confirmation?.id ? String(confirmation.id) : null;
@@ -88,8 +115,9 @@ async function executePlan(ports, objective, plan) {
   return { objective, plan };
 }
 
-export function createNaiaService(rawPorts) {
+export function createNaiaService(rawPorts, { featureFlags = null, userId = 'anonymous' } = {}) {
   const ports = assertProductPorts(rawPorts);
+  const runtime = { featureFlags, userId };
 
   return {
     async pursue(input) {
@@ -109,7 +137,7 @@ export function createNaiaService(rawPorts) {
         steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
         at: new Date().toISOString(),
       });
-      return executePlan(ports, objective, plan);
+      return executePlan(ports, objective, plan, runtime);
     },
 
     async pursueAction({ title, description = '', id, action, confirmation = null, intent = 'STRUCTURED_ACTION' }) {
@@ -133,7 +161,7 @@ export function createNaiaService(rawPorts) {
         steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
         at: new Date().toISOString(),
       });
-      return executePlan(ports, objective, plan);
+      return executePlan(ports, objective, plan, runtime);
     },
 
     async confirm(objectiveId, confirmationId) {
@@ -156,7 +184,7 @@ export function createNaiaService(rawPorts) {
         confirmationId: String(confirmationId),
         at: objective.updatedAt,
       });
-      return executePlan(ports, objective, plan);
+      return executePlan(ports, objective, plan, runtime);
     },
 
     async approve(objectiveId, tool) {
@@ -175,7 +203,7 @@ export function createNaiaService(rawPorts) {
         risk: action.risk,
         at: objective.updatedAt,
       });
-      return executePlan(ports, objective, plan);
+      return executePlan(ports, objective, plan, runtime);
     },
 
     async resume(objectiveId) {
@@ -188,7 +216,7 @@ export function createNaiaService(rawPorts) {
       const plan = await ports.plans.get(objectiveId);
       if (!plan) throw new Error(`plan not found for objective: ${objectiveId}`);
       await ports.evidence.append({ type: 'OBJECTIVE_RESUMED', objectiveId, at: new Date().toISOString() });
-      return executePlan(ports, objective, plan);
+      return executePlan(ports, objective, plan, runtime);
     },
 
     async get(objectiveId) {
