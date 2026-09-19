@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export const AutomationTriggerKind = Object.freeze({ SCHEDULE:'SCHEDULE', EVENT:'EVENT' });
@@ -49,6 +51,36 @@ export function createMemoryAutomationStore(){
     async claimDelivery(key,record){ if(deliveries.has(key)) return false; deliveries.set(key,clone(record)); return true; },
     async saveDelivery(key,record){ deliveries.set(key,clone(record)); return clone(record); },
     async getDelivery(key){ const row=deliveries.get(key); return row?clone(row):null; },
+  };
+}
+
+async function readAutomationJson(path){
+  try{return JSON.parse(await readFile(path,'utf8'));}
+  catch(error){if(error?.code==='ENOENT')return {automations:{},deliveries:{}};throw error;}
+}
+async function writeAutomationJsonAtomic(path,value){
+  await mkdir(dirname(path),{recursive:true});
+  const temp=`${path}.${process.pid}.tmp`;
+  await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');
+  await rename(temp,path);
+}
+
+export function createFileAutomationStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'automations.json');
+  let chain=Promise.resolve();
+  async function mutate(fn){
+    chain=chain.catch(()=>{}).then(async()=>{const data=await readAutomationJson(path);const result=await fn(data);await writeAutomationJsonAtomic(path,data);return clone(result);});
+    return chain;
+  }
+  return {
+    path,
+    async save(row){return mutate((data)=>{data.automations[row.id]=clone(row);return row;});},
+    async get(id){const data=await readAutomationJson(path);return data.automations?.[String(id)]?clone(data.automations[String(id)]):null;},
+    async list({userId}={}){const data=await readAutomationJson(path);return Object.values(data.automations??{}).filter((row)=>!userId||row.userId===userId).map(clone);},
+    async delete(id){return mutate((data)=>{const key=String(id);const existed=Object.prototype.hasOwnProperty.call(data.automations,key);delete data.automations[key];return existed;});},
+    async claimDelivery(key,record){return mutate((data)=>{if(data.deliveries[key])return false;data.deliveries[key]=clone(record);return true;});},
+    async saveDelivery(key,record){return mutate((data)=>{data.deliveries[key]=clone(record);return record;});},
+    async getDelivery(key){const data=await readAutomationJson(path);return data.deliveries?.[key]?clone(data.deliveries[key]):null;},
   };
 }
 
