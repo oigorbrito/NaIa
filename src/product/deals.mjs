@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value){ return value==null?value:structuredClone(value); }
 function totalOf(row){ return Number((Number(row.price??0)+Number(row.fees??0)).toFixed(2)); }
@@ -11,6 +13,19 @@ export function createMemoryDealStore(){
   return {
     async append(row){ const key=semanticKey(row); if(keys.has(key)) return {duplicate:true,observation:null}; keys.add(key); observations.push(clone(row)); return {duplicate:false,observation:clone(row)}; },
     async list(targetId){ return observations.filter((row)=>row.targetId===targetId).map(clone); },
+  };
+}
+
+async function readDealJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {observations:[],keys:{}};throw error;}}
+async function writeDealJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileDealStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'deals.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readDealJson(path);const result=await fn(data);await writeDealJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async append(row){return mutate(data=>{const key=semanticKey(row);if(data.keys[key])return {duplicate:true,observation:null};data.keys[key]=true;data.observations.push(clone(row));return {duplicate:false,observation:row};});},
+    async list(targetId){const data=await readDealJson(path);return (data.observations??[]).filter(row=>row.targetId===targetId).map(clone);},
   };
 }
 
@@ -84,4 +99,21 @@ export function createDealService({store=createMemoryDealStore(),idFactory=rando
 export function dealToWatchObservation(result,{source='deal-detection'}={}){
   const signal=(result?.signals??[]).find((item)=>['NEW_LOW','THRESHOLD_HIT','MATERIALLY_BELOW_REFERENCE'].includes(item))??result?.signals?.[0]??'NO_DEAL';
   return {source,state:signal,available:signal!=='NO_DEAL'&&signal!=='INSUFFICIENT_EVIDENCE'&&signal!=='STALE',value:result?.current?.total??null,observedAt:result?.current?.observedAt??null,provenance:{reference:clone(result?.reference??null),confidence:result?.confidence??null}};
+}
+
+export function dealToRadarSignal(result,{targetId=null,title=null,source='deal-detection'}={}){
+  const positive=(result?.signals??[]).find((item)=>['NEW_LOW','THRESHOLD_HIT','MATERIALLY_BELOW_REFERENCE'].includes(item))??null;
+  if(!positive)return null;
+  const current=result?.current??{};
+  return {
+    id:`deal:${targetId??current.targetId??current.offerId??'unknown'}:${current.offerId??'offer'}:${current.observedAt??'unknown'}`,
+    source,
+    topicKey:`deal:${targetId??current.targetId??current.offerId??'unknown'}`,
+    type:'ALERT',
+    title:title??`Deal opportunity: ${targetId??current.targetId??current.offerId??'offer'}`,
+    summary:`${positive} at ${current.total??'unknown'} ${current.currency??''}`.trim(),
+    occurredAt:current.observedAt??null,
+    action:null,
+    metadata:{signal:positive,offerId:current.offerId??null,total:current.total??null,currency:current.currency??null,reference:clone(result?.reference??null),confidence:result?.confidence??null,provenance:clone(current.provenance??{})},
+  };
 }
