@@ -121,7 +121,7 @@ export function scoreBillReceipt(bill, receipt) {
 function isBill(document) { return document.documentClass === 'bill' || document.documentClass === 'invoice'; }
 function isReceipt(document) { return document.documentClass === 'payment_receipt' || document.documentClass === 'bank_receipt'; }
 
-export function reconcileDocuments(documents, { probableThreshold = 0.55, exactThreshold = 0.85, ambiguityDelta = 0.05 } = {}) {
+export function reconcileDocuments(documents, { probableThreshold = 0.35, exactThreshold = 0.85, ambiguityDelta = 0.05 } = {}) {
   const bills = documents.filter(isBill);
   const receipts = documents.filter(isReceipt);
   const results = [];
