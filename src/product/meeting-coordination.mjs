@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(v){ return v==null?v:structuredClone(v); }
 function fp(v){ return createHash('sha256').update(JSON.stringify(v)).digest('hex'); }
@@ -29,6 +31,25 @@ export function createMemoryMeetingStore(){
     async getCommit(key){ const row=commits.get(key); return row?clone(row):null; },
     async appendNotification(row){ notifications.push(clone(row)); return clone(row); },
     async listNotifications(meetingId){ return notifications.filter((row)=>row.meetingId===meetingId).map(clone); },
+  };
+}
+
+async function readMeetingJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {meetings:{},actions:{},commits:{},notifications:[]};throw error;}}
+async function writeMeetingJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileMeetingStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'meetings.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readMeetingJson(path);const result=await fn(data);await writeMeetingJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveMeeting(row){return mutate(data=>{data.meetings[row.id]=clone(row);return row;});},
+    async getMeeting(id){const data=await readMeetingJson(path);return data.meetings?.[String(id)]?clone(data.meetings[String(id)]):null;},
+    async saveAction(row){return mutate(data=>{data.actions[row.id]=clone(row);return row;});},
+    async getAction(id){const data=await readMeetingJson(path);return data.actions?.[String(id)]?clone(data.actions[String(id)]):null;},
+    async saveCommit(key,row){return mutate(data=>{data.commits[key]=clone(row);return row;});},
+    async getCommit(key){const data=await readMeetingJson(path);return data.commits?.[String(key)]?clone(data.commits[String(key)]):null;},
+    async appendNotification(row){return mutate(data=>{data.notifications.push(clone(row));return row;});},
+    async listNotifications(meetingId){const data=await readMeetingJson(path);return (data.notifications??[]).filter(row=>row.meetingId===meetingId).map(clone);},
   };
 }
 
@@ -91,6 +112,7 @@ export function createMeetingService({store=createMemoryMeetingStore(),providers
     async commit({actionId,fingerprint,idempotencyKey}){
       const action=await requireAction(actionId); if(action.fingerprint!==fingerprint){ const e=new Error('meeting action fingerprint mismatch'); e.code='ACTION_STALE'; throw e; }
       const prior=await store.getCommit(idempotencyKey); if(prior) return {duplicate:true,...clone(prior)};
+      if(action.status!=='APPROVED'){ const e=new Error('meeting action requires runtime approval'); e.code='APPROVAL_REQUIRED'; throw e; }
       const p=action.payload; const provider=providerMap.get(p.type==='CREATE'?p.option.provider:p.provider); if(!provider) throw new Error('meeting provider not registered');
       try{
         let result,meeting;
@@ -109,6 +131,14 @@ export function createMeetingService({store=createMemoryMeetingStore(),providers
         if(['SLOT_CHANGED','SLOT_UNAVAILABLE','EVENT_CHANGED'].includes(error?.code)) action.status='WAITING_REVIEW'; else action.status='FAILED'; action.updatedAt=now(); await store.saveAction(action); throw error;
       }
     },
+    async executeRuntimeApproved({actionId,fingerprint,idempotencyKey}){
+      const action=await requireAction(actionId);
+      if(action.fingerprint!==fingerprint){const e=new Error('meeting action fingerprint mismatch');e.code='ACTION_STALE';throw e;}
+      if(action.status==='WAITING_REVIEW'){const e=new Error('meeting action requires renewed review');e.code='APPROVAL_REQUIRED';throw e;}
+      if(action.status!=='APPROVED'){action.status='APPROVED';action.updatedAt=now();await store.saveAction(action);}
+      return this.commit({actionId,fingerprint,idempotencyKey});
+    },
+
     async getAction(id){ return requireAction(id); },
     async getMeeting(id){ return store.getMeeting(id); },
     async notifications(id){ return store.listNotifications(id); },
@@ -117,7 +147,7 @@ export function createMeetingService({store=createMemoryMeetingStore(),providers
 
 export function registerMeetingCapability(naia,{service}){
   if(!naia||typeof naia.registerCapability!=='function') throw new Error('NaIA capability registration is required');
-  return naia.registerCapability({name:'meeting.commit',tool:{risk:'EXTERNAL_WRITE',capability:'calendar',description:'Commits one prepared meeting create/reschedule/cancel mutation',async run(input){ return service.commit(input); }}});
+  return naia.registerCapability({name:'meeting.commit',tool:{risk:'EXTERNAL_WRITE',capability:'calendar',description:'Commits one prepared meeting create/reschedule/cancel mutation',async run(input){ return service.executeRuntimeApproved(input); }}});
 }
 
 export async function proposeMeetingAction(naia,action){
