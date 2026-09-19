@@ -21,7 +21,7 @@ function fixture({inventoryRows=null,adapter=null,policyStore=null,automationSto
   registerMediaCleanupCapability(naia,{service:cleanup});
   const inventory={async list(){return rows.map(row=>structuredClone(row));}};
   let id=0;
-  const policies=createMediaCleanupPolicyService({store:policyStore,automationService:automations,inventory,cleanupService:cleanup,idFactory:()=>`policy-${++id}`,now:()=> '2026-09-19T15:00:00Z'});
+  const policies=createMediaCleanupPolicyService({store:policyStore??undefined,automationService:automations,inventory,cleanupService:cleanup,idFactory:()=>`policy-${++id}`,now:()=> '2026-09-19T15:00:00Z'});
   registerMediaCleanupPolicyCapability(naia,{service:policies});
   return {naia,automations,policies,cleanup,cleanupAdapter,rows};
 }
