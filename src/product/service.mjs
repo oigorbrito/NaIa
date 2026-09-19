@@ -11,8 +11,10 @@ async function executePlan(ports, objective, plan, runtime = {}) {
 
     const descriptor = step.action?.tool && typeof ports.tools?.describe === 'function' ? ports.tools.describe(step.action.tool) : null;
     const flagId = descriptor?.featureFlag ?? step.action?.featureFlag ?? null;
-    if (flagId && runtime.featureFlags?.evaluate) {
-      const decision = await runtime.featureFlags.evaluate({ flagId, userId: runtime.userId ?? 'anonymous' });
+    if (flagId) {
+      const decision = runtime.featureFlags?.evaluate
+        ? await runtime.featureFlags.evaluate({ flagId, userId: runtime.userId ?? 'anonymous' })
+        : { flagId, userId: runtime.userId ?? 'anonymous', enabled: false, reason: 'FLAG_SERVICE_UNAVAILABLE', bucket: null, planId: null };
       await ports.evidence.append({
         type: 'FEATURE_FLAG_DECISION',
         objectiveId: objective.id,
