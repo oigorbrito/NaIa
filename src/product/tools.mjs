@@ -146,6 +146,7 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
       risk,
       description: definition.description ?? null,
       capability: definition.capability ?? null,
+      featureFlag: definition.featureFlag ?? null,
       run: definition.run,
     };
   }
@@ -168,6 +169,7 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
         risk: tool.risk,
         ...(tool.description ? { description: tool.description } : {}),
         ...(tool.capability ? { capability: tool.capability } : {}),
+        ...(tool.featureFlag ? { featureFlag: tool.featureFlag } : {}),
       } : null;
     },
     list() { return [...tools.keys()].map((name) => this.describe(name)); },
