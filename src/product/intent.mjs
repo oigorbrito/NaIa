@@ -45,6 +45,37 @@ export async function interpretText(input, context = {}, { rules = [] } = {}) {
   if (note) return result({ intent: 'NOTE_WRITE', state: 'RECOGNIZED', parameters: { name: note[1].trim(), content: note[2].trim() }, original, provenance: 'deterministic.note' });
   const task = original.match(/^remind\s+me(?:\s+on\s+([^:]+))?:\s*(.+)$/i);
   if (task) return result({ intent: 'TASK_CREATE', state: 'RECOGNIZED', parameters: { due: task[1]?.trim() ?? null, title: task[2].trim() }, original, provenance: 'deterministic.task' });
+
+  if (/^(?:list|show|mostre|liste)(?:\s+(?:my|meu|minha|o|a))?\s+(?:calendar|calend[aá]rio)(?:\s+events?|\s+eventos?)?$/i.test(original)) {
+    return result({ intent: 'CALENDAR_LIST', state: 'RECOGNIZED', original, provenance: 'deterministic.calendar-list' });
+  }
+
+  const calendarCreate = original.match(/^(?:create|schedule|agende|crie)\s+(?:an?\s+)?(?:calendar\s+)?(?:event|evento)\s+(.+?)\s+(?:from|de)\s+(.+?)\s+(?:to|at[eé])\s+(.+)$/i);
+  if (calendarCreate) {
+    return result({ intent: 'CALENDAR_CREATE', state: 'RECOGNIZED', parameters: { title: calendarCreate[1].trim(), start: calendarCreate[2].trim(), end: calendarCreate[3].trim() }, original, provenance: 'deterministic.calendar-create' });
+  }
+  if (/^(?:create|schedule|agende|crie)\s+(?:an?\s+)?(?:calendar\s+)?(?:event|evento)\b/i.test(original)) {
+    return result({ intent: 'CALENDAR_CREATE', state: 'MISSING_PARAMETER', original, provenance: 'deterministic.calendar-create', missing: ['title', 'start', 'end'] });
+  }
+
+  const calendarUpdate = original.match(/^(?:update|atualize|altere)\s+(?:calendar\s+)?(?:event|evento)\s+(\S+)\s+(?:title|t[ií]tulo)\s+(.+)$/i);
+  if (calendarUpdate) {
+    return result({ intent: 'CALENDAR_UPDATE', state: 'RECOGNIZED', parameters: { eventId: calendarUpdate[1].trim(), changes: { title: calendarUpdate[2].trim() } }, original, provenance: 'deterministic.calendar-update' });
+  }
+  if (/^(?:update|atualize|altere)\s+(?:calendar\s+)?(?:event|evento)\b/i.test(original)) {
+    return result({ intent: 'CALENDAR_UPDATE', state: 'MISSING_PARAMETER', original, provenance: 'deterministic.calendar-update', missing: ['eventId', 'changes'] });
+  }
+
+  const httpRead = original.match(/^(?:read|fetch|consulte|leia)\s+(?:configured\s+)?(?:target|alvo|servi[cç]o)\s+([a-z0-9._-]+)$/i);
+  if (httpRead) {
+    const targetId = httpRead[1].trim();
+    const configured = context?.httpTargets?.describe ? context.httpTargets.describe(targetId) : true;
+    if (!configured) return result({ intent: 'HTTP_READ', state: 'AMBIGUOUS', original, provenance: 'deterministic.http-read', ambiguity: 'configured target is unknown', missing: ['targetId'] });
+    return result({ intent: 'HTTP_READ', state: 'RECOGNIZED', parameters: { targetId }, original, provenance: 'deterministic.http-read' });
+  }
+  if (/^(?:read|fetch|consulte|leia)\s+(?:configured\s+)?(?:target|alvo|servi[cç]o)\s*$/i.test(original)) {
+    return result({ intent: 'HTTP_READ', state: 'MISSING_PARAMETER', original, provenance: 'deterministic.http-read', missing: ['targetId'] });
+  }
   if (/^manda\s+isso\s+pra\s+ele$/i.test(original)) {
     return result({ intent: 'MESSAGE_SEND', state: 'AMBIGUOUS', original, provenance: 'deterministic.message', ambiguity: 'recipient is unresolved', missing: ['recipient'] });
   }
