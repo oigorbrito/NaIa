@@ -137,3 +137,52 @@ test('stale, insufficient-evidence and no-deal results do not become Radar alert
   assert.ok(noDeal.signals.includes('NO_DEAL'));
   assert.equal(dealToRadarSignal(noDeal,{targetId:'y'}),null);
 });
+
+test('deal history and duplicate suppression survive file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-deals-'));
+  try{
+    let i=0;
+    const first=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`,now:()=> '2026-09-19T13:00:00Z'});
+    await first.record({targetId:'phone',offerId:'x',source:'store',observedAt:'2026-09-18T10:00:00Z',price:100});
+    const second=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`,now:()=> '2026-09-19T13:00:00Z'});
+    const duplicate=await second.record({targetId:'phone',offerId:'x',source:'store',observedAt:'2026-09-19T10:00:00Z',price:100});
+    assert.equal(duplicate.duplicate,true);
+    assert.equal((await second.history('phone')).length,1);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('restart preserves deterministic historical reference and deal signal',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-deals-history-'));
+  try{
+    let i=0;
+    const first=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`});
+    await first.record({targetId:'phone',offerId:'a',source:'s',observedAt:'2026-09-17T10:00:00Z',price:1200});
+    await first.record({targetId:'phone',offerId:'a',source:'s',observedAt:'2026-09-18T10:00:00Z',price:1100});
+    const second=createDealService({store:createFileDealStore({rootDir:dir}),idFactory:()=>`obs-${++i}`});
+    await second.record({targetId:'phone',offerId:'a',source:'s',observedAt:'2026-09-19T12:00:00Z',price:900});
+    const result=await second.evaluate('phone',{offerId:'a',minHistory:2,materialBelowPct:10,asOf:'2026-09-19T13:00:00Z'});
+    assert.ok(result.signals.includes('NEW_LOW'));
+    assert.equal(result.reference.historyCount,2);
+    assert.equal(result.reference.minTotal,1100);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('only positive supported deal signals are bridged into Radar alerts',async()=>{
+  const deals=service();
+  await deals.record({targetId:'x',offerId:'o',source:'s',observedAt:'2026-09-19T12:00:00Z',price:50,provenance:{url:'https://example.invalid'}});
+  const hit=await deals.evaluate('x',{offerId:'o',threshold:60,asOf:'2026-09-19T13:00:00Z'});
+  const signal=dealToRadarSignal(hit,{targetId:'x',title:'Item X'});
+  assert.equal(signal.type,'ALERT');
+  assert.equal(signal.metadata.signal,'THRESHOLD_HIT');
+  assert.equal(signal.metadata.confidence,'OBSERVED_THRESHOLD');
+  assert.deepEqual(signal.metadata.provenance,{url:'https://example.invalid'});
+  const insufficient=await deals.evaluate('x',{offerId:'o',threshold:null,minHistory:3,asOf:'2026-09-19T13:00:00Z'});
+  assert.equal(dealToRadarSignal(insufficient,{targetId:'x'}),null);
+});
+
+test('stale and no-deal outcomes never become Radar alerts',async()=>{
+  const deals=service();
+  await deals.record({targetId:'hotel',offerId:'x',source:'s',observedAt:'2026-09-18T00:00:00Z',price:300});
+  const stale=await deals.evaluate('hotel',{offerId:'x',maxCurrentAgeMs:60*60*1000,asOf:'2026-09-19T13:00:00Z'});
+  assert.equal(dealToRadarSignal(stale,{targetId:'hotel'}),null);
+});
