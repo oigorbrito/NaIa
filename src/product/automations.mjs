@@ -21,7 +21,7 @@ function normalizeAction(action){
   const risk=String(action?.risk??'').toUpperCase();
   if(!tool) throw new Error('automation action tool is required');
   if(!['READ_ONLY','LOCAL_WRITE','EXTERNAL_WRITE','SENSITIVE'].includes(risk)) throw new Error('unsupported automation action risk: '+risk);
-  return {tool,input:clone(action.input??{}),risk,requiresApproval:Boolean(action.requiresApproval)||risk!=='READ_ONLY'};
+  return {tool,capability:String(action?.capability??tool),input:clone(action.input??{}),risk,requiresApproval:Boolean(action.requiresApproval)||risk!=='READ_ONLY'};
 }
 
 export function evaluateAutomationCondition(condition,payload={}){
@@ -69,7 +69,7 @@ export function createNaiaAutomationDispatcher(naia){
   };
 }
 
-export function createAutomationService({store=createMemoryAutomationStore(),dispatcher,idFactory=randomUUID,now=()=>new Date().toISOString()}={}){
+export function createAutomationService({store=createMemoryAutomationStore(),dispatcher,quotaPolicy=null,meter=null,idFactory=randomUUID,now=()=>new Date().toISOString()}={}){
   if(!dispatcher?.policyControlled||typeof dispatcher.dispatch!=='function') throw new Error('policy-controlled automation dispatcher is required');
   function matches(expected,actual={}){
     const kind=String(actual.kind??'').toUpperCase(); if(kind!==expected.kind) return false;
@@ -97,8 +97,13 @@ export function createAutomationService({store=createMemoryAutomationStore(),dis
       if(!claimed) return {status:'DUPLICATE',duplicate:true,delivery:await store.getDelivery(key)};
       const matched=evaluateAutomationCondition(automation.condition,payload);
       if(!matched){ const record={status:'NO_ACTION',automationId:id,deliveryId,matched:false,at:now()}; await store.saveDelivery(key,record); return clone(record); }
+      if(quotaPolicy?.authorize){
+        const gate=await quotaPolicy.authorize({userId:automation.userId,capability:automation.action.capability,usage:{metric:'executions.daily',window:'DAY',amount:1}});
+        if(!gate.allowed){ const record={status:gate.reason,automationId:id,deliveryId,matched:true,quota:clone(gate),at:now()}; await store.saveDelivery(key,record); return clone(record); }
+      }
       try{
         const result=await dispatcher.dispatch({automation,deliveryId,payload:clone(payload)});
+        if(meter?.consume) await meter.consume({userId:automation.userId,metric:'executions.daily',window:'DAY',logicalId:`automation:${automation.id}:${deliveryId}`});
         const record={status:'DISPATCHED',automationId:id,deliveryId,matched:true,result:clone(result),at:now()};
         await store.saveDelivery(key,record); return clone(record);
       }catch(error){
