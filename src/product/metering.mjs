@@ -14,12 +14,14 @@ export function createMemoryUsageStore() {
   const counters = new Map();
   const operations = new Map();
   return {
-    async consumeAtomic({ counterKey, operationKey, amount }) {
-      if (operations.has(operationKey)) return { duplicate: true, used: counters.get(counterKey) ?? 0 };
-      const next = (counters.get(counterKey) ?? 0) + amount;
+    async consumeAtomic({ counterKey, operationKey, amount, limit = null }) {
+      if (operations.has(operationKey)) return { duplicate: true, limited: false, used: counters.get(counterKey) ?? 0 };
+      const current = counters.get(counterKey) ?? 0;
+      const next = current + amount;
+      if (limit != null && next > limit) return { duplicate: false, limited: true, used: current };
       counters.set(counterKey, next);
       operations.set(operationKey, { counterKey, amount });
-      return { duplicate: false, used: next };
+      return { duplicate: false, limited: false, used: next };
     },
     async get(counterKey) { return counters.get(counterKey) ?? 0; },
     async releaseAtomic({ counterKey, operationKey, amount }) {
@@ -52,13 +54,11 @@ export function createUsageMeter({ store = createMemoryUsageStore(), entitlement
       const numericAmount = Number(amount);
       if (!Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('amount must be positive');
       const before = await inspect({ userId, metric, window });
-      if (before.limit != null && before.used + numericAmount > before.limit) {
-        return { ok: false, code: 'LIMIT_REACHED', duplicate: false, ...before };
-      }
       const counterKey = [userId, metric, before.windowKey].join(':');
       const operationKey = ['consume', userId, metric, before.windowKey, logicalId].join(':');
-      const consumed = await store.consumeAtomic({ counterKey, operationKey, amount: numericAmount });
+      const consumed = await store.consumeAtomic({ counterKey, operationKey, amount: numericAmount, limit: before.limit });
       const after = await inspect({ userId, metric, window });
+      if (consumed.limited) return { ok: false, code: 'LIMIT_REACHED', duplicate: false, ...after };
       return { ok: true, code: consumed.duplicate ? 'ALREADY_COUNTED' : 'COUNTED', duplicate: consumed.duplicate, ...after };
     },
 
