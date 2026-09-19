@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   compareWebOptions,
+  createFileWebExecutionStore,
   createFixtureWebAdapter,
   createWebExecutionService,
+  proposeWebSubmission,
   registerWebExecutionCapabilities,
 } from '../../src/product/web-execution.mjs';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 
 function fixture(options = {}) {
   let id = 0;
@@ -125,4 +132,64 @@ test('capability registration keeps search read-only and submit external-write',
     { name: 'web.submit', risk: 'EXTERNAL_WRITE' },
   ]);
   assert.equal(definitions.find((row) => row.name === 'web.submit').rule.action({ id: 'r1' }).requiresApproval, true);
+});
+
+test('runtime approval is the single authority for irreversible web submission',async()=>{
+  const {service,adapter}=fixture();
+  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
+  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
+  const naia=createNaiaService(createInMemoryPorts());registerWebExecutionCapabilities(naia,{service});
+  const pending=await proposeWebSubmission(naia,{runId:run.id,fingerprint:preview.fingerprint,idempotencyKey:'runtime-web-1'});
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
+  assert.equal(adapter.submissions().length,0);
+  const completed=await naia.approve(pending.objective.id,'web.submit');
+  assert.equal(completed.objective.status,'COMPLETED');
+  assert.equal(adapter.submissions().length,1);
+  const saved=await service.get(run.id);
+  assert.equal(saved.state,'COMPLETED');
+  assert.ok(saved.evidence.some(row=>row.type==='WEB_SUBMISSION_APPROVED'&&row.authority==='NAIA_RUNTIME'));
+});
+
+test('page revision change after runtime approval fails closed and requires renewed review',async()=>{
+  const {service,adapter}=fixture();
+  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
+  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
+  const naia=createNaiaService(createInMemoryPorts());registerWebExecutionCapabilities(naia,{service});
+  const pending=await proposeWebSubmission(naia,{runId:run.id,fingerprint:preview.fingerprint,idempotencyKey:'runtime-stale'});
+  adapter.setRevision('booking','2');
+  const failed=await naia.approve(pending.objective.id,'web.submit');
+  assert.equal(failed.objective.status,'FAILED');
+  const saved=await service.get(run.id);
+  assert.equal(saved.state,'WAITING_REVIEW');
+  assert.equal(saved.approvedFingerprint,null);
+  assert.equal(adapter.submissions().length,0);
+});
+
+test('web run and commit idempotency survive file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-web-'));
+  try{
+    const adapter=createFixtureWebAdapter({forms:{booking:{url:'https://book.example/form',revision:'1',irreversible:true}}});
+    let id=0;
+    const first=createWebExecutionService({store:createFileWebExecutionStore({rootDir:dir}),adapter,idFactory:()=>`run-${++id}`,now:()=> '2026-09-19T13:00:00Z'});
+    const run=await first.createRun({userId:'u1',objective:'book',allowedDomains:['book.example']});
+    const preview=await first.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
+    await first.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'commit-1'});
+    const second=createWebExecutionService({store:createFileWebExecutionStore({rootDir:dir}),adapter,now:()=> '2026-09-19T14:00:00Z'});
+    const duplicate=await second.submit(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'commit-1'});
+    assert.equal(duplicate.duplicate,true);
+    assert.equal(adapter.submissions().length,1);
+    assert.equal((await second.get(run.id)).state,'COMPLETED');
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('cancelled run cannot be revived by runtime approval',async()=>{
+  const {service,adapter}=fixture();
+  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
+  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
+  await service.cancel(run.id);
+  const naia=createNaiaService(createInMemoryPorts());registerWebExecutionCapabilities(naia,{service});
+  const pending=await proposeWebSubmission(naia,{runId:run.id,fingerprint:preview.fingerprint,idempotencyKey:'cancelled-runtime'});
+  const failed=await naia.approve(pending.objective.id,'web.submit');
+  assert.equal(failed.objective.status,'FAILED');
+  assert.equal(adapter.submissions().length,0);
 });
