@@ -66,7 +66,7 @@ function parseQuantity(text){
 
 export function parseMealText(text){
   let value=String(text??'').trim();
-  value=value.replace(/^(eu\s+)?(comi|jantei|almocei|tomei|bebi)\s+/i,'');
+  value=value.replace(/^na\s+verdade\s+(?:eram|era|foram|foi)\s+/i,'').replace(/^(eu\s+)?(comi|jantei|almocei|tomei|bebi)\s+/i,'');
   const parts=value.split(/\s+(?:e|com)\s+|,|\+/i).map(s=>s.trim()).filter(Boolean);
   return parts.map(part=>({raw:part,quantity:parseQuantity(part),query:part.replace(/\b\d+(?:[.,]\d+)?\s*g\b/ig,'').replace(/\b\d+(?:[.,]\d+)?\b/g,'').replace(/\b(?:um|uma|dois|duas|três|tres|quatro|cinco|seis)\b/ig,'').replace(/^de\s+/i,'').trim()}));
 }
@@ -167,6 +167,11 @@ export function createFoodDiaryService({store=createMemoryFoodDiaryStore(),nutri
       meal.audit.push({type:'CORRECTED',at:now(),previous:{items:clone(meal.items),totals:clone(meal.totals)}});meal.items=resolution.items;meal.unresolved=resolution.unresolved;meal.totals=totals(meal.items);meal.updatedAt=now();await store.saveMeal(meal);return {meal:clone(meal),summary:await this.summaryForMeal(meal.id)};
     },
     async deleteMeal({userId,mealId}){const meal=await store.getMeal(mealId);if(!meal||meal.userId!==userId)return {deleted:false};if(meal.status!=='DELETED'){meal.audit.push({type:'DELETED',at:now()});meal.status='DELETED';meal.updatedAt=now();await store.saveMeal(meal);}return {deleted:true,mealId};},
+    async deleteLatestMeal({userId,date=String(now()).slice(0,10),mealType=null}){
+      const candidates=(await store.listMeals(userId)).filter(m=>m.status==='ACTIVE'&&String(m.occurredAt).slice(0,10)===date&&(!mealType||norm(m.mealType)===norm(mealType))).sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
+      if(!candidates.length)return {deleted:false};
+      return this.deleteMeal({userId,mealId:candidates[0].id});
+    },
     async listMeals(userId,{date=null}={}){return (await store.listMeals(userId)).filter(m=>!date||String(m.occurredAt).slice(0,10)===date).map(clone);},
   };
 }
