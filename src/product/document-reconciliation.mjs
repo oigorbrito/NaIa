@@ -170,3 +170,108 @@ export function billDraftFromDocument(document) {
     },
   };
 }
+
+function parseMoney(text) {
+  const patterns = [
+    /(?:r\$|brl)\s*([0-9.]+,[0-9]{2})/i,
+    /(?:total|valor|amount)\s*[:=-]?\s*(?:r\$|brl)?\s*([0-9.,]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = String(text ?? '').match(pattern);
+    if (!match) continue;
+    const raw = match[1].replace(/\./g, '').replace(',', '.');
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function parseDateField(text, labels) {
+  const source = String(text ?? '');
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*[:=-]?\\s*(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{2,4})`, 'i');
+    const match = source.match(pattern);
+    if (!match) continue;
+    const year = match[3].length === 2 ? Number(`20${match[3]}`) : Number(match[3]);
+    const month = Number(match[2]); const day = Number(match[1]);
+    const date = new Date(Date.UTC(year, month - 1, day, 12));
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) return date.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+function classifyText(text) {
+  const value = norm(text);
+  if (/comprovante|receipt|pagamento efetuado|payment receipt|transacao concluida/.test(value)) return 'payment_receipt';
+  if (/extrato bancario|bank receipt/.test(value)) return 'bank_receipt';
+  if (/nota fiscal|invoice/.test(value)) return 'invoice';
+  if (/boleto|fatura|conta a pagar|bill/.test(value)) return 'bill';
+  return 'unknown_document';
+}
+
+export function createRuleBasedDocumentExtractor({ name = 'rule-based-document-extractor' } = {}) {
+  return {
+    name,
+    async extract({ text = '', metadata = {} } = {}) {
+      const source = String(text ?? '');
+      const documentClass = metadata.documentClass ?? classifyText(source);
+      const amount = metadata.amount ?? parseMoney(source);
+      const paidAmount = metadata.paidAmount ?? (documentClass === 'payment_receipt' || documentClass === 'bank_receipt' ? amount : null);
+      const dueDate = metadata.dueDate ?? parseDateField(source, ['vencimento', 'vence em', 'due date']);
+      const paymentDate = metadata.paymentDate ?? parseDateField(source, ['pagamento', 'pago em', 'payment date', 'data da transacao']);
+      const barcode = metadata.barcode ?? (source.match(/\b\d{44,48}\b/)?.[0] ?? null);
+      const pixReference = metadata.pixReference ?? (source.match(/(?:txid|pix)\s*[:=-]?\s*([A-Za-z0-9._-]{6,})/i)?.[1] ?? null);
+      const paymentReference = metadata.paymentReference ?? (source.match(/(?:refer[eê]ncia|reference|autentica[cç][aã]o)\s*[:=-]?\s*([A-Za-z0-9._-]{4,})/i)?.[1] ?? null);
+      const documentNumber = metadata.documentNumber ?? (source.match(/(?:documento|fatura|invoice|nota)\s*(?:n[oº°.]*)?\s*[:=-]?\s*([A-Za-z0-9._/-]{3,})/i)?.[1] ?? null);
+      const issuer = metadata.issuer ?? null;
+      const payee = metadata.payee ?? null;
+      const accountRef = metadata.accountRef ?? null;
+      const observed = { documentClass, amount, paidAmount, dueDate, paymentDate, barcode, pixReference, paymentReference, documentNumber, issuer, payee, accountRef };
+      const observedCount = Object.entries(observed).filter(([key, value]) => key !== 'documentClass' && value !== null && value !== undefined).length;
+      return {
+        ...observed,
+        extractionConfidence: documentClass === 'unknown_document' && observedCount === 0 ? 0 : Math.min(0.95, 0.35 + observedCount * 0.1),
+        extractionSource: name,
+        extractedFields: Object.fromEntries(Object.entries(observed).filter(([, value]) => value !== null && value !== undefined)),
+      };
+    },
+  };
+}
+
+export function createFixtureDocumentExtractor({ name = 'fixture-document-extractor', result = {}, fail = null } = {}) {
+  return {
+    name,
+    async extract(input) {
+      if (fail) { const error = new Error(fail.message ?? 'document extraction failed'); error.code = fail.code ?? 'EXTRACTION_FAILED'; error.retryable = Boolean(fail.retryable); throw error; }
+      return clone(typeof result === 'function' ? await result(clone(input)) : result);
+    },
+  };
+}
+
+export function createDocumentExtractionService({ store = createMemoryDocumentStore(), extractor, idFactory = randomUUID } = {}) {
+  if (!extractor || typeof extractor.extract !== 'function') throw new Error('document extractor is required');
+  return {
+    async ingestArtifact({ sourceType, sourceItemId, sourceUri = null, text = '', metadata = {} }) {
+      if (!sourceType || !sourceItemId) throw new Error('sourceType and sourceItemId are required');
+      const existing = await store.findBySource?.(sourceType, sourceItemId);
+      if (existing) return { document: existing, duplicate: true, extraction: null };
+      let extraction;
+      try { extraction = await extractor.extract({ text, metadata: clone(metadata), sourceType, sourceItemId }); }
+      catch (error) {
+        const wrapped = new Error(error?.message ?? 'document extraction failed');
+        wrapped.code = error?.code ?? 'EXTRACTION_FAILED';
+        wrapped.retryable = Boolean(error?.retryable);
+        throw wrapped;
+      }
+      const normalized = {
+        ...clone(extraction ?? {}),
+        sourceType, sourceItemId, sourceUri,
+        extractionSource: extraction?.extractionSource ?? extractor.name ?? 'document-extractor',
+      };
+      const ingested = await ingestDocument(store, normalized, { idFactory });
+      return { ...ingested, extraction: clone(extraction ?? null) };
+    },
+    async list() { return store.list(); },
+    async get(id) { return store.get(id); },
+  };
+}
