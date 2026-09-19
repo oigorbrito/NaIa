@@ -31,11 +31,14 @@ export function createFixtureShoppingProvider({ name, quoteRevision = '1', catal
         const entry = catalog[item.name];
         if (!entry) return { key: item.key, requestedName: item.name, available: false, quantity: item.quantity };
         const substitute = entry.substitute ?? null;
-        const fulfilledName = substitute ?? item.name;
+        const substitutionBlocked = Boolean(substitute) && item.substitutionsAllowed === false;
+        const fulfilledName = substitutionBlocked ? null : (substitute ?? item.name);
         const unitPrice = Number(entry.unitPrice ?? 0);
         return {
           key: item.key, requestedName: item.name, fulfilledName, quantity: item.quantity, unitPrice,
-          available: entry.available !== false, substitution: substitute ? { from: item.name, to: substitute } : null,
+          available: entry.available !== false && !substitutionBlocked,
+          substitution: substitute && !substitutionBlocked ? { from: item.name, to: substitute } : null,
+          unavailableReason: substitutionBlocked ? 'SUBSTITUTION_NOT_ALLOWED' : (entry.available === false ? 'OUT_OF_STOCK' : null),
         };
       });
       return { provider: name, revision, fee: Number(fee), items: rows };
