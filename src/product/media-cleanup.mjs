@@ -56,13 +56,14 @@ function normalizeSelection(items=[]){
   return out;
 }
 
-export function createMediaCleanupService({store=createMemoryMediaCleanupStore(),adapter,idFactory=randomUUID,now=()=>new Date().toISOString()}={}){
+export function createMediaCleanupService({store=createMemoryMediaCleanupStore(),adapter,safetyPolicy=null,idFactory=randomUUID,now=()=>new Date().toISOString()}={}){
   if(!adapter||typeof adapter.inspect!=='function'||typeof adapter.mutate!=='function')throw new Error('media cleanup adapter is required');
   async function requireAction(id){const row=await store.getAction(id);if(!row)throw new Error('media cleanup action not found: '+id);return row;}
   return {
     async prepare({userId,items,preferTrash=true,selectionReason=null}){
       if(!userId)throw new Error('userId is required');
       const selected=normalizeSelection(items);if(!selected.length)throw new Error('at least one media item is required');
+      if(safetyPolicy?.validate){const decision=await safetyPolicy.validate({userId,items:clone(selected)});if(!decision?.allowed){const e=new Error('media cleanup blocked by safety policy');e.code='BACKUP_SAFETY_BLOCKED';e.reasons=clone(decision?.reasons??[]);throw e;}}
       const mode=preferTrash&&adapter.supports?.trash?'trash':'delete';
       if(mode==='delete'&&adapter.supports?.delete===false){const e=new Error('media deletion unsupported');e.code='CAPABILITY_UNAVAILABLE';throw e;}
       const payload={userId,platform:adapter.platform??'unknown',mode,items:selected,selectionReason};
