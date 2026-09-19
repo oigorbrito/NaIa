@@ -1,6 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value) { return structuredClone(value); }
+function fingerprint(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 function keyOf(ref) {
   if (!ref?.sourceType || !ref?.sourceItemId) throw new Error('artifact sourceType and sourceItemId are required');
   return String(ref.sourceType) + ':' + String(ref.sourceItemId);
@@ -15,6 +18,39 @@ export function createMemoryArchiveStore() {
     async listCollections({ userId } = {}) { return [...collections.values()].filter((row) => !userId || row.userId === userId).map(clone); },
     async saveOperation(operation) { operations.set(operation.id, clone(operation)); return clone(operation); },
     async getOperation(id) { const value = operations.get(id); return value ? clone(value) : null; },
+  };
+}
+
+async function readArchiveJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { collections: {}, operations: {} }; throw error; }
+}
+async function writeArchiveJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileArchiveStore({ rootDir = '.naia' } = {}) {
+  const path = join(rootDir, 'archive-organization.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(() => {}).then(async () => {
+      const data = await readArchiveJson(path);
+      const result = await fn(data);
+      await writeArchiveJsonAtomic(path, data);
+      return clone(result);
+    });
+    return chain;
+  }
+  return {
+    path,
+    async saveCollection(collection) { return mutate((data) => { data.collections[collection.id] = clone(collection); return collection; }); },
+    async getCollection(id) { const data = await readArchiveJson(path); return data.collections?.[String(id)] ? clone(data.collections[String(id)]) : null; },
+    async listCollections({ userId } = {}) { const data = await readArchiveJson(path); return Object.values(data.collections ?? {}).filter((row) => !userId || row.userId === userId).map(clone); },
+    async saveOperation(operation) { return mutate((data) => { data.operations[operation.id] = clone(operation); return operation; }); },
+    async getOperation(id) { const data = await readArchiveJson(path); return data.operations?.[String(id)] ? clone(data.operations[String(id)]) : null; },
   };
 }
 
@@ -125,6 +161,7 @@ export function createArchiveService({ store = createMemoryArchiveStore(), adapt
       if (existing) return { operation: existing, duplicate: true };
       const record = {
         id, userId, sourceType, operation, artifacts: clone(artifacts ?? []), destination,
+        fingerprint: fingerprint({ userId, sourceType, operation, artifacts: clone(artifacts ?? []), destination }),
         supported: preview.supported, status: preview.supported ? 'PENDING_APPROVAL' : 'UNAVAILABLE',
         approvedAt: null, executedAt: null, result: null, createdAt: now(),
       };
@@ -132,28 +169,54 @@ export function createArchiveService({ store = createMemoryArchiveStore(), adapt
       return { operation: clone(record), duplicate: false };
     },
 
-    async approveAndExecute(operationId) {
+    async executePrepared(operationId, expectedFingerprint = null) {
       const record = await store.getOperation(operationId);
       if (!record) throw new Error('archive operation not found: ' + operationId);
+      if (expectedFingerprint && record.fingerprint !== expectedFingerprint) {
+        const error = new Error('archive operation fingerprint mismatch'); error.code = 'ACTION_STALE'; throw error;
+      }
       if (record.status === 'COMPLETED') return { operation: record, duplicate: true };
-      if (!record.supported) {
-        const error = new Error('source operation unavailable');
-        error.code = 'CAPABILITY_UNAVAILABLE';
-        throw error;
-      }
+      if (!record.supported) { const error = new Error('source operation unavailable'); error.code = 'CAPABILITY_UNAVAILABLE'; throw error; }
       const adapter = adapterMap.get(record.sourceType);
-      if (!adapter?.supports(record.operation)) {
-        const error = new Error('source capability no longer available');
-        error.code = 'CAPABILITY_REVOKED';
-        throw error;
-      }
+      if (!adapter?.supports(record.operation)) { const error = new Error('source capability no longer available'); error.code = 'CAPABILITY_REVOKED'; throw error; }
       record.approvedAt = record.approvedAt ?? now();
       const result = await adapter.execute(record.operation, { artifacts: record.artifacts, destination: record.destination, operationId: record.id });
-      record.status = 'COMPLETED';
-      record.executedAt = now();
-      record.result = clone(result);
+      record.status = 'COMPLETED'; record.executedAt = now(); record.result = clone(result);
       await store.saveOperation(record);
       return { operation: clone(record), duplicate: false };
     },
+
+    async approveAndExecute(operationId) {
+      return this.executePrepared(operationId);
+    },
   };
+}
+
+export function registerArchiveCapabilities(naia, { service } = {}) {
+  if (!naia || typeof naia.registerCapability !== 'function') throw new Error('NaIA capability registration is required');
+  if (!service) throw new Error('archive service is required');
+  return naia.registerCapability({
+    name: 'archive.execute',
+    tool: {
+      risk: 'EXTERNAL_WRITE', capability: 'archive.source.write',
+      description: 'Executes one concrete prepared source organization mutation',
+      async run(input) { return service.executePrepared(input.operationId, input.fingerprint); },
+    },
+  });
+}
+
+export async function proposeArchiveMutation(naia, prepared) {
+  if (!naia || typeof naia.pursueAction !== 'function') throw new Error('NaIA pursueAction is required');
+  const operation = prepared?.operation ?? prepared;
+  if (!operation?.id || !operation?.fingerprint) throw new Error('prepared archive operation is required');
+  return naia.pursueAction({
+    id: `archive-objective:${operation.id}`,
+    title: `Archive ${operation.operation} on ${operation.sourceType}`,
+    intent: 'ARCHIVE_SOURCE_MUTATION',
+    action: {
+      tool: 'archive.execute',
+      input: { operationId: operation.id, fingerprint: operation.fingerprint },
+      risk: 'EXTERNAL_WRITE', requiresApproval: true,
+    },
+  });
 }
