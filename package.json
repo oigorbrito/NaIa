@@ -10,7 +10,8 @@
     "preflight:chassis": "node research/chassis/harness/runtime-preflight.mjs",
     "single:chassis": "node research/chassis/harness/formal-single-run.mjs",
     "readiness:chassis": "node research/chassis/harness/benchmark-readiness-cli.mjs",
-    "ledger:chassis": "node research/chassis/harness/experiment-ledger-status.mjs"
+    "ledger:chassis": "node research/chassis/harness/experiment-ledger-status.mjs",
+    "check:credentials": "node scripts/check-live-credentials.mjs"
   },
   "engines": {
     "node": ">=22 <25"
