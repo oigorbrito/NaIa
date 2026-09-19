@@ -45,7 +45,7 @@ export async function planIntent(objective) {
   }
   const normalized = normalizeObjective(objective, interpreted);
 
-  if (interpreted.state === 'AMBIGUOUS' || interpreted.state === 'MISSING_PARAMETER') {
+  if (interpreted.state === 'AMBIGUOUS' || interpreted.state === 'MISSING_PARAMETER' || interpreted.state === 'UNRECOGNIZED') {
     return {
       objectiveId: objective.id,
       intent: interpreted.intent ?? 'UNRECOGNIZED',
@@ -53,7 +53,7 @@ export async function planIntent(objective) {
       interpretation: interpreted,
       steps: [
         { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'COMPLETED', action: null },
-        { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'FAILED', action: null, error: interpreted.state },
+        { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'FAILED', action: null, error: interpreted.state === 'UNRECOGNIZED' ? 'UNSUPPORTED_INTENT' : interpreted.state },
         { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null },
       ],
     };
