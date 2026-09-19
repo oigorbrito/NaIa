@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { createMemoryRelayStore, createRelayMinimalRuntime } from './relay-minimal-runtime.mjs';
+import { createFileRelayStore, createMemoryRelayStore, createRelayMinimalRuntime } from './relay-minimal-runtime.mjs';
+import { createNaiaService } from '../../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../../src/product/ports.mjs';
 
 function fixturePorts({ execution }) {
   const runs = createMemoryRelayStore();
@@ -164,4 +169,91 @@ test('resume does not repeat completed steps after approval-wait persistence', a
   const resumed = await runtime.resume('objective-5');
   assert.equal(resumed.state, 'WAITING_APPROVAL');
   assert.deepEqual(calls, ['read']);
+});
+
+test('file-backed Relay run resumes across runtime restart without repeating completed work', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'naia-relay-spike-'));
+  try {
+    const calls = [];
+    const execution = {
+      async run({ step }) {
+        calls.push(step.id);
+        return step.id === 'write' ? { ok: true, files: { 'receipt.json': 'ok' } } : { ok: true, usage: { tokens: 2, cost: 0.01 } };
+      },
+    };
+    const firstPorts = fixturePorts({ execution });
+    firstPorts.runs = createFileRelayStore({ rootDir: dir });
+    const first = createRelayMinimalRuntime(firstPorts, { idFactory: deterministicIds(), now: () => '2026-09-19T15:00:00Z' });
+    const waiting = await first.start({ id: 'restart-objective', title: 'restart-safe' });
+    assert.equal(waiting.state, 'WAITING_APPROVAL');
+    assert.deepEqual(calls, ['read']);
+    const durableRunId = waiting.runId;
+    const durableProviderRunId = waiting.providerRunId;
+
+    const secondPorts = fixturePorts({ execution });
+    secondPorts.runs = createFileRelayStore({ rootDir: dir });
+    const second = createRelayMinimalRuntime(secondPorts, { idFactory: deterministicIds(), now: () => '2026-09-19T15:01:00Z' });
+    const completed = await second.approve('restart-objective', 'note.write');
+    assert.equal(completed.state, 'COMPLETED');
+    assert.equal(completed.runId, durableRunId);
+    assert.equal(completed.providerRunId, durableProviderRunId);
+    assert.deepEqual(calls, ['read', 'write']);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('Relay confirmation then approval ordering matches current product runtime semantics', async () => {
+  const relayCalls = [];
+  const runs = createMemoryRelayStore();
+  const relayPorts = {
+    runs,
+    planner: {
+      async plan({ id }) {
+        return { objectiveId: id, steps: [
+          { id: `${id}:execute`, status: 'PENDING', confirmation: { required: true, id: 'confirm-1', payload: { itemIds: ['a'] } }, action: { tool: 'note.write', risk: 'LOCAL_WRITE', input: { name: 'x', content: 'y' } } },
+        ] };
+      },
+    },
+    policy: { async authorize({ run, step }) { return { allowed: run.approvals.includes(step.action.tool), reason: 'approval-required' }; } },
+    execution: { async run(){ relayCalls.push('executed'); return { ok: true }; } },
+  };
+  const relay = createRelayMinimalRuntime(relayPorts, { idFactory: deterministicIds(), now: () => '2026-09-19T15:00:00Z' });
+  const relayConfirm = await relay.start({ id: 'relay-compat', title: 'confirmed write' });
+  assert.equal(relayConfirm.state, 'WAITING_CONFIRMATION');
+  assert.equal(relayCalls.length, 0);
+  const relayApproval = await relay.confirm('relay-compat', 'confirm-1');
+  assert.equal(relayApproval.state, 'WAITING_APPROVAL');
+  assert.equal(relayCalls.length, 0);
+  const relayDone = await relay.approve('relay-compat', 'note.write');
+  assert.equal(relayDone.state, 'COMPLETED');
+  assert.equal(relayCalls.length, 1);
+
+  const ports = createInMemoryPorts();
+  let productCalls = 0;
+  ports.tools.register('compat.write', { risk: 'LOCAL_WRITE', async run(){ productCalls += 1; return { ok: true }; } });
+  const product = createNaiaService(ports);
+  const productConfirm = await product.pursueAction({
+    id: 'product-compat', title: 'confirmed write',
+    confirmation: { required: true, id: 'confirm-1', payload: { itemIds: ['a'] } },
+    action: { tool: 'compat.write', risk: 'LOCAL_WRITE', requiresApproval: true, input: {} },
+  });
+  assert.equal(productConfirm.objective.status, 'WAITING_CONFIRMATION');
+  assert.equal(productCalls, 0);
+  const productApproval = await product.confirm('product-compat', 'confirm-1');
+  assert.equal(productApproval.objective.status, 'WAITING_APPROVAL');
+  assert.equal(productCalls, 0);
+  const productDone = await product.approve('product-compat', 'compat.write');
+  assert.equal(productDone.objective.status, 'COMPLETED');
+  assert.equal(productCalls, 1);
+});
+
+test('Relay confirmation mismatch fails closed', async () => {
+  const ports = {
+    runs: createMemoryRelayStore(),
+    planner: { async plan({ id }) { return { objectiveId: id, steps: [{ id: 'write', status: 'PENDING', confirmation: { required: true, id: 'right' }, action: { tool: 'note.write', risk: 'LOCAL_WRITE' } }] }; } },
+    policy: { async authorize(){ return { allowed: false }; } },
+    execution: { async run(){ throw new Error('must not execute'); } },
+  };
+  const runtime = createRelayMinimalRuntime(ports, { idFactory: deterministicIds() });
+  await runtime.start({ id: 'confirm-mismatch', title: 'x' });
+  await assert.rejects(runtime.confirm('confirm-mismatch', 'wrong'), (error) => error.code === 'CONFIRMATION_MISMATCH');
 });
