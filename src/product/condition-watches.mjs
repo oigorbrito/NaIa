@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
 function clone(value){ return value==null?value:structuredClone(value); }
@@ -59,6 +61,24 @@ export function createMemoryConditionWatchStore(){
   };
 }
 
+async function readWatchJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {watches:{},observations:[],failures:[]};throw error;}}
+async function writeWatchJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileConditionWatchStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'condition-watches.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readWatchJson(path);const result=await fn(data);await writeWatchJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveWatch(row){return mutate(data=>{data.watches[row.id]=clone(row);return row;});},
+    async getWatch(id){const data=await readWatchJson(path);return data.watches?.[String(id)]?clone(data.watches[String(id)]):null;},
+    async listWatches({userId}={}){const data=await readWatchJson(path);return Object.values(data.watches??{}).filter(row=>!userId||row.userId===userId).map(clone);},
+    async appendObservation(row){return mutate(data=>{data.observations.push(clone(row));return row;});},
+    async listObservations(watchId){const data=await readWatchJson(path);return (data.observations??[]).filter(row=>row.watchId===watchId).map(clone);},
+    async appendFailure(row){return mutate(data=>{data.failures.push(clone(row));return row;});},
+    async listFailures(watchId){const data=await readWatchJson(path);return (data.failures??[]).filter(row=>row.watchId===watchId).map(clone);},
+  };
+}
+
 export function createConditionWatchService({store=createMemoryConditionWatchStore(),automationService,idFactory=randomUUID,now=()=>new Date().toISOString()}={}){
   if(!automationService||typeof automationService.create!=='function'||typeof automationService.trigger!=='function') throw new Error('automation service is required');
   async function requireWatch(id){ const row=await store.getWatch(id); if(!row) throw new Error('watch not found: '+id); return row; }
@@ -112,7 +132,7 @@ export function createConditionWatchService({store=createMemoryConditionWatchSto
     },
     async recordFailure(id,{source='provider',code='PROVIDER_ERROR',retryable=false,message=null}={}){
       const watch=await requireWatch(id);
-      const failure={watchId:id,source,code,retryable:Boolean(retryable),message,at:now()};
+      const failure={watchId:id,source,code,retryable:Boolean(retryable),message:message? '[REDACTED_PROVIDER_ERROR]':null,at:now()};
       await store.appendFailure(failure);
       return {status:'PROVIDER_FAILED',notified:false,failure,watchStatus:watch.status};
     },
