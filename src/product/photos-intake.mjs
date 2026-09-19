@@ -100,8 +100,11 @@ export function createPhotosIntakeService({ store = createMemoryPhotosStore(), i
       if (start.authorizationState !== 'AUTHORIZED') {
         return { status: 'UNAVAILABLE', authorizationState: start.authorizationState, imported: 0, items: [] };
       }
-      const session = { id: idFactory(), userId, provider: provider.name ?? 'unknown', providerSessionId: start.sessionId, status: 'ACTIVE', importedItemIds: [], createdAt: now(), completedAt: null };
+      const session = { id: idFactory(), userId, provider: provider.name ?? 'unknown', providerSessionId: start.sessionId, status: start.userActionRequired ? 'WAITING_USER' : 'ACTIVE', importedItemIds: [], createdAt: now(), completedAt: null, pickerUri: start.pickerUri ?? null, providerExpireTime: start.expireTime ?? null };
       await store.saveSession(session);
+      if (start.userActionRequired) {
+        return { status: 'WAITING_USER', authorizationState: 'AUTHORIZED', imported: 0, items: [], pickerUri: start.pickerUri ?? null, session: clone(session) };
+      }
 
       let token = null;
       const imported = [];
@@ -167,6 +170,73 @@ export function createPhotosIntakeService({ store = createMemoryPhotosStore(), i
       await store.saveSession(session);
       const duplicateCount = imported.filter((item) => item.duplicate).length;
       return { status: 'COMPLETED', authorizationState: 'AUTHORIZED', imported: imported.length - duplicateCount, duplicates: duplicateCount, selected: imported.length, items: imported, session: clone(session) };
+    },
+
+    async resumeSelection({ userId, provider, sessionId }) {
+      if (!userId || !sessionId) throw new Error('userId and sessionId are required');
+      if (!provider || typeof provider.page !== 'function') throw new Error('photos provider adapter is required');
+      const session = await store.getSession(sessionId);
+      if (!session || session.userId !== userId) throw new Error('photos selection session not found: ' + sessionId);
+      if (session.status === 'COMPLETED') return { status:'COMPLETED', authorizationState:'AUTHORIZED', imported:0, duplicates:0, selected:0, items:[], session:clone(session) };
+      if (!session.providerSessionId) throw new Error('provider selection session is missing');
+
+      let token = null;
+      const imported = [];
+      do {
+        const page = await provider.page({ sessionId: session.providerSessionId, pageToken: token });
+        if (page.pending) {
+          session.status = 'WAITING_USER';
+          await store.saveSession(session);
+          return { status:'WAITING_USER', authorizationState:'AUTHORIZED', imported:0, items:[], pickerUri:session.pickerUri??null, session:clone(session), pollingConfig:clone(page.pollingConfig??null) };
+        }
+        if (page.authorizationState !== 'AUTHORIZED') {
+          session.status = 'EXPIRED';
+          await store.saveSession(session);
+          return { status:'UNAVAILABLE', authorizationState:page.authorizationState, imported:imported.length, items:imported, session:clone(session) };
+        }
+        for (const raw of page.items ?? []) {
+          const providerName = provider.name ?? 'unknown';
+          const existing = typeof store.findSelection === 'function' ? await store.findSelection(providerName, String(raw.id)) : null;
+          if (existing) {
+            const sessionIds = [...new Set([...(existing.selectionSessionIds ?? [existing.selectionSessionId].filter(Boolean)), session.id])];
+            const refreshed = {
+              ...existing,
+              selectionSessionIds: sessionIds,
+              mediaUrl: raw.mediaUrl ?? existing.mediaUrl ?? null,
+              mediaUrlExpiresAt: raw.mediaUrlExpiresAt ?? existing.mediaUrlExpiresAt ?? null,
+              mimeType: raw.mimeType ?? existing.mimeType ?? null,
+              width: raw.width ?? existing.width ?? null,
+              height: raw.height ?? existing.height ?? null,
+              createdAt: raw.createdAt ?? existing.createdAt ?? null,
+              provenance: { ...(existing.provenance ?? {}), provider: providerName, providerItemId: String(raw.id), latestProviderSessionId: session.providerSessionId },
+            };
+            await store.saveSelection(refreshed);
+            if (!session.importedItemIds.includes(refreshed.id)) session.importedItemIds.push(refreshed.id);
+            imported.push({ ...refreshed, duplicate: true });
+            continue;
+          }
+          const item = {
+            id:idFactory(), userId, provider:providerName, providerItemId:String(raw.id), selectionSessionId:session.id, selectionSessionIds:[session.id],
+            mimeType:raw.mimeType??null, width:raw.width??null, height:raw.height??null, createdAt:raw.createdAt??null,
+            mediaUrl:raw.mediaUrl??null, mediaUrlExpiresAt:raw.mediaUrlExpiresAt??null, sourceType:'google_photos_selected',
+            provenance:{ provider:providerName, providerItemId:String(raw.id), providerSessionId:session.providerSessionId, latestProviderSessionId:session.providerSessionId },
+          };
+          await store.saveSelection(item);
+          session.importedItemIds.push(item.id);
+          imported.push(item);
+        }
+        token = page.nextPageToken ?? null;
+        if (page.complete) token = null;
+      } while (token !== null);
+
+      session.status='COMPLETED';
+      session.completedAt=now();
+      await store.saveSession(session);
+      if (typeof provider.deleteSelectionSession === 'function') {
+        try { await provider.deleteSelectionSession(session.providerSessionId); } catch {}
+      }
+      const duplicateCount=imported.filter((item)=>item.duplicate).length;
+      return { status:'COMPLETED', authorizationState:'AUTHORIZED', imported:imported.length-duplicateCount, duplicates:duplicateCount, selected:imported.length, items:imported, session:clone(session) };
     },
 
     async selectedMedia(userId, { at = now() } = {}) {
