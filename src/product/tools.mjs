@@ -1,11 +1,15 @@
 import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 
 function safeNoteName(name) {
-  const value = String(name ?? '').trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  if (!value) throw new Error('note name is required');
-  return value.endsWith('.txt') ? value : `${value}.txt`;
+  const raw = String(name ?? '').trim();
+  if (raw.includes('/') || raw.includes('\\')) throw new Error('invalid note name: path separators are not allowed');
+  const value = raw.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[\s._-]+|[\s._-]+$/g, '');
+  if (!value || value === '.' || value === '..') throw new Error('note name is required');
+  const filename = value.endsWith('.txt') ? value : `${value}.txt`;
+  if (filename.length > 255) throw new Error('note name exceeds maximum length');
+  return filename;
 }
 
 function fileCategory(name) {
@@ -51,10 +55,12 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
     ['note.write', {
       risk: 'LOCAL_WRITE',
       async run(input) {
-        const notesDir = join(rootDir, 'workspace', 'notes');
-        await mkdir(notesDir, { recursive: true });
+        const notesDir = resolve(rootDir, 'workspace', 'notes');
         const filename = safeNoteName(input?.name);
-        const path = join(notesDir, filename);
+        const path = resolve(notesDir, filename);
+        const rel = relative(notesDir, path);
+        if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\')) throw new Error('invalid note path: path traversal detected');
+        await mkdir(notesDir, { recursive: true });
         await writeFile(path, `${String(input?.content ?? '')}\n`, 'utf8');
         return { path, bytes: Buffer.byteLength(`${String(input?.content ?? '')}\n`, 'utf8') };
       },
