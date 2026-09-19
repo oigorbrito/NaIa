@@ -105,3 +105,13 @@ test('watch state and duplicate suppression survive service restart when stores 
   assert.equal(duplicate.status,'DUPLICATE_UNCHANGED');
   assert.equal(duplicate.notified,false);
 });
+
+test('watch cadence is normalized and rejects sub-hour polling intervals',async()=>{
+  const {watchService}=fixture();
+  const hourly=await watchService.create({userId:'u1',name:'hourly',cadence:'HOURLY',predicate:{kind:'IN_STOCK'},action:{tool:'text.echo',input:{text:'x'},risk:'READ_ONLY'}});
+  assert.deepEqual(hourly.cadence,{kind:'INTERVAL',minutes:60});
+  await assert.rejects(
+    watchService.create({userId:'u1',name:'too-fast',cadence:{minutes:15},predicate:{kind:'IN_STOCK'},action:{tool:'text.echo',input:{text:'x'},risk:'READ_ONLY'}}),
+    /at least 60 minutes/,
+  );
+});
