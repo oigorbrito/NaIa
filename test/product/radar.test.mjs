@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { buildRadarDigest, createRadarPreferenceStore } from '../../src/product/radar.mjs';
+import { buildRadarDigest, createFileRadarPreferenceStore, createRadarPreferenceStore, createRadarService, createRadarSourceAdapter } from '../../src/product/radar.mjs';
 
 const NOW='2026-09-19T14:00:00Z';
 
@@ -55,4 +58,53 @@ test('Radar preference store persists disabled sources',async()=>{
   const store=createRadarPreferenceStore();
   await store.set('u1',{disabledSources:['email','files']});
   assert.deepEqual((await store.get('u1')).disabledSources,['email','files']);
+});
+
+test('Radar service aggregates calendar plus email through provider-neutral source adapters',async()=>{
+  const radar=createRadarService({
+    now:()=>NOW,
+    sources:[
+      createRadarSourceAdapter({name:'calendar',readSignals:async()=>[{id:'c1',topicKey:'project',type:'CONFLICT',title:'Project',occurredAt:'2026-09-19T13:00:00Z'}]}),
+      createRadarSourceAdapter({name:'email',readSignals:async()=>[{id:'e1',topicKey:'client',type:'PENDING_REPLY',title:'Client',occurredAt:'2026-09-19T13:30:00Z'}]}),
+    ],
+  });
+  const digest=await radar.digest('u1');
+  assert.equal(digest.totalTopics,2);
+  assert.deepEqual(digest.topics.map(t=>t.topicKey),['project','client']);
+  assert.deepEqual(digest.sourceStatus.map(s=>s.status),['OK','OK']);
+});
+
+test('source opt-out is respected before provider read',async()=>{
+  let emailReads=0;let calendarReads=0;
+  const radar=createRadarService({now:()=>NOW,sources:[
+    createRadarSourceAdapter({name:'calendar',readSignals:async()=>{calendarReads+=1;return [{id:'c1',topicKey:'c',title:'Cal',occurredAt:'2026-09-19T13:00:00Z'}];}}),
+    createRadarSourceAdapter({name:'email',readSignals:async()=>{emailReads+=1;return [{id:'e1',topicKey:'e',title:'Mail',occurredAt:'2026-09-19T13:00:00Z'}];}}),
+  ]});
+  await radar.setDisabledSources('u1',['email']);
+  const digest=await radar.digest('u1');
+  assert.equal(calendarReads,1);
+  assert.equal(emailReads,0);
+  assert.deepEqual(digest.topics.map(t=>t.sources),[['calendar']]);
+  assert.deepEqual(digest.sourceStatus.find(s=>s.source==='email'),{source:'email',status:'DISABLED'});
+});
+
+test('one failed Radar source does not suppress healthy source results',async()=>{
+  const radar=createRadarService({now:()=>NOW,sources:[
+    createRadarSourceAdapter({name:'calendar',readSignals:async()=>[{id:'c1',topicKey:'c',title:'Cal',occurredAt:'2026-09-19T13:00:00Z'}]}),
+    createRadarSourceAdapter({name:'email',readSignals:async()=>{const e=new Error('timeout');e.code='TIMEOUT';e.retryable=true;throw e;}}),
+  ]});
+  const digest=await radar.digest('u1');
+  assert.equal(digest.totalTopics,1);
+  assert.equal(digest.topics[0].topicKey,'c');
+  assert.deepEqual(digest.sourceStatus.find(s=>s.source==='email'),{source:'email',status:'FAILED',code:'TIMEOUT',retryable:true});
+});
+
+test('Radar source preferences survive restart in file store',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-radar-'));
+  try{
+    const first=createRadarService({preferences:createFileRadarPreferenceStore({rootDir:dir})});
+    await first.setDisabledSources('u1',['email','files']);
+    const second=createRadarService({preferences:createFileRadarPreferenceStore({rootDir:dir})});
+    assert.deepEqual((await second.preferences('u1')).disabledSources,['email','files']);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });

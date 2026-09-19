@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 function clone(v){return v==null?v:structuredClone(v);}
 function norm(v){return String(v??'').trim().toLowerCase();}
 function ts(v){const n=new Date(v).getTime();return Number.isFinite(n)?n:null;}
@@ -53,5 +55,40 @@ export function createRadarPreferenceStore(){
   return {
     async set(userId,{disabledSources=[]}={}){const row={userId,disabledSources:[...new Set(disabledSources.map(String))]};rows.set(userId,clone(row));return clone(row);},
     async get(userId){return clone(rows.get(userId)??{userId,disabledSources:[]});},
+  };
+}
+
+async function readRadarJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {preferences:{}};throw error;}}
+async function writeRadarJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileRadarPreferenceStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'radar-preferences.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readRadarJson(path);const result=await fn(data);await writeRadarJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async set(userId,{disabledSources=[]}={}){return mutate(data=>{const row={userId,disabledSources:[...new Set(disabledSources.map(String))]};data.preferences[userId]=clone(row);return row;});},
+    async get(userId){const data=await readRadarJson(path);return clone(data.preferences?.[String(userId)]??{userId,disabledSources:[]});},
+  };
+}
+
+export function createRadarSourceAdapter({name,readSignals}={}){
+  const source=String(name??'').trim();if(!source||typeof readSignals!=='function')throw new Error('radar source name/readSignals are required');
+  return {name:source,async read(userId){return clone(await readSignals({userId}));}};
+}
+
+export function createRadarService({sources=[],preferences=createRadarPreferenceStore(),now=()=>new Date().toISOString(),staleAfterMs=48*3600000}={}){
+  const sourceMap=new Map(sources.map(source=>[String(source.name).toLowerCase(),source]));
+  return {
+    async setDisabledSources(userId,disabledSources=[]){return preferences.set(userId,{disabledSources});},
+    async preferences(userId){return preferences.get(userId);},
+    async digest(userId){
+      const pref=await preferences.get(userId);const disabled=new Set((pref.disabledSources??[]).map(norm));const signals=[];const sourceStatus=[];
+      for(const [key,source] of sourceMap){
+        if(disabled.has(key)){sourceStatus.push({source:source.name,status:'DISABLED'});continue;}
+        try{const rows=await source.read(userId);signals.push(...(rows??[]).map(row=>({...row,source:row.source??source.name})));sourceStatus.push({source:source.name,status:'OK',count:(rows??[]).length});}
+        catch(error){sourceStatus.push({source:source.name,status:'FAILED',code:error?.code??'SOURCE_FAILED',retryable:Boolean(error?.retryable)});}
+      }
+      return {...buildRadarDigest(signals,{disabledSources:pref.disabledSources,staleAfterMs,now:now()}),sourceStatus};
+    },
   };
 }
