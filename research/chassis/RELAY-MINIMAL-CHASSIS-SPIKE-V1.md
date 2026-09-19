@@ -36,9 +36,13 @@ A migration decision still requires measured comparison against the product bran
 6. dependency/maintenance risk;
 7. latency and cost.
 
-Until those measurements exist, the correct status is:
+Those measurements are now recorded in `RELAY-MINIMAL-CHASSIS-COMPARISON-V1.md`.
 
-`RELAY_MINIMAL_CHASSIS = CANDIDATE_SPIKE_IMPLEMENTED / MIGRATION_NOT_YET_JUSTIFIED`
+Current result:
+
+`RELAY_MINIMAL_CHASSIS = USEFUL_PATTERN_SOURCE / FULL_MIGRATION_NOT_JUSTIFIED_V1`
+
+This is not a permanent selection of the existing chassis. It means only that this specific Relay-inspired replacement does not currently clear the residual-complexity migration gate.
 
 ## Test command
 
