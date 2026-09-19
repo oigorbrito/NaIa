@@ -18,12 +18,18 @@ export function createMemoryQuoteStore(){
 
 export function createFixtureQuoteProvider({ name, response=null, fail=null }={}){
   if(!name) throw new Error('quote provider name is required');
+  const calls=new Map();
   return {
     name,
     async requestQuote(input){
+      const key=String(input?.idempotencyKey??'');
+      if(key && calls.has(key)) return clone(calls.get(key));
       if(fail){ const e=new Error(fail.message??'provider failed'); e.code=fail.code??'PROVIDER_ERROR'; e.retryable=Boolean(fail.retryable); throw e; }
-      return typeof response==='function'?response(clone(input)):clone(response);
+      const result=typeof response==='function'?await response(clone(input)):clone(response);
+      if(key) calls.set(key,clone(result));
+      return result;
     },
+    callCount(){ return calls.size; },
   };
 }
 
@@ -47,7 +53,7 @@ export function createQuoteService({ store=createMemoryQuoteStore(), providers=[
         const first=await store.recordOutbound(outboundKey);
         if(!first && state.state==='RESPONDED') continue;
         try{
-          const raw=await provider.requestQuote({ requestId:request.id, requirements:clone(request.requirements), constraints:clone(request.constraints) });
+          const raw=await provider.requestQuote({ requestId:request.id, requirements:clone(request.requirements), constraints:clone(request.constraints), idempotencyKey:outboundKey });
           if(!raw){ request.providerStates[providerName]={state:'PENDING',updatedAt:now()}; continue; }
           const response={
             id:request.id+':'+providerName+':'+String(raw.id??'response'), requestId:request.id, provider:providerName,
