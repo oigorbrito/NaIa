@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value) { return structuredClone(value); }
 function hostnameOf(url) { try { return new URL(url).hostname.toLowerCase(); } catch { return null; } }
@@ -21,6 +23,21 @@ export function createMemoryWebExecutionStore() {
     async getRun(id) { const value = runs.get(id); return value ? clone(value) : null; },
     async getCommit(key) { const value = commits.get(key); return value ? clone(value) : null; },
     async saveCommit(key, value) { commits.set(key, clone(value)); return clone(value); },
+  };
+}
+
+async function readWebJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {runs:{},commits:{}};throw error;}}
+async function writeWebJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileWebExecutionStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'web-execution.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readWebJson(path);const result=await fn(data);await writeWebJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveRun(run){return mutate(data=>{data.runs[run.id]=clone(run);return run;});},
+    async getRun(id){const data=await readWebJson(path);return data.runs?.[String(id)]?clone(data.runs[String(id)]):null;},
+    async getCommit(key){const data=await readWebJson(path);return data.commits?.[String(key)]?clone(data.commits[String(key)]):null;},
+    async saveCommit(key,value){return mutate(data=>{data.commits[key]=clone(value);return value;});},
   };
 }
 
@@ -203,6 +220,17 @@ export function createWebExecutionService({
       }
     },
 
+    async executeRuntimeApproved(runId,{fingerprint,idempotencyKey}){
+      const run=await requireRun(runId);
+      if(run.state==='CANCELLED'){const e=new Error('web run cancelled');e.code='CANCELLED';throw e;}
+      if(run.state==='WAITING_REVIEW'){const e=new Error('web submission requires renewed review');e.code='APPROVAL_REQUIRED';throw e;}
+      const pending=run.pendingSubmission;
+      if(!pending||pending.fingerprint!==fingerprint){const e=new Error('approval does not match current submission');e.code='APPROVAL_MISMATCH';throw e;}
+      run.approvedFingerprint=fingerprint;pending.status='APPROVED';run.state='ACTIVE';
+      await evidence(run,'WEB_SUBMISSION_APPROVED',{fingerprint,authority:'NAIA_RUNTIME'});
+      return this.submit(runId,{fingerprint,idempotencyKey});
+    },
+
     async cancel(runId) {
       const run = await requireRun(runId);
       if (run.state === 'COMPLETED') return clone(run);
@@ -228,8 +256,19 @@ export function registerWebExecutionCapabilities(naia, { service }) {
     }),
     naia.registerCapability({
       name: 'web.submit',
-      tool: { risk: 'EXTERNAL_WRITE', capability: 'web.execution', description: 'Submits one previously previewed and approved web mutation', async run(input) { return service.submit(input.runId, input); } },
+      tool: { risk: 'EXTERNAL_WRITE', capability: 'web.execution', description: 'Submits one previously previewed web mutation after NaIA runtime approval', async run(input) { return service.executeRuntimeApproved(input.runId, input); } },
       rule: { name: 'web-submit', match: ({ title }) => /enviar formul[aá]rio|confirmar reserva|submit form|book/i.test(String(title ?? '')), action: ({ id }) => ({ tool: 'web.submit', input: { runId: id }, risk: 'EXTERNAL_WRITE', requiresApproval: true }) },
     }),
   ];
+}
+
+export async function proposeWebSubmission(naia,{runId,fingerprint,idempotencyKey=null}){
+  if(!naia||typeof naia.pursueAction!=='function')throw new Error('NaIA pursueAction is required');
+  if(!runId||!fingerprint)throw new Error('runId and fingerprint are required');
+  return naia.pursueAction({
+    id:`web-submit:${runId}:${fingerprint}`,
+    title:'Approve web submission',
+    intent:'WEB_SUBMISSION',
+    action:{tool:'web.submit',input:{runId,fingerprint,idempotencyKey:idempotencyKey??`web:${runId}:${fingerprint}`},risk:'EXTERNAL_WRITE',requiresApproval:true},
+  });
 }
