@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const USER_STATES = new Set(['ACTIVE', 'COMPLETED', 'CANCELLED']);
@@ -26,6 +28,34 @@ export function createMemoryTaskStore() {
     async list({ userId } = {}) { return [...tasks.values()].filter((task) => !userId || task.userId === userId).map(clone); },
     async recordDelivery(key) { if (deliveryKeys.has(key)) return false; deliveryKeys.add(key); return true; },
     async hasDelivery(key) { return deliveryKeys.has(key); },
+  };
+}
+
+async function readTaskJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { tasks:{}, deliveries:{} }; throw error; }
+}
+async function writeTaskJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive:true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileTaskStore({ rootDir = '.naia' } = {}) {
+  const path = join(rootDir, 'tasks.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(()=>{}).then(async()=>{ const data=await readTaskJson(path); const result=await fn(data); await writeTaskJsonAtomic(path,data); return clone(result); });
+    return chain;
+  }
+  return {
+    path,
+    async save(task) { return mutate((data)=>{ data.tasks[task.id]=clone(task); return task; }); },
+    async get(id) { const data=await readTaskJson(path); return data.tasks?.[String(id)] ? clone(data.tasks[String(id)]) : null; },
+    async list({ userId } = {}) { const data=await readTaskJson(path); return Object.values(data.tasks??{}).filter((task)=>!userId||task.userId===userId).map(clone); },
+    async recordDelivery(key) { return mutate((data)=>{ if(data.deliveries[key]) return false; data.deliveries[key]=true; return true; }); },
+    async hasDelivery(key) { const data=await readTaskJson(path); return Boolean(data.deliveries?.[key]); },
   };
 }
 
@@ -118,13 +148,14 @@ export function createTaskService({
       return clone(task);
     },
 
-    async deliver({ taskId, occurrenceKey }) {
+    async deliver({ taskId, occurrenceKey, nextRunAt = null }) {
       const task = await requireTask(taskId);
       if (task.userState !== 'ACTIVE') return { delivered: false, reason: 'inactive-task', task: clone(task) };
       if (!occurrenceKey) throw new Error('occurrenceKey is required');
       const deliveryKey = task.id + ':' + occurrenceKey;
       if (!(await store.recordDelivery(deliveryKey))) return { delivered: false, duplicate: true, task: clone(task) };
       task.lastDeliveredAt = now();
+      if (task.schedule.kind === 'RECURRING' && nextRunAt) task.schedule.nextRunAt = String(nextRunAt);
       task.updatedAt = task.lastDeliveredAt;
       await store.save(task);
       return { delivered: true, duplicate: false, task: clone(task) };
@@ -147,13 +178,13 @@ export function registerTaskCapabilities(naia, { service, userId }) {
       rule: {
         name: 'task-reminder-create',
         match: ({ title }) => /^remind me|^lembre-me|^me lembre/i.test(String(title ?? '').trim()),
-        action: ({ title, id }) => ({
-          tool: 'task.reminder.create',
-          input: { title: String(title), schedule: { kind: 'ONCE', at: 'UNRESOLVED' }, idempotencyKey: id },
-          risk: 'LOCAL_WRITE',
-          requiresApproval: true,
-        }),
+        action: ({ title, id }) => ({ tool:'task.reminder.create', input:{ title:String(title), schedule:{ kind:'ONCE', at:'UNRESOLVED' }, idempotencyKey:id }, risk:'LOCAL_WRITE', requiresApproval:true }),
       },
     }),
+    naia.registerCapability({ name:'task.list', tool:{ risk:'SENSITIVE', capability:'tasks.reminders', description:'Lists personal tasks/reminders', async run(){ return service.list(userId); } } }),
+    naia.registerCapability({ name:'task.get', tool:{ risk:'SENSITIVE', capability:'tasks.reminders', description:'Reads one personal task/reminder', async run(input){ const task=await service.get(input.taskId); if(task.userId!==userId) return null; return task; } } }),
+    naia.registerCapability({ name:'task.complete', tool:{ risk:'LOCAL_WRITE', capability:'tasks.reminders', description:'Completes a task/reminder', async run(input){ const task=await service.get(input.taskId); if(task.userId!==userId) throw new Error('task not found'); return service.complete(input.taskId); } } }),
+    naia.registerCapability({ name:'task.cancel', tool:{ risk:'LOCAL_WRITE', capability:'tasks.reminders', description:'Cancels a task/reminder', async run(input){ const task=await service.get(input.taskId); if(task.userId!==userId) throw new Error('task not found'); return service.cancel(input.taskId); } } }),
+    naia.registerCapability({ name:'task.reschedule', tool:{ risk:'LOCAL_WRITE', capability:'tasks.reminders', description:'Reschedules an active task/reminder', async run(input){ const task=await service.get(input.taskId); if(task.userId!==userId) throw new Error('task not found'); return service.reschedule(input.taskId,input.schedule); } } }),
   ];
 }
