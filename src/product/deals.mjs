@@ -82,6 +82,6 @@ export function createDealService({store=createMemoryDealStore(),idFactory=rando
 }
 
 export function dealToWatchObservation(result,{source='deal-detection'}={}){
-  const signal=(result?.signals??[]).find((item)=>['NEW_LOW','THRESHOLD_HIT','MATERIALLY_BELOW_REFERENCE'].includes(item))??'NO_DEAL';
+  const signal=(result?.signals??[]).find((item)=>['NEW_LOW','THRESHOLD_HIT','MATERIALLY_BELOW_REFERENCE'].includes(item))??result?.signals?.[0]??'NO_DEAL';
   return {source,state:signal,available:signal!=='NO_DEAL'&&signal!=='INSUFFICIENT_EVIDENCE'&&signal!=='STALE',value:result?.current?.total??null,observedAt:result?.current?.observedAt??null,provenance:{reference:clone(result?.reference??null),confidence:result?.confidence??null}};
 }
