@@ -45,6 +45,7 @@ export function createVoiceInputService({
         provenance:{provider:transcriber.name??'unknown',providerTranscriptId:providerResult?.id??null},
       },
       objectiveId:null,
+      evidence:[{type:'VOICE_TRANSCRIBED',at:now(),provider:transcriber.name??'unknown',confidence:Number.isFinite(confidence)?confidence:null,language:providerResult?.language??null}],
       createdAt:now(),updatedAt:now(),
     };
     await store.save(row); return row;
@@ -64,11 +65,12 @@ export function createVoiceInputService({
       if(!text){ const row=await persist({audioRef,mimeType,providerResult,status:'TRANSCRIPTION_EMPTY'}); return {status:row.status,submission:row,objective:null}; }
       if(!Number.isFinite(confidence)||confidence<minConfidence){
         const row=await persist({audioRef,mimeType,providerResult,status:'NEEDS_TRANSCRIPT_CONFIRMATION'});
-        return {status:row.status,submission:row,objective:null};
+        row.evidence.push({type:'VOICE_TRANSCRIPT_REVIEW_REQUIRED',at:now(),threshold:minConfidence}); await store.save(row);
+        return {status:row.status,submission:clone(row),objective:null};
       }
       const row=await persist({audioRef,mimeType,providerResult,status:'TRANSCRIBED'});
       const objective=await naia.pursue({title:text,description:`Voice transcript (${row.transcript.language??'unknown'}, confidence=${row.transcript.confidence??'unknown'}, provider=${row.transcript.provenance.provider})`});
-      row.status='SUBMITTED'; row.objectiveId=objective.objective.id; row.updatedAt=now(); await store.save(row);
+      row.status='SUBMITTED'; row.objectiveId=objective.objective.id; row.updatedAt=now(); row.evidence.push({type:'VOICE_OBJECTIVE_SUBMITTED',at:row.updatedAt,objectiveId:row.objectiveId}); await store.save(row);
       return {status:'SUBMITTED',submission:clone(row),objective};
     },
 
@@ -78,7 +80,7 @@ export function createVoiceInputService({
       const finalText=String(text??row.transcript.text??'').trim(); if(!finalText) throw new Error('confirmed transcript text is required');
       row.transcript.confirmedText=finalText; row.transcript.confirmedAt=now();
       const objective=await naia.pursue({title:finalText,description:`User-confirmed voice transcript (provider=${row.transcript.provenance.provider})`});
-      row.status='SUBMITTED'; row.objectiveId=objective.objective.id; row.updatedAt=now(); await store.save(row);
+      row.status='SUBMITTED'; row.objectiveId=objective.objective.id; row.updatedAt=now(); row.evidence.push({type:'VOICE_OBJECTIVE_SUBMITTED',at:row.updatedAt,objectiveId:row.objectiveId,userConfirmed:true}); await store.save(row);
       return {status:'SUBMITTED',submission:clone(row),objective};
     },
 
