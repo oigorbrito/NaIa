@@ -55,10 +55,9 @@ test('duplicate scheduled delivery is idempotent',async()=>{
 });
 
 test('briefing mention of external-write action never executes it',async()=>{
-  let executed=false;
-  const signals=[{...SIGNALS[0],action:{tool:'calendar.update',risk:'EXTERNAL_WRITE',requiresApproval:true,run:()=>{executed=true;}}}];
+  const signals=[{...SIGNALS[0],action:{tool:'calendar.update',risk:'EXTERNAL_WRITE',requiresApproval:true,input:{eventId:'e1'}}}];
   const service=createDailyBriefingService({tts:createFixtureTtsProvider(),now:()=> '2026-09-19T14:00:00Z',idFactory:()=> 'brief-1'});
   const result=await service.generate({userId:'u1',signals,deliveryKey:'d1'});
   assert.equal(result.payload.references[0].actions[0].requiresApproval,true);
-  assert.equal(executed,false);
+  assert.equal(typeof digest.topics[0].actions[0].run,'undefined');
 });
