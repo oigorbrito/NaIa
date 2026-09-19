@@ -66,9 +66,10 @@ export function createMessagingService({store=createMemoryMessagingStore(),idFac
       if(!String(payload.conversationId??'').trim()||!String(payload.text??'').trim())throw new Error('conversationId and text are required');
       const message=await provider.send(payload); const record={sessionId,message:clone(message),sentAt:now()}; await store.saveSend(idempotencyKey,record);return {duplicate:false,...clone(record)};
     },
-    async scheduleApproved({sessionId,conversationId,text,sendAt,approvalId,idempotencyKey=null}){
-      await requireSession(sessionId,'messages.send'); if(!approvalId)throw new Error('approvalId is required');
-      const row={id:idFactory(),sessionId,conversationId:String(conversationId),text:String(text),sendAt:String(sendAt),approvalId:String(approvalId),idempotencyKey:idempotencyKey??null,state:'SCHEDULED',createdAt:now(),updatedAt:now()};
+    async scheduleApproved({sessionId,conversationId,text,sendAt,idempotencyKey=null}){
+      await requireSession(sessionId,'messages.send');
+      const approvedAt=now();
+      const row={id:idFactory(),sessionId,conversationId:String(conversationId),text:String(text),sendAt:String(sendAt),approvedAt,idempotencyKey:idempotencyKey??null,state:'SCHEDULED',createdAt:approvedAt,updatedAt:approvedAt};
       await store.saveSchedule(row);return clone(row);
     },
     async deliverScheduled(scheduleId,{occurrenceKey}){
