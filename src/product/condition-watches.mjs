@@ -65,14 +65,15 @@ export function createConditionWatchService({store=createMemoryConditionWatchSto
   return {
     async create({userId,name,predicate,cadence='HOURLY',source='provider',maxAgeMs=3600000,action}){
       if(!userId||!String(name??'').trim()) throw new Error('userId and watch name are required');
-      // Validate predicate eagerly.
+      // Validate predicate and cadence before creating the internal automation.
       evaluateWatchPredicate(predicate,{value:0,state:'A',inStock:false,available:false,slots:[]},null);
+      const normalizedCadence=normalizeCadence(cadence);
       const automation=await automationService.create({
         userId,name:'Watch notification: '+String(name).trim(),enabled:true,
         trigger:{kind:'EVENT',event:'condition.watch.matched',source:'condition-watch'},
         action,metadata:{watch:true},
       });
-      const row={id:idFactory(),userId,name:String(name).trim(),predicate:clone(predicate),cadence:normalizeCadence(cadence),source,maxAgeMs:Number(maxAgeMs),status:'ACTIVE',automationId:automation.id,lastSignature:null,lastObservation:null,lastMatched:false,notificationSequence:0,createdAt:now(),updatedAt:now()};
+      const row={id:idFactory(),userId,name:String(name).trim(),predicate:clone(predicate),cadence:normalizedCadence,source,maxAgeMs:Number(maxAgeMs),status:'ACTIVE',automationId:automation.id,lastSignature:null,lastObservation:null,lastMatched:false,notificationSequence:0,createdAt:now(),updatedAt:now()};
       await store.saveWatch(row); return clone(row);
     },
     async get(id){ return requireWatch(id); },
