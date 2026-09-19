@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(v){return v==null?v:structuredClone(v);}
 function stableId(parts){return createHash('sha256').update(parts.join('|')).digest('hex').slice(0,20);}
@@ -16,6 +18,19 @@ export function createMemoryMediaDuplicateStore(){
   return {
     async getFingerprint(itemId){const row=fingerprints.get(String(itemId));return row?clone(row):null;},
     async saveFingerprint(itemId,row){fingerprints.set(String(itemId),clone(row));return clone(row);},
+  };
+}
+
+async function readDuplicateJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {fingerprints:{}};throw error;}}
+async function writeDuplicateJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileMediaDuplicateStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'media-duplicates.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readDuplicateJson(path);const result=await fn(data);await writeDuplicateJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async getFingerprint(itemId){const data=await readDuplicateJson(path);return data.fingerprints?.[String(itemId)]?clone(data.fingerprints[String(itemId)]):null;},
+    async saveFingerprint(itemId,row){return mutate(data=>{data.fingerprints[String(itemId)]=clone(row);return row;});},
   };
 }
 
