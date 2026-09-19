@@ -47,11 +47,21 @@ export function createFixtureEmbeddingProvider({name='fixture-embedding',model='
   };
 }
 
-function components(nodes,edges){
-  const adj=new Map(nodes.map(id=>[id,new Set()]));for(const [a,b] of edges){adj.get(a)?.add(b);adj.get(b)?.add(a);}
-  const seen=new Set(),out=[];
-  for(const id of [...nodes].sort()){if(seen.has(id))continue;const stack=[id],group=[];seen.add(id);while(stack.length){const cur=stack.pop();group.push(cur);for(const next of adj.get(cur)??[]){if(!seen.has(next)){seen.add(next);stack.push(next);}}}if(group.length>1)out.push(group.sort());}
-  return out;
+function completeLinkGroups(rows,threshold){
+  const sorted=[...rows].sort((a,b)=>a.itemId.localeCompare(b.itemId));
+  const groups=[];
+  for(const row of sorted){
+    let placed=false;
+    for(const group of groups){
+      const compatible=group.every(member=>{
+        const sim=cosine(row.vector,member.vector);
+        return sim!=null&&sim>=threshold;
+      });
+      if(compatible){group.push(row);placed=true;break;}
+    }
+    if(!placed)groups.push([row]);
+  }
+  return groups.filter(group=>group.length>1);
 }
 
 export function createSemanticMediaGroupingService({store=createMemorySemanticEmbeddingStore(),embeddingProvider,threshold=0.9,now=()=>new Date().toISOString()}={}){
@@ -75,10 +85,11 @@ export function createSemanticMediaGroupingService({store=createMemorySemanticEm
           await store.save(item.id,row);rows.push(row);
         }catch(error){errors.push({itemId:String(item.id),code:error?.code??'EMBEDDING_FAILED',retryable:Boolean(error?.retryable)});}
       }
-      const usable=rows.filter(r=>r.supported&&r.vector);const edges=[];const similarities=new Map();
-      for(let i=0;i<usable.length;i++){for(let j=i+1;j<usable.length;j++){const sim=cosine(usable[i].vector,usable[j].vector);if(sim!=null&&sim>=threshold){edges.push([usable[i].itemId,usable[j].itemId]);similarities.set([usable[i].itemId,usable[j].itemId].sort().join('|'),sim);}}}
-      const groups=components(usable.map(r=>r.itemId),edges).map(members=>{
-        let minSimilarity=1;for(let i=0;i<members.length;i++){for(let j=i+1;j<members.length;j++){const v=similarities.get([members[i],members[j]].sort().join('|'));if(Number.isFinite(v))minSimilarity=Math.min(minSimilarity,v);}}
+      const usable=rows.filter(r=>r.supported&&r.vector);
+      const groups=completeLinkGroups(usable,Number(threshold)).map(group=>{
+        const members=group.map(row=>row.itemId).sort();
+        let minSimilarity=1;
+        for(let i=0;i<group.length;i++){for(let j=i+1;j<group.length;j++){const sim=cosine(group[i].vector,group[j].vector);if(Number.isFinite(sim))minSimilarity=Math.min(minSimilarity,sim);}}
         return {id:`semantic:${stableId([model,version,String(threshold),...members])}`,kind:'SEMANTIC',members,model,version,threshold:Number(threshold),minSimilarity:Number(minSimilarity.toFixed(6))};
       }).sort((a,b)=>a.id.localeCompare(b.id));
       const status=errors.length===items.length&&items.length?'UNAVAILABLE':errors.length?'DEGRADED':'OK';
