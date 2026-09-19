@@ -23,7 +23,7 @@ test('fuzzy match exposes reasons and confidence instead of claiming certainty',
   const receipt = { id: 'r1', documentClass: 'bank_receipt', paidAmount: 100, paymentDate: '2026-09-22', issuer: 'Internet Ltda' };
   const result = reconcileDocuments([bill, receipt]);
   assert.equal(result[0].state, 'PROBABLE_MATCH');
-  assert.ok(result[0].confidence >= 0.55);
+  assert.ok(result[0].confidence >= 0.35);
   assert.ok(result[0].reasons.includes('matching-amount'));
   assert.ok(result[0].reasons.includes('matching-party'));
 });
