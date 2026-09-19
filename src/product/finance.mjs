@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 const CONSENT_STATES = new Set(['ACTIVE', 'EXPIRED', 'REVOKED']);
 const TX_STATUSES = new Set(['PENDING', 'POSTED']);
@@ -42,6 +44,27 @@ export function createMemoryFinanceStore() {
     async listBudgets({ userId, month } = {}) {
       return [...budgets.values()].filter((row) => (!userId || row.userId === userId) && (!month || row.month === month)).map(clone);
     },
+  };
+}
+
+async function readFinanceJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {connections:{},accounts:{},transactions:{},providerIndex:{},budgets:{}};throw error;}}
+async function writeFinanceJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileFinanceStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'finance.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readFinanceJson(path);const result=await fn(data);await writeFinanceJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveConnection(connection){return mutate(data=>{data.connections[connection.id]=clone(connection);return connection;});},
+    async getConnection(id){const data=await readFinanceJson(path);return data.connections?.[String(id)]?clone(data.connections[String(id)]):null;},
+    async saveAccount(account){return mutate(data=>{data.accounts[account.id]=clone(account);return account;});},
+    async listAccounts({userId}={}){const data=await readFinanceJson(path);return Object.values(data.accounts??{}).filter(row=>!userId||row.userId===userId).map(clone);},
+    async saveTransaction(transaction){return mutate(data=>{data.transactions[transaction.id]=clone(transaction);data.providerIndex[`${transaction.userId}:${transaction.provider}:${transaction.providerTransactionId}`]=transaction.id;return transaction;});},
+    async findTransactionByProviderId(userId,provider,providerTransactionId){const data=await readFinanceJson(path);const id=data.providerIndex?.[`${userId}:${normalizeProvider(provider)}:${providerTransactionId}`];return id&&data.transactions?.[id]?clone(data.transactions[id]):null;},
+    async getTransaction(id){const data=await readFinanceJson(path);return data.transactions?.[String(id)]?clone(data.transactions[String(id)]):null;},
+    async listTransactions({userId,from,to}={}){const data=await readFinanceJson(path);return Object.values(data.transactions??{}).filter(row=>{if(userId&&row.userId!==userId)return false;if(from&&row.bookedAt<from)return false;if(to&&row.bookedAt>to)return false;return true;}).map(clone);},
+    async saveBudget(budget){return mutate(data=>{data.budgets[budget.id]=clone(budget);return budget;});},
+    async listBudgets({userId,month}={}){const data=await readFinanceJson(path);return Object.values(data.budgets??{}).filter(row=>(!userId||row.userId===userId)&&(!month||row.month===month)).map(clone);},
   };
 }
 
@@ -120,14 +143,14 @@ export function createFinanceService({ store = createMemoryFinanceStore(), idFac
     let snapshot;
     try { snapshot = await providerAdapter.snapshot(); }
     catch (error) {
-      const wrapped = new Error(error?.message ?? 'finance provider failed');
+      const wrapped = new Error('finance provider failed');
       wrapped.code = error?.code ?? 'PROVIDER_ERROR';
       wrapped.retryable = Boolean(error?.retryable);
       throw wrapped;
     }
-    assertConsentActive(snapshot);
     const connectionId = provider + ':' + userId;
     await store.saveConnection({ id: connectionId, userId, provider, consentState: snapshot.consentState, importedAt: now() });
+    assertConsentActive(snapshot);
 
     const normalizedAccounts = [];
     for (const raw of snapshot.accounts ?? []) {
@@ -137,16 +160,24 @@ export function createFinanceService({ store = createMemoryFinanceStore(), idFac
     }
 
     let imported = 0;
+    let updated = 0;
     let duplicates = 0;
     for (const raw of snapshot.transactions ?? []) {
       const existing = await store.findTransactionByProviderId(userId, provider, raw.id);
-      if (existing) { duplicates += 1; continue; }
+      if (existing) {
+        const incoming = normalizeTransaction({ userId, connectionId, provider, raw, idFactory: () => existing.id });
+        const refreshed = { ...incoming, id: existing.id, userCategoryOverride: existing.userCategoryOverride ?? null };
+        const changed = ['accountId','amount','currency','direction','bookedAt','merchant','description','status','providerCategory','inferredCategory','categoryConfidence'].some((key)=>JSON.stringify(existing[key]??null)!==JSON.stringify(refreshed[key]??null));
+        if (changed) { await store.saveTransaction(refreshed); updated += 1; }
+        else duplicates += 1;
+        continue;
+      }
       const transaction = normalizeTransaction({ userId, connectionId, provider, raw, idFactory });
       await store.saveTransaction(transaction);
       imported += 1;
     }
 
-    return { provider, connectionId, accounts: normalizedAccounts, importedTransactions: imported, duplicateTransactions: duplicates };
+    return { provider, connectionId, accounts: normalizedAccounts, importedTransactions: imported, updatedTransactions: updated, duplicateTransactions: duplicates };
   }
 
   async function spendingByCategory({ userId, month, category = null }) {
