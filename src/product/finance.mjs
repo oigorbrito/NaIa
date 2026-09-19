@@ -10,6 +10,15 @@ function normalizeProvider(value) { return String(value ?? '').trim().toLowerCas
 function normalizeCurrency(value) { return String(value ?? 'BRL').trim().toUpperCase(); }
 function round(value, digits = 2) { return Number(Number(value ?? 0).toFixed(digits)); }
 function monthKey(iso) { return String(iso).slice(0, 7); }
+function previousMonthKey(month) {
+  const match=String(month??'').match(/^(\d{4})-(\d{2})$/);
+  if(!match) throw new Error('month must use YYYY-MM');
+  const date=new Date(Date.UTC(Number(match[1]),Number(match[2])-2,1));
+  return date.toISOString().slice(0,7);
+}
+function normalizedMerchantKey(tx) {
+  return String(tx.merchant ?? tx.description ?? '').trim().toLowerCase().replace(/\s+/g,' ');
+}
 
 export function createMemoryFinanceStore() {
   const connections = new Map();
@@ -207,6 +216,61 @@ export function createFinanceService({ store = createMemoryFinanceStore(), idFac
       return { month, category, amount: await spendingByCategory({ userId, month, category }) };
     },
 
+    async spendingChange({ userId, month = monthKey(now()), previousMonth = previousMonthKey(month), category = null }) {
+      const current = await spendingByCategory({ userId, month, category });
+      const previous = await spendingByCategory({ userId, month: previousMonth, category });
+      const delta = round(current - previous);
+      const percent = previous === 0 ? null : round((delta / previous) * 100, 2);
+      return {
+        category, currentMonth: month, previousMonth, current, previous, delta, percent,
+        interpretation: previous === 0 ? 'NO_PREVIOUS_BASELINE' : (delta > 0 ? 'INCREASE' : delta < 0 ? 'DECREASE' : 'UNCHANGED'),
+      };
+    },
+
+    async recurringExpenses({ userId, minOccurrences = 2, minGapDays = 20, maxGapDays = 45 } = {}) {
+      const rows=(await store.listTransactions({ userId }))
+        .filter((tx)=>tx.status==='POSTED'&&tx.direction==='OUTFLOW'&&normalizedMerchantKey(tx))
+        .sort((a,b)=>String(a.bookedAt).localeCompare(String(b.bookedAt)));
+      const groups=new Map();
+      for(const tx of rows){
+        const category=String(tx.userCategoryOverride ?? tx.inferredCategory ?? tx.providerCategory ?? 'uncategorized').toLowerCase();
+        const key=[normalizedMerchantKey(tx),tx.currency,category].join('|');
+        if(!groups.has(key)) groups.set(key,[]);
+        groups.get(key).push(tx);
+      }
+      const results=[];
+      for(const txs of groups.values()){
+        if(txs.length<Number(minOccurrences)) continue;
+        const gaps=[];
+        for(let i=1;i<txs.length;i++){
+          const gap=(new Date(txs[i].bookedAt).getTime()-new Date(txs[i-1].bookedAt).getTime())/86400000;
+          if(Number.isFinite(gap)) gaps.push(gap);
+        }
+        if(!gaps.length) continue;
+        const qualifying=gaps.filter((gap)=>gap>=Number(minGapDays)&&gap<=Number(maxGapDays));
+        if(qualifying.length!==gaps.length) continue;
+        const amounts=txs.map((tx)=>Math.abs(tx.amount));
+        const mean=amounts.reduce((sum,value)=>sum+value,0)/amounts.length;
+        const maxDeviation=mean===0?0:Math.max(...amounts.map((value)=>Math.abs(value-mean)/mean));
+        const confidence=maxDeviation<=0.05?'HIGH':maxDeviation<=0.2?'MEDIUM':'LOW';
+        results.push({
+          merchant: txs[0].merchant ?? txs[0].description,
+          category: txs[0].userCategoryOverride ?? txs[0].inferredCategory ?? txs[0].providerCategory ?? 'uncategorized',
+          currency: txs[0].currency,
+          occurrences: txs.length,
+          averageAmount: round(mean),
+          lastAmount: round(Math.abs(txs.at(-1).amount)),
+          firstObservedAt: txs[0].bookedAt,
+          lastObservedAt: txs.at(-1).bookedAt,
+          typicalGapDays: round(gaps.reduce((sum,value)=>sum+value,0)/gaps.length,1),
+          confidence,
+          evidenceTransactionIds: txs.map((tx)=>tx.id),
+          factType: 'INFERRED_RECURRING_PATTERN',
+        });
+      }
+      return results.sort((a,b)=>b.occurrences-a.occurrences||b.averageAmount-a.averageAmount||String(a.merchant).localeCompare(String(b.merchant)));
+    },
+
     async correctCategory(transactionId, category) {
       const transaction = await store.getTransaction(transactionId);
       if (!transaction) throw new Error('transaction not found: ' + transactionId);
@@ -259,6 +323,24 @@ export function registerFinanceCapabilities(naia, { service, userId }) {
         const categoryMatch = String(title ?? '').match(/em\s+([\p{L}\s]+?)\s+(?:este|nesse|no)\s+m[eê]s/iu);
         return { tool: 'finance.spending', input: { category: categoryMatch?.[1]?.trim() ?? null }, risk: 'SENSITIVE', requiresApproval: true };
       },
+    },
+  }));
+  registered.push(naia.registerCapability({
+    name: 'finance.spendingChange',
+    tool: { risk: 'SENSITIVE', capability: 'finance.read', description: 'Compares observed spending between two months', async run(input) { return service.spendingChange({ userId, ...input }); } },
+    rule: {
+      name: 'finance-spending-change',
+      match: ({ title }) => /gasto\s+(?:aumentou|diminuiu)|compar(?:e|ar).*gasto|m[eê]s\s+passado/i.test(String(title ?? '')),
+      action: () => ({ tool: 'finance.spendingChange', input: {}, risk: 'SENSITIVE', requiresApproval: true }),
+    },
+  }));
+  registered.push(naia.registerCapability({
+    name: 'finance.recurring',
+    tool: { risk: 'SENSITIVE', capability: 'finance.read', description: 'Finds evidence-grounded recurring expense patterns', async run(input) { return service.recurringExpenses({ userId, ...input }); } },
+    rule: {
+      name: 'finance-recurring',
+      match: ({ title }) => /gastos?\s+recorrentes?|assinaturas?|despesas?\s+recorrentes?/i.test(String(title ?? '')),
+      action: () => ({ tool: 'finance.recurring', input: {}, risk: 'SENSITIVE', requiresApproval: true }),
     },
   }));
   return registered;
