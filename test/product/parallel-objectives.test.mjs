@@ -3,6 +3,8 @@ import test from 'node:test';
 import { createEntitlementService } from '../../src/product/entitlements.mjs';
 import { createUsageMeter } from '../../src/product/metering.mjs';
 import { createParallelObjectiveService } from '../../src/product/parallel-objectives.mjs';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 
 async function waitFor(fn,{timeout=1000}={}){const started=Date.now();while(true){const value=await fn();if(value)return value;if(Date.now()-started>timeout)throw new Error('wait timeout');await new Promise(r=>setTimeout(r,5));}}
 function deferred(){let resolve,reject;const promise=new Promise((res,rej)=>{resolve=res;reject=rej;});return {promise,resolve,reject};}
@@ -74,4 +76,19 @@ test('metering counts each logical objective once under concurrency',async()=>{
   ]);
   await service.drain('u1');
   const usage=await meter.inspect({userId:'u1',metric:'executions.daily',window:'DAY'});assert.equal(usage.used,2);
+});
+
+test('parallel scheduling does not bypass normal approval semantics',async()=>{
+  const entitlements=createEntitlementService();await entitlements.setSubscription({userId:'u1',planId:'PRO'});
+  const naia=createNaiaService(createInMemoryPorts());
+  const executor={async run({objective}){return naia.pursueAction(objective);}};
+  const service=createParallelObjectiveService({entitlements,executor});
+  await Promise.all([
+    service.submit({userId:'u1',objective:{title:'write one',action:{tool:'note.write',input:{name:'a',content:'1'},risk:'LOCAL_WRITE',requiresApproval:true}}}),
+    service.submit({userId:'u1',objective:{title:'write two',action:{tool:'note.write',input:{name:'b',content:'2'},risk:'LOCAL_WRITE',requiresApproval:true}}}),
+  ]);
+  const done=await service.drain('u1');
+  assert.equal(done.terminal.length,2);
+  assert.ok(done.terminal.every(job=>job.status==='COMPLETED'));
+  assert.ok(done.terminal.every(job=>job.result.objective.status==='WAITING_APPROVAL'));
 });
