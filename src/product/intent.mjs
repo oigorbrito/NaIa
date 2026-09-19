@@ -33,7 +33,7 @@ export async function interpretText(input, context = {}, { rules = [] } = {}) {
   }
 
   const lower = original.toLowerCase();
-  if (lower === 'time' || lower.includes('what time') || lower.includes('current time')) {
+  if (lower === 'time' || lower.includes('what time') || lower.includes('current time') || /(?:que|qual)\s+horas?\b|hora\s+atual\b|que\s+hora\s+(?:e|é)\b/i.test(original)) {
     return result({ intent: 'TIME_QUERY', state: 'RECOGNIZED', original, provenance: 'deterministic.time' });
   }
   const uppercase = original.match(/^uppercase\s*:?\s*(.*)$/i);
@@ -43,6 +43,9 @@ export async function interpretText(input, context = {}, { rules = [] } = {}) {
   }
   const note = original.match(/^note\s+([^:]+):\s*(.+)$/i);
   if (note) return result({ intent: 'NOTE_WRITE', state: 'RECOGNIZED', parameters: { name: note[1].trim(), content: note[2].trim() }, original, provenance: 'deterministic.note' });
+  const naturalNote = original.match(/^(?:anote|anota|salve|guarde)\s+(?:uma\s+)?nota\s+(?:em|na|no)\s+([^:]+):\s*(.+)$/i);
+  if (naturalNote) return result({ intent: 'NOTE_WRITE', state: 'RECOGNIZED', parameters: { name: naturalNote[1].trim(), content: naturalNote[2].trim() }, original, provenance: 'deterministic.note-natural' });
+  if (/^(?:anote|anota|salve|guarde)\s+(?:uma\s+)?nota\b/i.test(original)) return result({ intent: 'NOTE_WRITE', state: 'MISSING_PARAMETER', original, provenance: 'deterministic.note-natural', missing: ['name','content'] });
   const task = original.match(/^remind\s+me(?:\s+on\s+([^:]+))?:\s*(.+)$/i);
   if (task) return result({ intent: 'TASK_CREATE', state: 'RECOGNIZED', parameters: { due: task[1]?.trim() ?? null, title: task[2].trim() }, original, provenance: 'deterministic.task' });
 
