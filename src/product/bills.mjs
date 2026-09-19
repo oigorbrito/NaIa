@@ -207,3 +207,15 @@ export function createBillService({ store = createMemoryBillStore(), taskService
     },
   };
 }
+
+export function registerBillCapabilities(naia,{service,userId}) {
+  if (!naia || typeof naia.registerCapability !== 'function') throw new Error('NaIA capability registration is required');
+  if (!service || !userId) throw new Error('bill service and userId are required');
+  return [
+    naia.registerCapability({ name:'bill.list', tool:{ risk:'SENSITIVE', capability:'bills.read', description:'Lists upcoming personal bills', async run(input){ return service.upcoming({ userId, ...input }); } } }),
+    naia.registerCapability({ name:'bill.create', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Creates a bill reminder', async run(input){ return service.create({ userId, ...input }); } } }),
+    naia.registerCapability({ name:'bill.update', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Updates future bill reminder state', async run(input){ const { billId, ...changes } = input; return service.update(billId, changes); } } }),
+    naia.registerCapability({ name:'bill.markPaid', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Marks the current bill occurrence paid without executing payment', async run(input){ return service.markPaid(input.billId); } } }),
+    naia.registerCapability({ name:'bill.skip', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Skips the current bill occurrence', async run(input){ return service.skip(input.billId); } } }),
+  ];
+}
