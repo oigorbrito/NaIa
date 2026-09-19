@@ -52,7 +52,7 @@ export function createFixtureBookingProvider({
       reservations.set(providerBookingId, { operation: 'CREATE', idempotencyKey, result: clone(result), state: 'CONFIRMED' });
       return result;
     },
-    async mutate({ providerBookingId, type, expectedRevision, targetOptionId = null, idempotencyKey }) {
+    async mutate({ providerBookingId, type, expectedRevision, targetOptionId = null, expectedTargetRevision = null, idempotencyKey }) {
       const duplicate = [...reservations.values()].find((row) => row.idempotencyKey === idempotencyKey && row.operation === type);
       if (duplicate) return clone(duplicate.result);
       const existing = reservations.get(providerBookingId);
@@ -68,6 +68,7 @@ export function createFixtureBookingProvider({
       if (type === 'RESCHEDULE') {
         const option = mutable.get(String(targetOptionId));
         if (!option || option.available === false) { const e = new Error('availability lost'); e.code = 'AVAILABILITY_LOST'; throw e; }
+        if (expectedTargetRevision != null && String(option.revision ?? '1') !== String(expectedTargetRevision)) { const e = new Error('target availability changed'); e.code = 'AVAILABILITY_CHANGED'; e.currentRevision = String(option.revision ?? '1'); throw e; }
         existing.result = { ...existing.result, optionId: String(targetOptionId), slot: option.slot, price: option.price ?? existing.result.price, revision: String(Number(existing.result.revision ?? 1) + 1) };
         existing.operation = 'RESCHEDULE'; existing.idempotencyKey = idempotencyKey;
         reservations.set(providerBookingId, existing);
@@ -151,7 +152,7 @@ export function createBookingService({ store = createMemoryBookingStore(), provi
           result = await provider.book({ optionId: payload.option.optionId, expectedRevision: payload.option.revision, idempotencyKey, intent: payload.intent });
           booking = { id: idFactory(), userId: action.userId, provider: providerName, providerBookingId: result.providerBookingId, state: 'CONFIRMED', optionId: result.optionId, slot: result.slot, price: result.price, terms: clone(result.terms), cancellationPolicy: clone(result.cancellationPolicy), revision: String(result.revision ?? '1'), createdAt: now(), updatedAt: now() };
         } else {
-          result = await provider.mutate({ providerBookingId: payload.providerBookingId, type: payload.type, expectedRevision: payload.expectedRevision, targetOptionId: payload.targetOption?.optionId ?? null, idempotencyKey });
+          result = await provider.mutate({ providerBookingId: payload.providerBookingId, type: payload.type, expectedRevision: payload.expectedRevision, targetOptionId: payload.targetOption?.optionId ?? null, expectedTargetRevision: payload.targetOption?.revision ?? null, idempotencyKey });
           booking = await store.getBooking(payload.bookingId);
           booking.state = payload.type === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED';
           booking.optionId = result.optionId; booking.slot = result.slot; booking.price = result.price; booking.revision = String(result.revision ?? booking.revision); booking.updatedAt = now();
