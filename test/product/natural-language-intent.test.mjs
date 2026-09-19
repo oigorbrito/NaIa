@@ -63,11 +63,52 @@ test('existing deterministic note syntax remains compatible', async () => {
   assert.equal(plan.steps[1].action.requiresApproval, true);
 });
 
-test('unsupported request remains non-destructive fallback', async () => {
+test('unsupported request fails closed without side-effect or fallback action', async () => {
   const interpretation = await interpretText('faça uma coisa completamente indefinida');
   assert.equal(interpretation.state, 'UNRECOGNIZED');
   const planner = createIntentPlanner();
   const plan = await planner.plan({ id: 'u1', title: 'faça uma coisa completamente indefinida' });
-  assert.equal(plan.steps[1].action.tool, 'text.echo');
-  assert.equal(plan.steps[1].action.risk, 'READ_ONLY');
+  assert.equal(plan.steps[1].status, 'FAILED');
+  assert.equal(plan.steps[1].action, null);
+  assert.equal(plan.steps[1].error, 'UNSUPPORTED_INTENT');
+});
+
+test('Portuguese natural-language time query maps to the same read-only time action', async () => {
+  const planner=createIntentPlanner();
+  for (const title of ['que horas são?', 'qual a hora atual?', 'que hora é']) {
+    const plan=await planner.plan({id:`time-${title}`,title});
+    assert.equal(plan.steps[1].action.tool,'time.now');
+    assert.equal(plan.steps[1].action.risk,'READ_ONLY');
+    assert.equal(plan.steps[1].action.requiresApproval,false);
+  }
+});
+
+test('Portuguese natural-language note maps to the same approval-gated note.write action', async () => {
+  const planner=createIntentPlanner();
+  const plan=await planner.plan({id:'note-natural',title:'anote uma nota em inbox: comprar filtro de café'});
+  assert.equal(plan.steps[1].action.tool,'note.write');
+  assert.deepEqual(plan.steps[1].action.input,{name:'inbox',content:'comprar filtro de café'});
+  assert.equal(plan.steps[1].action.risk,'LOCAL_WRITE');
+  assert.equal(plan.steps[1].action.requiresApproval,true);
+});
+
+test('incomplete natural-language note fails closed with missing parameters', async () => {
+  const planner=createIntentPlanner();
+  const plan=await planner.plan({id:'note-missing',title:'anote uma nota'});
+  assert.equal(plan.interpretation.state,'MISSING_PARAMETER');
+  assert.equal(plan.steps[1].status,'FAILED');
+  assert.equal(plan.steps[1].action,null);
+});
+
+test('pre-normalized structured intent preserves the same calendar action/risk semantics', async () => {
+  const planner=createIntentPlanner();
+  const plan=await planner.plan({
+    id:'structured-calendar',
+    title:'ignored display title',
+    normalizedIntent:{type:'CALENDAR_CREATE',parameters:{title:'Demo',start:'2026-09-20T10:00:00',end:'2026-09-20T11:00:00'}},
+  });
+  assert.equal(plan.steps[1].action.tool,'calendar.create');
+  assert.equal(plan.steps[1].action.risk,'EXTERNAL_WRITE');
+  assert.equal(plan.steps[1].action.requiresApproval,true);
+  assert.deepEqual(plan.steps[1].action.input,{title:'Demo',start:'2026-09-20T10:00:00',end:'2026-09-20T11:00:00'});
 });
