@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   buildShoppingProposal,
+  createFileShoppingStore,
   createFixtureShoppingProvider,
   createShoppingService,
   normalizeShoppingItems,
+  proposeShoppingCommit,
+  registerShoppingCapabilities,
 } from '../../src/product/shopping.mjs';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 
 test('normalizes shopping items with quantities and substitution policy', () => {
   assert.deepEqual(normalizeShoppingItems([
@@ -103,4 +111,59 @@ test('cancelled pending order cannot later execute without renewed action', asyn
   await service.approve(action.id,action.fingerprint);
   await service.cancel(action.id);
   await assert.rejects(service.execute(action.id,{fingerprint:action.fingerprint,idempotencyKey:'cancelled-order'}),(error)=>error.code==='APPROVAL_REQUIRED');
+});
+
+test('shopping action and commit ledger survive restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-shopping-'));
+  try{
+    const provider=createFixtureShoppingProvider({name:'store',catalog:{rice:{unitPrice:10}}});
+    const first=createShoppingService({providers:[provider],store:createFileShoppingStore({rootDir:dir}),idFactory:()=> 'action-1'});
+    const quote=await first.quote({items:[{name:'rice',quantity:2}]});
+    const action=await first.prepareOrder({userId:'u1',quoteResult:quote});
+    await first.approve(action.id,action.fingerprint);
+    await first.execute(action.id,{fingerprint:action.fingerprint,idempotencyKey:'order-1'});
+    const second=createShoppingService({providers:[provider],store:createFileShoppingStore({rootDir:dir})});
+    const duplicate=await second.execute(action.id,{fingerprint:action.fingerprint,idempotencyKey:'order-1'});
+    assert.equal(duplicate.duplicate,true);
+    assert.equal(provider.orders().length,1);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('shopping purchase goes through normal WAITING_APPROVAL runtime state',async()=>{
+  const provider=createFixtureShoppingProvider({name:'store',catalog:{rice:{unitPrice:10}}});
+  const service=createShoppingService({providers:[provider],idFactory:()=> 'action-1'});
+  const quote=await service.quote({items:[{name:'rice'}]});
+  const action=await service.prepareOrder({userId:'u1',quoteResult:quote});
+  const naia=createNaiaService(createInMemoryPorts());
+  registerShoppingCapabilities(naia,{service});
+  const pending=await proposeShoppingCommit(naia,action,{idempotencyKey:'runtime-order'});
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
+  assert.equal(provider.orders().length,0);
+  const completed=await naia.approve(pending.objective.id,'shopping.commit');
+  assert.equal(completed.objective.status,'COMPLETED');
+  assert.equal(provider.orders().length,1);
+});
+
+test('quote revision drift after runtime approval prevents order and requires review',async()=>{
+  const provider=createFixtureShoppingProvider({name:'store',catalog:{rice:{unitPrice:10}}});
+  const service=createShoppingService({providers:[provider],idFactory:()=> 'action-1'});
+  const quote=await service.quote({items:[{name:'rice'}]});
+  const action=await service.prepareOrder({userId:'u1',quoteResult:quote});
+  const naia=createNaiaService(createInMemoryPorts());registerShoppingCapabilities(naia,{service});
+  const pending=await proposeShoppingCommit(naia,action,{idempotencyKey:'stale-runtime'});
+  provider.setRevision('2');
+  const failed=await naia.approve(pending.objective.id,'shopping.commit');
+  assert.equal(failed.objective.status,'FAILED');
+  assert.equal((await service.getAction(action.id)).status,'WAITING_REVIEW');
+  assert.equal(provider.orders().length,0);
+});
+
+test('cancelled shopping action remains non-executable through runtime commit capability',async()=>{
+  const provider=createFixtureShoppingProvider({name:'store',catalog:{rice:{unitPrice:10}}});
+  const service=createShoppingService({providers:[provider],idFactory:()=> 'action-1'});
+  const quote=await service.quote({items:[{name:'rice'}]});const action=await service.prepareOrder({userId:'u1',quoteResult:quote});await service.cancel(action.id);
+  const naia=createNaiaService(createInMemoryPorts());registerShoppingCapabilities(naia,{service});
+  const pending=await proposeShoppingCommit(naia,action,{idempotencyKey:'cancelled'});
+  const failed=await naia.approve(pending.objective.id,'shopping.commit');
+  assert.equal(failed.objective.status,'FAILED');assert.equal(provider.orders().length,0);
 });
