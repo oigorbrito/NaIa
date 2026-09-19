@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value) { return structuredClone(value); }
 function fp(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
@@ -96,6 +98,21 @@ export function createMemoryShoppingStore() {
   };
 }
 
+async function readShoppingJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {actions:{},commits:{}};throw error;}}
+async function writeShoppingJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileShoppingStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'shopping.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readShoppingJson(path);const result=await fn(data);await writeShoppingJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveAction(row){return mutate(data=>{data.actions[row.id]=clone(row);return row;});},
+    async getAction(id){const data=await readShoppingJson(path);return data.actions?.[String(id)]?clone(data.actions[String(id)]):null;},
+    async saveCommit(key,row){return mutate(data=>{data.commits[key]=clone(row);return row;});},
+    async getCommit(key){const data=await readShoppingJson(path);return data.commits?.[String(key)]?clone(data.commits[String(key)]):null;},
+  };
+}
+
 export function createShoppingService({ providers = [], store = createMemoryShoppingStore(), idFactory = randomUUID, now = () => new Date().toISOString() } = {}) {
   const providerMap = new Map(providers.map((p)=>[p.name,p]));
   return {
@@ -136,7 +153,38 @@ export function createShoppingService({ providers = [], store = createMemoryShop
         throw error;
       }
     },
+    async executeRuntimeApproved(actionId,{fingerprint,idempotencyKey}){
+      const action=await store.getAction(actionId);if(!action)throw new Error('shopping action not found');
+      if(action.fingerprint!==fingerprint){const e=new Error('shopping approval mismatch');e.code='APPROVAL_MISMATCH';throw e;}
+      if(action.status==='WAITING_REVIEW'||action.status==='CANCELLED'){const e=new Error('shopping action is not executable');e.code='APPROVAL_REQUIRED';throw e;}
+      if(action.status!=='APPROVED'){action.status='APPROVED';action.approvedAt=now();action.updatedAt=now();await store.saveAction(action);}
+      return this.execute(actionId,{fingerprint,idempotencyKey});
+    },
     async cancel(actionId){ const action=await store.getAction(actionId); if(!action) throw new Error('shopping action not found'); if(action.status!=='COMPLETED') action.status='CANCELLED'; action.updatedAt=now(); await store.saveAction(action); return clone(action); },
     async getAction(id){ return store.getAction(id); },
   };
+}
+
+export function registerShoppingCapabilities(naia,{service}={}){
+  if(!naia||typeof naia.registerCapability!=='function')throw new Error('NaIA capability registration is required');
+  if(!service)throw new Error('shopping service is required');
+  return naia.registerCapability({
+    name:'shopping.commit',
+    tool:{
+      risk:'EXTERNAL_WRITE',capability:'shopping.purchase',description:'Commits one concrete approved shopping cart',
+      async run(input){return service.executeRuntimeApproved(input.actionId,{fingerprint:input.fingerprint,idempotencyKey:input.idempotencyKey});},
+    },
+  });
+}
+
+export async function proposeShoppingCommit(naia,action,{idempotencyKey}={}){
+  if(!naia||typeof naia.pursueAction!=='function')throw new Error('NaIA pursueAction is required');
+  if(!action?.id||!action?.fingerprint)throw new Error('prepared shopping action is required');
+  const key=idempotencyKey??`shopping:${action.id}`;
+  return naia.pursueAction({
+    id:`shopping-objective:${action.id}`,
+    title:`Approve shopping order ${action.payload?.provider??''}`.trim(),
+    intent:'SHOPPING_COMMIT',
+    action:{tool:'shopping.commit',input:{actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:key},risk:'EXTERNAL_WRITE',requiresApproval:true},
+  });
 }
