@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createInMemoryPorts } from '../../src/product/ports.mjs';
-import { createAutomationService, createMemoryAutomationStore, createNaiaAutomationDispatcher } from '../../src/product/automations.mjs';
-import { createConditionWatchService, createMemoryConditionWatchStore, evaluateWatchPredicate } from '../../src/product/condition-watches.mjs';
+import { createAutomationService, createFileAutomationStore, createMemoryAutomationStore, createNaiaAutomationDispatcher } from '../../src/product/automations.mjs';
+import { createConditionWatchService, createFileConditionWatchStore, createMemoryConditionWatchStore, evaluateWatchPredicate } from '../../src/product/condition-watches.mjs';
 
 function fixture({watchStore=createMemoryConditionWatchStore(),automationStore=createMemoryAutomationStore(),clock='2026-09-19T13:00:00Z'}={}){
   const naia=createNaiaService(createInMemoryPorts());
@@ -115,4 +118,32 @@ test('watch cadence is normalized and rejects sub-hour polling intervals',async(
     /at least 60 minutes/,
   );
   assert.equal((await automationService.list('u1')).length,1);
+});
+
+test('watch state and notification deduplication survive full file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-watch-'));
+  try{
+    const naia1=createNaiaService(createInMemoryPorts());
+    const automationStore1=createFileAutomationStore({rootDir:dir});
+    const automation1=createAutomationService({store:automationStore1,dispatcher:createNaiaAutomationDispatcher(naia1),now:()=> '2026-09-19T13:00:00Z'});
+    const watch1=createConditionWatchService({store:createFileConditionWatchStore({rootDir:dir}),automationService:automation1,idFactory:()=> 'watch-1',now:()=> '2026-09-19T13:00:00Z'});
+    const watch=await watch1.create({userId:'u1',name:'price',predicate:{kind:'PRICE_LTE',target:100},action:{tool:'text.echo',input:{text:'hit'},risk:'READ_ONLY'}});
+    const hit=await watch1.observe(watch.id,{source:'store',value:90});assert.equal(hit.notified,true);
+    const naia2=createNaiaService(createInMemoryPorts());
+    const automation2=createAutomationService({store:createFileAutomationStore({rootDir:dir}),dispatcher:createNaiaAutomationDispatcher(naia2),now:()=> '2026-09-19T14:00:00Z'});
+    const watch2=createConditionWatchService({store:createFileConditionWatchStore({rootDir:dir}),automationService:automation2,now:()=> '2026-09-19T14:00:00Z'});
+    const duplicate=await watch2.observe(watch.id,{source:'store',value:90});
+    assert.equal(duplicate.status,'DUPLICATE_UNCHANGED');assert.equal(duplicate.notified,false);
+    assert.equal((await watch2.get(watch.id)).lastMatched,true);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('provider failure ledger redacts raw provider message',async()=>{
+  const {watchService}=fixture();
+  const watch=await watchService.create({userId:'u1',name:'price',predicate:{kind:'PRICE_LTE',target:100},action:{tool:'text.echo',input:{text:'hit'},risk:'READ_ONLY'}});
+  await watchService.recordFailure(watch.id,{source:'store',code:'AUTH_FAILED',retryable:false,message:'Bearer super-secret'});
+  const [failure]=await watchService.failures(watch.id);
+  assert.equal(failure.code,'AUTH_FAILED');
+  assert.equal(failure.message,'[REDACTED_PROVIDER_ERROR]');
+  assert.equal(JSON.stringify(failure).includes('super-secret'),false);
 });
