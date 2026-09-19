@@ -22,10 +22,13 @@ function objectiveView(snapshot) {
   const pendingApprovals = steps.filter((step) => step.status === 'AWAITING_APPROVAL').map((step) => ({
     objectiveId: objective.id, stepId: step.id, tool: step.tool, risk: step.risk,
   }));
+  const pendingConfirmations = (plan?.steps ?? []).filter((step) => step.status === 'AWAITING_CONFIRMATION').map((step) => ({
+    objectiveId: objective.id, stepId: step.id, confirmationId: String(step.confirmation?.id ?? ''), payload: clone(step.confirmation?.payload ?? null),
+  }));
   return {
     id: objective.id, title: objective.title, description: objective.description ?? '',
     status: objective.status, createdAt: objective.createdAt, updatedAt: objective.updatedAt,
-    steps, pendingApprovals, evidence: clone(evidence),
+    steps, pendingApprovals, pendingConfirmations, evidence: clone(evidence),
   };
 }
 
@@ -74,7 +77,22 @@ export function createFrontendApi({
           const view = objectiveView(snapshot);
           items.push(...view.pendingApprovals);
         }
-        return { ok: true, approvals: items, confirmations: [] };
+        const confirmations = [];
+        for (const row of history) {
+          if (row.status !== 'WAITING_CONFIRMATION') continue;
+          const snapshot = await naia.get(row.id);
+          const view = objectiveView(snapshot);
+          confirmations.push(...view.pendingConfirmations);
+        }
+        return { ok: true, approvals: items, confirmations };
+      } catch (error) { return { ok: false, error: normalizeError(error) }; }
+    },
+
+    async confirm({ objectiveId, confirmationId }) {
+      if (typeof naia.confirm !== 'function') return { ok: false, error: { code: 'CAPABILITY_UNAVAILABLE', message: 'confirmation action unavailable', retryable: false } };
+      try {
+        await naia.confirm(objectiveId, confirmationId);
+        return { ok: true, objective: objectiveView(await naia.get(objectiveId)) };
       } catch (error) { return { ok: false, error: normalizeError(error) }; }
     },
 
