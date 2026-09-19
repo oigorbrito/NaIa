@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value){ return value==null?value:structuredClone(value); }
 
@@ -7,6 +9,19 @@ export function createMemoryVoiceStore(){
   return {
     async save(row){ rows.set(row.id,clone(row)); return clone(row); },
     async get(id){ const row=rows.get(id); return row?clone(row):null; },
+  };
+}
+
+async function readVoiceJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {rows:{}};throw error;}}
+async function writeVoiceJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileVoiceStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'voice-input.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readVoiceJson(path);const result=await fn(data);await writeVoiceJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async save(row){return mutate(data=>{data.rows[row.id]=clone(row);return row;});},
+    async get(id){const data=await readVoiceJson(path);return data.rows?.[String(id)]?clone(data.rows[String(id)]):null;},
   };
 }
 
@@ -59,7 +74,7 @@ export function createVoiceInputService({
       }
       let providerResult;
       try{ providerResult=await transcriber.transcribe({audioRef,mimeType:String(mimeType).toLowerCase(),languageHint}); }
-      catch(error){ return {status:'TRANSCRIPTION_FAILED',objective:null,error:{code:error?.code??'TRANSCRIPTION_FAILED',message:error?.message??String(error),retryable:Boolean(error?.retryable)}}; }
+      catch(error){ return {status:'TRANSCRIPTION_FAILED',objective:null,error:{code:error?.code??'TRANSCRIPTION_FAILED',retryable:Boolean(error?.retryable)}}; }
       const confidence=Number(providerResult?.confidence);
       const text=String(providerResult?.text??'').trim();
       if(!text){ const row=await persist({audioRef,mimeType,providerResult,status:'TRANSCRIPTION_EMPTY'}); return {status:row.status,submission:row,objective:null}; }

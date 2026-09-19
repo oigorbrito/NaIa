@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createInMemoryPorts } from '../../src/product/ports.mjs';
-import { createFixtureTranscriptionProvider, createVoiceInputService } from '../../src/product/voice-input.mjs';
+import { createFileVoiceStore, createFixtureTranscriptionProvider, createVoiceInputService } from '../../src/product/voice-input.mjs';
 
 function naia(){ return createNaiaService(createInMemoryPorts()); }
 
@@ -91,4 +94,45 @@ test('invalid confirmation state fails closed',async()=>{
   const voice=createVoiceInputService({transcriber,naia:runtime,idFactory:()=> 'voice-done'});
   const submitted=await voice.submit({audioRef:'audio://done',mimeType:'audio/ogg'});
   await assert.rejects(voice.confirmTranscript(submitted.submission.id),(error)=>error.code==='INVALID_VOICE_STATE');
+});
+
+test('pending low-confidence transcript can be confirmed after service restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-voice-'));
+  try{
+    const runtime=naia();
+    const transcriber=createFixtureTranscriptionProvider({name:'stt',result:{id:'t1',text:'note inbox send',language:'en',confidence:0.4}});
+    const store=createFileVoiceStore({rootDir:dir});
+    const first=createVoiceInputService({transcriber,naia:runtime,store,minConfidence:0.75,idFactory:()=> 'voice-1',now:()=> '2026-09-19T14:00:00Z'});
+    const pending=await first.submit({audioRef:'audio://1',mimeType:'audio/ogg'});
+    assert.equal(pending.status,'NEEDS_TRANSCRIPT_CONFIRMATION');
+    const second=createVoiceInputService({transcriber,naia:runtime,store:createFileVoiceStore({rootDir:dir}),minConfidence:0.75,now:()=> '2026-09-19T15:00:00Z'});
+    const confirmed=await second.confirmTranscript('voice-1',{text:'note inbox: send it'});
+    assert.equal(confirmed.status,'SUBMITTED');
+    assert.equal(confirmed.objective.objective.status,'WAITING_APPROVAL');
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('file-backed voice provenance excludes provider secret and raw provider error messages',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-voice-private-'));
+  try{
+    const runtime=naia();
+    const transcriber=createFixtureTranscriptionProvider({name:'stt',result:{id:'remote-1',text:'uppercase: x',language:'en',confidence:0.99}});
+    transcriber.secret='do-not-store';
+    const store=createFileVoiceStore({rootDir:dir});
+    const voice=createVoiceInputService({transcriber,naia:runtime,store,retentionPolicy:'NONE',idFactory:()=> 'voice-1'});
+    await voice.submit({audioRef:'audio://private',mimeType:'audio/ogg'});
+    const text=await readFile(store.path,'utf8');
+    assert.equal(text.includes('do-not-store'),false);
+    assert.equal(text.includes('audio://private'),false);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('transcription provider failure response omits raw provider message',async()=>{
+  const runtime=naia();
+  const transcriber=createFixtureTranscriptionProvider({fail:{code:'AUTH_FAILED',message:'Bearer super-secret',retryable:false}});
+  const voice=createVoiceInputService({transcriber,naia:runtime});
+  const result=await voice.submit({audioRef:'audio://x',mimeType:'audio/ogg'});
+  assert.equal(result.status,'TRANSCRIPTION_FAILED');
+  assert.deepEqual(result.error,{code:'AUTH_FAILED',retryable:false});
+  assert.equal(JSON.stringify(result).includes('super-secret'),false);
 });
