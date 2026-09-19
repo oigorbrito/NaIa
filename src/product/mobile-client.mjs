@@ -87,6 +87,34 @@ export function createMobileClient({frontendApi,platform,cache=createMemoryMobil
     },
     async cancelAutomation(id){await requireOnline();return frontendApi.cancelAutomation(id);},
 
+    async history(){
+      if(online)return frontendApi.history();
+      const cached=await cache.get();
+      const value=cached?.surfaces?.history;
+      return value?{...clone(value),offline:true}:{ok:false,offline:true,error:{code:'NOT_AVAILABLE_OFFLINE',retryable:true}};
+    },
+
+    async connectors(){
+      if(online)return frontendApi.connectorState();
+      const cached=await cache.get();
+      const value=cached?.surfaces?.connectors;
+      return value?{...clone(value),offline:true}:{ok:false,offline:true,error:{code:'NOT_AVAILABLE_OFFLINE',retryable:true}};
+    },
+
+    async premiumState(){
+      if(online)return frontendApi.premiumState();
+      const cached=await cache.get();
+      const value=cached?.surfaces?.premium;
+      return value?{...clone(value),offline:true}:{ok:false,offline:true,error:{code:'NOT_AVAILABLE_OFFLINE',retryable:true}};
+    },
+
+    async media(){
+      if(online)return frontendApi.mediaState();
+      const cached=await cache.get();
+      const value=cached?.surfaces?.media;
+      return value?{...clone(value),offline:true}:{ok:false,offline:true,error:{code:'NOT_AVAILABLE_OFFLINE',retryable:true}};
+    },
+
     async scheduleBackground({id,task}){
       return platform.invoke('background.schedule',{operation:'schedule',id,task:clone(task)});
     },
