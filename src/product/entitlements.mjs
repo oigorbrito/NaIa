@@ -9,38 +9,41 @@ function normalizeCapability(value) { return String(value ?? '').trim().toLowerC
 export const DEFAULT_PLAN_DEFINITIONS = Object.freeze({
   FREE: Object.freeze({
     id: 'FREE',
-    capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary']),
-    attributes: Object.freeze({ supportPriority: 'STANDARD' }),
+    capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary', 'image.generate']),
+    attributes: Object.freeze({ supportPriority: 'STANDARD', imageQuality: 'standard', imageWatermark: true }),
     limits: Object.freeze({
       'executions.daily': 25,
       'executions.monthly': 500,
       'scheduledTasks.active': 5,
       'modelUnits.monthly': 100,
       'objectives.concurrent': 1,
+      'imageGenerations.monthly': 5,
     }),
   }),
   PRO: Object.freeze({
     id: 'PRO',
-    capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary', 'finance.read', 'drive.read', 'email.read', 'email.send', 'media.intake', 'model.advanced']),
-    attributes: Object.freeze({ supportPriority: 'PRIORITY' }),
+    capabilities: Object.freeze(['core.chat', 'tasks.reminders', 'nutrition.diary', 'finance.read', 'drive.read', 'email.read', 'email.send', 'media.intake', 'model.advanced', 'image.generate']),
+    attributes: Object.freeze({ supportPriority: 'PRIORITY', imageQuality: 'high', imageWatermark: false }),
     limits: Object.freeze({
       'executions.daily': 250,
       'executions.monthly': 5000,
       'scheduledTasks.active': 50,
       'modelUnits.monthly': 2500,
       'objectives.concurrent': 2,
+      'imageGenerations.monthly': 100,
     }),
   }),
   ULTRA: Object.freeze({
     id: 'ULTRA',
     capabilities: Object.freeze(['*']),
-    attributes: Object.freeze({ supportPriority: 'PRIORITY' }),
+    attributes: Object.freeze({ supportPriority: 'PRIORITY', imageQuality: 'premium', imageWatermark: false }),
     limits: Object.freeze({
       'executions.daily': 1000,
       'executions.monthly': 25000,
       'scheduledTasks.active': 100,
       'modelUnits.monthly': 15000,
       'objectives.concurrent': 5,
+      'imageGenerations.monthly': 500,
     }),
   }),
 });
