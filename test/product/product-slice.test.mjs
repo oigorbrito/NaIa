@@ -107,3 +107,26 @@ test('tool catalog exposes risk classification', () => {
   assert.deepEqual(tools.find((tool) => tool.name === 'note.write'), { name: 'note.write', risk: 'LOCAL_WRITE' });
   assert.deepEqual(tools.find((tool) => tool.name === 'text.uppercase'), { name: 'text.uppercase', risk: 'READ_ONLY' });
 });
+
+test('non-READ_ONLY step requires approval even if requiresApproval flag is false', async () => {
+  const ports = createInMemoryPorts();
+  ports.planner.plan = async (objective) => ({
+    objectiveId: objective.id,
+    intent: objective.title,
+    steps: [
+      {
+        id: `${objective.id}:write`,
+        kind: 'EXECUTE',
+        status: 'PENDING',
+        action: { tool: 'note.write', input: { name: 'bypass', content: 'test' }, risk: 'LOCAL_WRITE', requiresApproval: false },
+      },
+    ],
+  });
+
+  const naia = createNaiaService(ports);
+  const result = await naia.pursue({ title: 'test authorization bypass' });
+
+  assert.equal(result.objective.status, 'WAITING_APPROVAL');
+  assert.equal(result.authorization.reason, 'approval-required');
+  assert.equal(result.authorization.tool, 'note.write');
+});
