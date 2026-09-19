@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 const terminalStates = new Set(['COMPLETED', 'FAILED', 'CANCELLED']);
 
@@ -56,6 +58,36 @@ export function createMemoryRelayStore() {
   };
 }
 
+async function readRelayJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { runs: {} }; throw error; }
+}
+async function writeRelayJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileRelayStore({ rootDir = '.naia-relay-spike' } = {}) {
+  const path = join(rootDir, 'runs.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(() => {}).then(async () => {
+      const data = await readRelayJson(path);
+      const result = await fn(data);
+      await writeRelayJsonAtomic(path, data);
+      return clone(result);
+    });
+    return chain;
+  }
+  return {
+    path,
+    async save(run) { return mutate((data) => { data.runs[run.objectiveId] = clone(run); return run; }); },
+    async get(objectiveId) { const data = await readRelayJson(path); const row = data.runs?.[String(objectiveId)]; return row ? clone(row) : null; },
+  };
+}
+
 export function createRelayMinimalRuntime(rawPorts, {
   maxRetries = 1,
   maxRestarts = 1,
@@ -82,6 +114,20 @@ export function createRelayMinimalRuntime(rawPorts, {
   }
 
   async function executeStep(run, step) {
+    const confirmation = step.confirmation;
+    const confirmationId = confirmation?.id ? String(confirmation.id) : null;
+    const confirmed = confirmationId && run.confirmations.includes(confirmationId);
+    if (confirmation?.required && !confirmed) {
+      step.status = 'AWAITING_CONFIRMATION';
+      run.state = 'WAITING_CONFIRMATION';
+      await emit(run, 'confirmation_wait_started', {
+        stepId: step.id,
+        confirmationId,
+        payload: clone(confirmation.payload ?? null),
+      });
+      return false;
+    }
+
     const authorization = await ports.policy.authorize({ run: clone(run), step: clone(step) });
     if (!authorization?.allowed) {
       step.status = 'AWAITING_APPROVAL';
@@ -207,6 +253,7 @@ export function createRelayMinimalRuntime(rawPorts, {
         description: String(input.description ?? '').trim(),
         state: 'PLANNED',
         approvals: [],
+        confirmations: [],
         plan: clone(plan),
         usage: { tokens: 0, cost: 0 },
         retryCount: 0,
@@ -217,6 +264,20 @@ export function createRelayMinimalRuntime(rawPorts, {
       };
       await ports.runs.save(run);
       await emit(run, 'objective_persisted');
+      return clone(await drive(run));
+    },
+
+    async confirm(objectiveId, confirmationId) {
+      const run = await ports.runs.get(objectiveId);
+      if (!run) throw new Error('objective not found: ' + objectiveId);
+      const value = String(confirmationId ?? '').trim();
+      if (!value) throw new Error('confirmation id is required');
+      const step = run.plan.steps.find((candidate) => candidate.status === 'AWAITING_CONFIRMATION' && String(candidate.confirmation?.id ?? '') === value);
+      if (!step) { const error = new Error('confirmation is not pending: ' + value); error.code = 'CONFIRMATION_MISMATCH'; throw error; }
+      if (!run.confirmations.includes(value)) run.confirmations.push(value);
+      step.status = 'PENDING';
+      run.state = 'PLANNED';
+      await emit(run, 'confirmation_received', { confirmationId: value, stepId: step.id });
       return clone(await drive(run));
     },
 
