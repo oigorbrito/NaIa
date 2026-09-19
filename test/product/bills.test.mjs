@@ -3,7 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { addMonthsClamped, createBillService, createFileBillStore, createMemoryBillStore } from '../../src/product/bills.mjs';
+import { addMonthsClamped, createBillService, createFileBillStore, createMemoryBillStore, registerBillCapabilities } from '../../src/product/bills.mjs';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
+import { createFrontendApi } from '../../src/product/frontend-api.mjs';
 import { createMemoryScheduler, createMemoryTaskStore, createTaskService } from '../../src/product/tasks.mjs';
 
 function fixture() {
@@ -153,4 +156,52 @@ test('file-backed bill store preserves bills and reminder delivery deduplication
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('generic runtime bill writes remain approval-gated and reads remain sensitive', async () => {
+  const { service } = fixture();
+  const naia = createNaiaService(createInMemoryPorts());
+  registerBillCapabilities(naia, { service, userId: 'u1' });
+  const create = await naia.pursueAction({
+    title: 'Create bill reminder',
+    action: { tool:'bill.create', input:{ name:'internet', dueDate:'2026-09-30', amount:120, leadTimesDays:[1] }, risk:'LOCAL_WRITE', requiresApproval:true },
+  });
+  assert.equal(create.objective.status, 'WAITING_APPROVAL');
+  assert.equal((await service.list('u1')).length, 0);
+  await naia.approve(create.objective.id, 'bill.create');
+  assert.equal((await service.list('u1')).length, 1);
+  const read = await naia.pursueAction({
+    title: 'List bills',
+    action: { tool:'bill.list', input:{ asOf:'2026-09-19', days:30 }, risk:'SENSITIVE', requiresApproval:true },
+  });
+  assert.equal(read.objective.status, 'WAITING_APPROVAL');
+});
+
+test('mark-paid runtime capability never performs a payment and only changes reminder state', async () => {
+  const { service } = fixture();
+  const bill = await service.create({ userId:'u1', name:'rent', dueDate:'2026-09-30', amount:1000, leadTimesDays:[0] });
+  const naia = createNaiaService(createInMemoryPorts());
+  registerBillCapabilities(naia, { service, userId:'u1' });
+  const pending = await naia.pursueAction({
+    title:'Mark bill paid',
+    action:{ tool:'bill.markPaid', input:{ billId:bill.id }, risk:'LOCAL_WRITE', requiresApproval:true },
+  });
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
+  await naia.approve(pending.objective.id,'bill.markPaid');
+  const updated = await service.get(bill.id);
+  assert.equal(updated.occurrences[0].status,'PAID');
+  assert.equal('paymentId' in updated,false);
+});
+
+test('frontend bill surface exposes upcoming and overdue states without requiring a dedicated client implementation', async () => {
+  const { service } = fixture();
+  await service.create({ userId:'u1', name:'internet', dueDate:'2026-09-25', amount:120, leadTimesDays:[0] });
+  await service.create({ userId:'u1', name:'water', dueDate:'2026-09-18', amount:80, leadTimesDays:[0] });
+  const fakeNaia = { async pursue(){}, async get(){ return { objective:null }; }, async history(){ return []; }, async approve(){}, async resume(){} };
+  const api = createFrontendApi({ naia:fakeNaia, userId:'u1', bills:service });
+  const state = await api.billState({ asOf:'2026-09-19', days:30 });
+  assert.equal(state.ok,true);
+  assert.equal(state.available,true);
+  assert.deepEqual(state.items.map((row)=>row.name),['internet']);
+  assert.deepEqual(state.overdue.map((row)=>row.name),['water']);
 });
