@@ -125,3 +125,13 @@ Result:
 `RELAY_MINIMAL_CHASSIS = USEFUL_PATTERN_SOURCE / FULL_MIGRATION_NOT_JUSTIFIED_V1`
 
 This result does not select the current chassis permanently. A different complete runtime can still replace it if a future benchmark shows a materially better residual maintenance/performance profile.
+
+## CI observation for PR #151
+
+The repository `Research Chassis Harness` workflow was triggered twice (initial run plus one targeted rerun of the failed Node 22 job). In both attempts the failed job recorded **zero workflow steps**; the Node 24 matrix job was cancelled. Therefore this check did not execute `checkout`, Node setup, or `npm test` and is not evidence of a product/spike test failure.
+
+This comparison must not label that workflow as PASS. The recorded state is:
+
+`RESEARCH_CHASSIS_WORKFLOW = INFRASTRUCTURE/PRE-STEP_FAILURE (NOT_EXECUTED)`
+
+The PR remains structurally mergeable, but current CI status is not accepted as runtime validation.
