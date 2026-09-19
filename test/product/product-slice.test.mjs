@@ -491,3 +491,29 @@ test('non-read-only action cannot bypass approval by falsifying requiresApproval
   assert.equal(authorization.allowed, false);
   assert.equal(authorization.reason, 'approval-required');
 });
+
+test('file ports serialize concurrent objective saves without data loss', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'naia-concurrent-objectives-'));
+  try {
+    const ports = createFilePorts({ rootDir });
+    const objectives = Array.from({ length: 10 }, (_, index) => ({ id: `obj-${index}`, title: `Title ${index}` }));
+    await Promise.all(objectives.map((objective) => ports.objectives.save(objective)));
+    const list = await ports.objectives.list();
+    assert.equal(list.length, 10);
+    for (const objective of objectives) assert.ok(list.some((row) => row.id === objective.id));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('file ports serialize concurrent plan saves without data loss', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'naia-concurrent-plans-'));
+  try {
+    const ports = createFilePorts({ rootDir });
+    const plans = Array.from({ length: 10 }, (_, index) => ({ objectiveId: `obj-${index}`, steps: [] }));
+    await Promise.all(plans.map((plan) => ports.plans.save(plan)));
+    for (const plan of plans) assert.deepEqual(await ports.plans.get(plan.objectiveId), plan);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
