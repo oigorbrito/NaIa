@@ -41,6 +41,7 @@ export function createFrontendApi({
   connectors = null,
   historyIndex = null,
   bills = null,
+  media = null,
 } = {}) {
   if (!naia || typeof naia.pursue !== 'function' || typeof naia.get !== 'function') throw new Error('NaIA service is required');
   if (!userId) throw new Error('userId is required');
@@ -175,6 +176,12 @@ export function createFrontendApi({
       } catch (error) { return { ok: false, error: normalizeError(error) }; }
     },
 
+    async mediaState() {
+      if (!media || typeof media.list !== 'function') return { ok: true, available: false, items: [] };
+      try { return { ok: true, available: true, items: clone(await media.list({ userId })) }; }
+      catch (error) { return { ok: false, error: normalizeError(error) }; }
+    },
+
     async connectorState() {
       if (!connectors || typeof connectors.list !== 'function') return { ok: true, available: false, connectors: [] };
       try { return { ok: true, available: true, connectors: clone(await connectors.list({ userId })) }; }
@@ -182,13 +189,13 @@ export function createFrontendApi({
     },
 
     async shell() {
-      const [history, advancedHistory, approvals, automations, billsState, premium, connectorState] = await Promise.all([
-        this.history(), this.historySearch({ limit: 20 }), this.approvals(), this.automations(), this.billState(), this.premiumState(), this.connectorState(),
+      const [history, advancedHistory, approvals, automations, billsState, premium, connectorState, mediaState] = await Promise.all([
+        this.history(), this.historySearch({ limit: 20 }), this.approvals(), this.automations(), this.billState(), this.premiumState(), this.connectorState(), this.mediaState(),
       ]);
       return {
-        ok: [history, advancedHistory, approvals, automations, billsState, premium, connectorState].every((row) => row.ok),
-        navigation: ['chat','objectives','approvals','automations','connectors','history','settings'],
-        surfaces: { history, advancedHistory, approvals, automations, bills: billsState, premium, connectors: connectorState },
+        ok: [history, advancedHistory, approvals, automations, billsState, premium, connectorState, mediaState].every((row) => row.ok),
+        navigation: ['chat','objectives','approvals','automations','connectors','history','media','settings'],
+        surfaces: { history, advancedHistory, approvals, automations, bills: billsState, premium, connectors: connectorState, media: mediaState },
       };
     },
   };
