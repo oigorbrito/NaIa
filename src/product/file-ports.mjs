@@ -26,35 +26,97 @@ export function createFilePorts({ rootDir = '.naia' } = {}) {
   const evidencePath = join(rootDir, 'evidence.jsonl');
   const registry = createToolRegistry({ rootDir });
 
-  async function readMap(path) {
-    return readJson(path, {});
+  // In-memory caching to avoid redundant file reads & JSON parses on every port operation
+  let objectivesMap = null;
+  let objectivesReadPromise = null;
+  let objectivesWriteChain = Promise.resolve();
+
+  let plansMap = null;
+  let plansReadPromise = null;
+  let plansWriteChain = Promise.resolve();
+
+  async function getObjectivesMap() {
+    if (objectivesMap) return objectivesMap;
+    if (!objectivesReadPromise) {
+      objectivesReadPromise = readJson(objectivesPath, {}).then(
+        (data) => {
+          objectivesMap = data;
+          objectivesReadPromise = null;
+          return data;
+        },
+        (err) => {
+          objectivesReadPromise = null;
+          throw err;
+        }
+      );
+    }
+    return objectivesReadPromise;
+  }
+
+  async function getPlansMap() {
+    if (plansMap) return plansMap;
+    if (!plansReadPromise) {
+      plansReadPromise = readJson(plansPath, {}).then(
+        (data) => {
+          plansMap = data;
+          plansReadPromise = null;
+          return data;
+        },
+        (err) => {
+          plansReadPromise = null;
+          throw err;
+        }
+      );
+    }
+    return plansReadPromise;
   }
 
   return {
     objectives: {
-      async save(objective) {
-        const all = await readMap(objectivesPath);
-        all[objective.id] = structuredClone(objective);
-        await writeJsonAtomic(objectivesPath, all);
-        return objective;
+      save(objective) {
+        const task = async () => {
+          try {
+            const all = await getObjectivesMap();
+            const updated = { ...all, [objective.id]: structuredClone(objective) };
+            await writeJsonAtomic(objectivesPath, updated);
+            objectivesMap = updated;
+            return objective;
+          } catch (err) {
+            objectivesMap = null;
+            throw err;
+          }
+        };
+        objectivesWriteChain = objectivesWriteChain.catch(() => {}).then(task);
+        return objectivesWriteChain;
       },
       async get(id) {
-        const all = await readMap(objectivesPath);
+        const all = await getObjectivesMap();
         return all[id] ? structuredClone(all[id]) : null;
       },
       async list() {
-        return Object.values(await readMap(objectivesPath)).map((value) => structuredClone(value));
+        const all = await getObjectivesMap();
+        return Object.values(all).map((value) => structuredClone(value));
       },
     },
     plans: {
-      async save(plan) {
-        const all = await readMap(plansPath);
-        all[plan.objectiveId] = structuredClone(plan);
-        await writeJsonAtomic(plansPath, all);
-        return plan;
+      save(plan) {
+        const task = async () => {
+          try {
+            const all = await getPlansMap();
+            const updated = { ...all, [plan.objectiveId]: structuredClone(plan) };
+            await writeJsonAtomic(plansPath, updated);
+            plansMap = updated;
+            return plan;
+          } catch (err) {
+            plansMap = null;
+            throw err;
+          }
+        };
+        plansWriteChain = plansWriteChain.catch(() => {}).then(task);
+        return plansWriteChain;
       },
       async get(objectiveId) {
-        const all = await readMap(plansPath);
+        const all = await getPlansMap();
         return all[objectiveId] ? structuredClone(all[objectiveId]) : null;
       },
     },
