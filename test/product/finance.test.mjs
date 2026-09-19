@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
+  createFileFinanceStore,
   createFinanceService,
   createFixtureFinanceProvider,
   createMemoryFinanceStore,
@@ -136,4 +140,60 @@ test('finance queries register through NaIA capability/policy contracts', () => 
   assert.equal(action.risk, 'SENSITIVE');
   assert.equal(action.requiresApproval, true);
   assert.equal(action.input.category, 'restaurantes');
+});
+
+test('finance facts, budgets and provider identity survive file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-finance-'));
+  try{
+    let id=0;
+    const store=createFileFinanceStore({rootDir:dir});
+    const first=createFinanceService({store,idFactory:()=>`tx-${++id}`,now:()=> '2026-09-19T12:00:00Z'});
+    const provider=createFixtureFinanceProvider({name:'BankX',accounts:[{id:'a1',institution:'Bank X',type:'CHECKING',currency:'BRL'}],balances:{a1:500},transactions:[{id:'t1',accountId:'a1',amount:-50,bookedAt:'2026-09-19T10:00:00Z',status:'POSTED',category:'food'}]});
+    await first.importProviderSnapshot({userId:'u1',providerAdapter:provider});
+    await first.setBudget({userId:'u1',month:'2026-09',category:'food',amount:100});
+    const second=createFinanceService({store:createFileFinanceStore({rootDir:dir}),now:()=> '2026-09-19T13:00:00Z'});
+    assert.deepEqual((await second.balances('u1')).totals,{BRL:500});
+    assert.equal((await second.transactions('u1')).length,1);
+    assert.equal((await second.budgetStatus({userId:'u1',month:'2026-09'}))[0].actual,50);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('re-import refreshes pending transaction to posted without changing logical id or user category override',async()=>{
+  const store=createMemoryFinanceStore();let id=0;
+  const service=createFinanceService({store,idFactory:()=>`tx-${++id}`});
+  const pending=createFixtureFinanceProvider({name:'bank',accounts:[{id:'a1'}],transactions:[{id:'t1',accountId:'a1',amount:-20,bookedAt:'2026-09-19T10:00:00Z',status:'PENDING',category:'restaurants'}]});
+  await service.importProviderSnapshot({userId:'u1',providerAdapter:pending});
+  const [before]=await service.transactions('u1');
+  await service.correctCategory(before.id,'coffee');
+  const posted=createFixtureFinanceProvider({name:'bank',accounts:[{id:'a1'}],transactions:[{id:'t1',accountId:'a1',amount:-20,bookedAt:'2026-09-19T10:00:00Z',status:'POSTED',category:'restaurants'}]});
+  const refreshed=await service.importProviderSnapshot({userId:'u1',providerAdapter:posted});
+  const [after]=await service.transactions('u1');
+  assert.equal(refreshed.updatedTransactions,1);
+  assert.equal(after.id,before.id);
+  assert.equal(after.status,'POSTED');
+  assert.equal(after.userCategoryOverride,'coffee');
+});
+
+test('expired consent state is persisted while current financial facts are not refreshed',async()=>{
+  const store=createMemoryFinanceStore();
+  const service=createFinanceService({store});
+  const provider=createFixtureFinanceProvider({name:'bank',consentState:'EXPIRED',accounts:[{id:'a1'}],transactions:[{id:'t1',accountId:'a1',amount:-10,bookedAt:'2026-09-19T10:00:00Z'}]});
+  await assert.rejects(service.importProviderSnapshot({userId:'u1',providerAdapter:provider}),(e)=>e.code==='CONSENT_EXPIRED');
+  const connection=await store.getConnection('bank:u1');
+  assert.equal(connection.consentState,'EXPIRED');
+  assert.equal((await store.listAccounts({userId:'u1'})).length,0);
+});
+
+test('provider errors never surface or persist raw provider secrets',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-finance-private-'));
+  try{
+    const store=createFileFinanceStore({rootDir:dir});
+    const service=createFinanceService({store});
+    const provider=createFixtureFinanceProvider({name:'down',failWith:{code:'AUTH_FAILED',message:'Bearer super-secret',retryable:false}});
+    provider.apiToken='another-secret';
+    await assert.rejects(service.importProviderSnapshot({userId:'u1',providerAdapter:provider}),(e)=>e.code==='AUTH_FAILED'&&e.message==='finance provider failed');
+    const text=await readFile(store.path,'utf8').catch(()=> '');
+    assert.equal(text.includes('super-secret'),false);
+    assert.equal(text.includes('another-secret'),false);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
