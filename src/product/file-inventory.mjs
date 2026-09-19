@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const PERMISSION_STATES = new Set(['GRANTED', 'DENIED', 'REVOKED']);
@@ -41,6 +43,51 @@ export function createMemoryFileInventoryStore() {
   };
 }
 
+async function readInventoryJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { items: {}, stableIndex: {} }; throw error; }
+}
+async function writeInventoryJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileInventoryStore({ rootDir = '.naia' } = {}) {
+  const path = join(rootDir, 'file-inventory.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(() => {}).then(async () => {
+      const data = await readInventoryJson(path);
+      const result = await fn(data);
+      await writeInventoryJsonAtomic(path, data);
+      return clone(result);
+    });
+    return chain;
+  }
+  return {
+    path,
+    async save(item) {
+      return mutate((data) => {
+        data.items[item.id] = clone(item);
+        data.stableIndex[`${item.platform}:${item.stableSourceId}`] = item.id;
+        return item;
+      });
+    },
+    async get(id) { const data = await readInventoryJson(path); return data.items?.[String(id)] ? clone(data.items[String(id)]) : null; },
+    async findByStableSourceId(platform, stableSourceId) {
+      const data = await readInventoryJson(path);
+      const id = data.stableIndex?.[`${platform}:${stableSourceId}`];
+      return id && data.items?.[id] ? clone(data.items[id]) : null;
+    },
+    async list({ platform, sourceType } = {}) {
+      const data = await readInventoryJson(path);
+      return Object.values(data.items ?? {}).filter((item) => (!platform || item.platform === platform) && (!sourceType || item.sourceType === sourceType)).map(clone);
+    },
+  };
+}
+
 export function createFileInventoryAdapter({ platform, permissionState = 'GRANTED', scan } = {}) {
   if (!platform) throw new Error('platform is required');
   if (!PERMISSION_STATES.has(permissionState)) throw new Error('unsupported permission state: ' + permissionState);
@@ -55,6 +102,33 @@ export function createFileInventoryAdapter({ platform, permissionState = 'GRANTE
   };
 }
 
+
+export function createPlatformFileInventoryAdapter({ platformRuntime, capability = 'files.list', mapEntry = null } = {}) {
+  if (!platformRuntime || typeof platformRuntime.invoke !== 'function') throw new Error('platform runtime is required');
+  const platform = String(platformRuntime.platform ?? '').toLowerCase();
+  if (!platform) throw new Error('platform runtime must expose platform');
+  return {
+    platform,
+    async status() {
+      const descriptor = typeof platformRuntime.describe === 'function' ? platformRuntime.describe(capability) : null;
+      return {
+        permissionState: descriptor?.availability === 'PERMISSION_REQUIRED' ? 'DENIED' : descriptor?.availability === 'UNSUPPORTED' || descriptor?.availability === 'UNAVAILABLE' ? 'REVOKED' : 'GRANTED',
+        capability,
+      };
+    },
+    async scan() {
+      try {
+        const result = await platformRuntime.invoke(capability, { operation: 'list' });
+        const rows = result?.items ?? result?.entries ?? [];
+        return { permissionState: 'GRANTED', items: rows.map((entry) => typeof mapEntry === 'function' ? mapEntry(entry) : entry) };
+      } catch (error) {
+        if (error?.code === 'PERMISSION_REQUIRED') return { permissionState: 'DENIED', items: [] };
+        if (error?.code === 'CAPABILITY_UNAVAILABLE') return { permissionState: 'REVOKED', items: [] };
+        throw error;
+      }
+    },
+  };
+}
 export function createFileInventoryService({ store = createMemoryFileInventoryStore(), idFactory = randomUUID, now = () => new Date().toISOString() } = {}) {
   return {
     async scan(adapter) {
