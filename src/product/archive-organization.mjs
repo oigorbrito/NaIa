@@ -82,6 +82,13 @@ export function createArchiveService({ store = createMemoryArchiveStore(), adapt
   }
 
   return {
+    async getCollection(id, userId = null) {
+      const collection = await requireCollection(id);
+      if (userId && collection.userId !== userId) return null;
+      return clone(collection);
+    },
+    async listCollections(userId = null) { return store.listCollections({ ...(userId ? { userId } : {}) }); },
+
     async createCollection({ userId, name, tags = [] }) {
       if (!userId || !String(name ?? '').trim()) throw new Error('userId and collection name are required');
       const collection = {
