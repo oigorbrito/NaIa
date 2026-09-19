@@ -72,3 +72,12 @@ test('skipped occurrence does not emit further reminders and advances recurrence
   const oldDelivery = await service.deliverReminder({ billId: bill.id, dueDate: '2026-09-27', leadDays: 0 });
   assert.equal(oldDelivery.delivered, false);
 });
+
+test('overdue occurrence can still be marked paid and advance recurrence', async () => {
+  const { service } = fixture();
+  const bill = await service.create({ userId: 'u1', name: 'electricity', dueDate: '2026-09-18', recurrence: { kind: 'MONTHLY' }, leadTimesDays: [0] });
+  await service.refreshStatuses({ userId: 'u1', asOf: '2026-09-19' });
+  const paid = await service.markPaid(bill.id);
+  assert.equal(paid.occurrences[0].status, 'PAID');
+  assert.equal(paid.nextDueDate, '2026-10-18');
+});
