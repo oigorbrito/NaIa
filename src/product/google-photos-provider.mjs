@@ -68,6 +68,7 @@ export function createGooglePhotosLiveProvider({
         pickerUri:session?.pickerUri??null,
         pollingConfig:clone(session?.pollingConfig??null),
         expireTime:session?.expireTime??null,
+        userActionRequired:true,
       };
     },
     async page({sessionId,pageToken=null}={}){
