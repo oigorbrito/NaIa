@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { createBookingService, createFixtureBookingProvider, normalizeBookingIntent } from '../../src/product/booking.mjs';
+import { createBookingService, createFileBookingStore, createFixtureBookingProvider, normalizeBookingIntent, proposeBookingCommit, registerBookingCapabilities } from '../../src/product/booking.mjs';
+import { createNaiaService } from '../../src/product/service.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 
 function fixture(options = {}) {
   let id = 0;
@@ -103,4 +108,67 @@ test('successful reschedule mutates same booking lifecycle identity', async () =
   assert.equal(moved.booking.id, created.booking.id);
   assert.equal(moved.booking.optionId, 'slot-2');
   assert.equal(moved.booking.state, 'CONFIRMED');
+});
+
+test('booking/action/commit lifecycle survives file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-booking-'));
+  try{
+    let id=0;
+    const provider=createFixtureBookingProvider({name:'restaurant-provider',options:[{id:'slot-1',slot:'2026-09-20T19:00:00-03:00',revision:'1'}]});
+    const first=createBookingService({providers:[provider],store:createFileBookingStore({rootDir:dir}),idFactory:()=>`id-${++id}`,now:()=> '2026-09-19T13:00:00Z'});
+    const discovery=await first.discover({kind:'restaurant',partySize:2});
+    const action=await first.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+    await first.approve(action.id,action.fingerprint);
+    const created=await first.execute(action.id,{fingerprint:action.fingerprint,idempotencyKey:'create-1'});
+    const second=createBookingService({providers:[provider],store:createFileBookingStore({rootDir:dir}),now:()=> '2026-09-19T14:00:00Z'});
+    assert.equal((await second.getBooking(created.booking.id)).providerBookingId,created.booking.providerBookingId);
+    const duplicate=await second.execute(action.id,{fingerprint:action.fingerprint,idempotencyKey:'create-1'});
+    assert.equal(duplicate.duplicate,true);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('booking create goes through normal WAITING_APPROVAL runtime flow',async()=>{
+  const {service,provider}=fixture();
+  const discovery=await service.discover({kind:'restaurant',partySize:2});
+  const action=await service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+  const naia=createNaiaService(createInMemoryPorts());registerBookingCapabilities(naia,{service});
+  const pending=await proposeBookingCommit(naia,action,{idempotencyKey:'runtime-create'});
+  assert.equal(pending.objective.status,'WAITING_APPROVAL');
+  const completed=await naia.approve(pending.objective.id,'booking.commit');
+  assert.equal(completed.objective.status,'COMPLETED');
+  const bookings=[...(await service.getBooking('id-2')?[await service.getBooking('id-2')]:[])];
+  assert.equal(bookings.length,1);
+});
+
+test('stale availability after runtime approval fails closed into WAITING_REVIEW',async()=>{
+  const {service,provider}=fixture();
+  const discovery=await service.discover({kind:'restaurant',partySize:2});
+  const action=await service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+  const naia=createNaiaService(createInMemoryPorts());registerBookingCapabilities(naia,{service});
+  const pending=await proposeBookingCommit(naia,action,{idempotencyKey:'runtime-stale'});
+  provider.setOptionRevision('slot-1','2');
+  const failed=await naia.approve(pending.objective.id,'booking.commit');
+  assert.equal(failed.objective.status,'FAILED');
+  assert.equal((await service.getAction(action.id)).status,'WAITING_REVIEW');
+});
+
+test('cancel and reschedule each require fresh runtime approval on exact booking identity',async()=>{
+  const {service}=fixture();
+  const discovery=await service.discover({kind:'restaurant',partySize:2});
+  const create=await service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+  await service.approve(create.id,create.fingerprint);
+  const created=await service.execute(create.id,{fingerprint:create.fingerprint,idempotencyKey:'seed'});
+  const naia=createNaiaService(createInMemoryPorts());registerBookingCapabilities(naia,{service});
+  const reschedule=await service.prepareMutation({userId:'u1',bookingId:created.booking.id,type:'RESCHEDULE',targetOption:discovery.options[1]});
+  const movePending=await proposeBookingCommit(naia,reschedule,{idempotencyKey:'move'});
+  assert.equal(movePending.objective.status,'WAITING_APPROVAL');
+  const moved=await naia.approve(movePending.objective.id,'booking.commit');
+  assert.equal(moved.objective.status,'COMPLETED');
+  assert.equal((await service.getBooking(created.booking.id)).optionId,'slot-2');
+  const cancel=await service.prepareMutation({userId:'u1',bookingId:created.booking.id,type:'CANCEL'});
+  const cancelPending=await proposeBookingCommit(naia,cancel,{idempotencyKey:'cancel'});
+  assert.equal(cancelPending.objective.status,'WAITING_APPROVAL');
+  const cancelled=await naia.approve(cancelPending.objective.id,'booking.commit');
+  assert.equal(cancelled.objective.status,'COMPLETED');
+  assert.equal((await service.getBooking(created.booking.id)).state,'CANCELLED');
 });

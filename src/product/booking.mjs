@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 function clone(value) { return structuredClone(value); }
 function fingerprint(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
@@ -26,6 +28,23 @@ export function createMemoryBookingStore() {
     async getAction(id) { const row = actions.get(id); return row ? clone(row) : null; },
     async saveCommit(key, row) { commits.set(key, clone(row)); return clone(row); },
     async getCommit(key) { const row = commits.get(key); return row ? clone(row) : null; },
+  };
+}
+
+async function readBookingJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {bookings:{},actions:{},commits:{}};throw error;}}
+async function writeBookingJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileBookingStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'bookings.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readBookingJson(path);const result=await fn(data);await writeBookingJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveBooking(row){return mutate(data=>{data.bookings[row.id]=clone(row);return row;});},
+    async getBooking(id){const data=await readBookingJson(path);return data.bookings?.[String(id)]?clone(data.bookings[String(id)]):null;},
+    async saveAction(row){return mutate(data=>{data.actions[row.id]=clone(row);return row;});},
+    async getAction(id){const data=await readBookingJson(path);return data.actions?.[String(id)]?clone(data.actions[String(id)]):null;},
+    async saveCommit(key,row){return mutate(data=>{data.commits[key]=clone(row);return row;});},
+    async getCommit(key){const data=await readBookingJson(path);return data.commits?.[String(key)]?clone(data.commits[String(key)]):null;},
   };
 }
 
@@ -170,7 +189,36 @@ export function createBookingService({ store = createMemoryBookingStore(), provi
       }
     },
 
+    async executeRuntimeApproved(actionId,{fingerprint:approvedFingerprint,idempotencyKey}) {
+      const action=await store.getAction(actionId);
+      if(!action) throw new Error('booking action not found: '+actionId);
+      if(action.fingerprint!==approvedFingerprint){const e=new Error('booking approval mismatch');e.code='APPROVAL_MISMATCH';throw e;}
+      if(action.status==='WAITING_REVIEW'){const e=new Error('booking action requires renewed review');e.code='APPROVAL_REQUIRED';throw e;}
+      if(action.status!=='APPROVED'){action.status='APPROVED';action.approvedAt=now();await evidenceAction(action,'BOOKING_ACTION_APPROVED',{fingerprint:approvedFingerprint});}
+      return this.execute(actionId,{fingerprint:approvedFingerprint,idempotencyKey});
+    },
+
     async getBooking(id) { return store.getBooking(id); },
     async getAction(id) { return store.getAction(id); },
   };
+}
+
+export function registerBookingCapabilities(naia,{service}={}){
+  if(!naia||typeof naia.registerCapability!=='function')throw new Error('NaIA capability registration is required');
+  if(!service)throw new Error('booking service is required');
+  return naia.registerCapability({
+    name:'booking.commit',
+    tool:{risk:'EXTERNAL_WRITE',capability:'booking.commit',description:'Creates, changes, or cancels one concrete booking after approval',async run(input){return service.executeRuntimeApproved(input.actionId,{fingerprint:input.fingerprint,idempotencyKey:input.idempotencyKey});}},
+  });
+}
+
+export async function proposeBookingCommit(naia,action,{idempotencyKey}={}){
+  if(!naia||typeof naia.pursueAction!=='function')throw new Error('NaIA pursueAction is required');
+  if(!action?.id||!action?.fingerprint)throw new Error('prepared booking action is required');
+  return naia.pursueAction({
+    id:`booking-objective:${action.id}`,
+    title:`Approve booking ${action.type.toLowerCase()}`,
+    intent:`BOOKING_${action.type}`,
+    action:{tool:'booking.commit',input:{actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:idempotencyKey??`booking:${action.id}`},risk:'EXTERNAL_WRITE',requiresApproval:true},
+  });
 }
