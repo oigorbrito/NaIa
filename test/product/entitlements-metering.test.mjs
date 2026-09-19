@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   DEFAULT_PLAN_DEFINITIONS,
   createEntitlementService,
+  createFileSubscriptionStore,
   createMemorySubscriptionStore,
   createPlanCatalog,
 } from '../../src/product/entitlements.mjs';
-import { createMemoryUsageStore, createQuotaPolicy, createUsageMeter } from '../../src/product/metering.mjs';
+import { createFileUsageStore, createMemoryUsageStore, createQuotaPolicy, createUsageMeter } from '../../src/product/metering.mjs';
 
 test('default Free/Pro/Ultra contracts expose deterministic scheduled-task limits', () => {
   assert.equal(DEFAULT_PLAN_DEFINITIONS.FREE.limits['scheduledTasks.active'], 5);
@@ -132,4 +136,50 @@ test('quota policy combines capability entitlement and remaining allowance', asy
   assert.equal((await policy.authorize({ userId: 'u1', capability: 'email.read', usage: { metric: 'executions.daily', window: 'DAY' } })).allowed, true);
   await meter.consume({ userId: 'u1', metric: 'executions.daily', window: 'DAY', logicalId: 'run-1' });
   assert.equal((await policy.authorize({ userId: 'u1', capability: 'email.read', usage: { metric: 'executions.daily', window: 'DAY' } })).reason, 'LIMIT_REACHED');
+});
+
+test('subscription lifecycle persists across restart without changing fallback semantics', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'naia-subscriptions-'));
+  try{
+    let clock=new Date('2026-09-19T12:00:00Z');
+    const first=createEntitlementService({store:createFileSubscriptionStore({rootDir:dir}),now:()=>clock});
+    await first.setSubscription({userId:'u1',planId:'PRO',state:'TRIAL',fallbackPlanId:'FREE',trialEndsAt:'2026-09-20T00:00:00Z'});
+    assert.equal((await first.resolve('u1')).planId,'PRO');
+    clock=new Date('2026-09-21T00:00:00Z');
+    const second=createEntitlementService({store:createFileSubscriptionStore({rootDir:dir}),now:()=>clock});
+    const resolved=await second.resolve('u1');
+    assert.equal(resolved.planId,'FREE');
+    assert.equal(resolved.reason,'trial-expired');
+    assert.equal(resolved.subscription.planId,'PRO');
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('usage count and logical-operation idempotency persist across restart', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'naia-usage-'));
+  try{
+    const entitlements=createEntitlementService();
+    await entitlements.setSubscription({userId:'u1',planId:'FREE'});
+    const first=createUsageMeter({entitlements,store:createFileUsageStore({rootDir:dir}),now:()=>new Date('2026-09-19T12:00:00Z')});
+    const counted=await first.consume({userId:'u1',metric:'executions.daily',window:'DAY',logicalId:'run-1'});
+    assert.equal(counted.code,'COUNTED');
+    const second=createUsageMeter({entitlements,store:createFileUsageStore({rootDir:dir}),now:()=>new Date('2026-09-19T13:00:00Z')});
+    const duplicate=await second.consume({userId:'u1',metric:'executions.daily',window:'DAY',logicalId:'run-1'});
+    assert.equal(duplicate.code,'ALREADY_COUNTED');
+    assert.equal(duplicate.used,1);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('file-backed usage store still prevents concurrent quota oversubscription', async () => {
+  const dir=await mkdtemp(join(tmpdir(),'naia-usage-concurrent-'));
+  try{
+    const catalog=createPlanCatalog({FREE:{id:'FREE',capabilities:['core.chat'],limits:{'executions.daily':1}}});
+    const entitlements=createEntitlementService({catalog});
+    const meter=createUsageMeter({entitlements,store:createFileUsageStore({rootDir:dir})});
+    const [a,b]=await Promise.all([
+      meter.consume({userId:'u1',metric:'executions.daily',window:'DAY',logicalId:'a'}),
+      meter.consume({userId:'u1',metric:'executions.daily',window:'DAY',logicalId:'b'}),
+    ]);
+    assert.equal([a,b].filter(row=>row.ok).length,1);
+    assert.equal([a,b].filter(row=>!row.ok&&row.code==='LIMIT_REACHED').length,1);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
