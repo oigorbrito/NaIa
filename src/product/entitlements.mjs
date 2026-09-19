@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 const SUBSCRIPTION_STATES = new Set(['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED', 'EXPIRED']);
 
 function clone(value) { return structuredClone(value); }
@@ -66,6 +68,15 @@ export function createMemorySubscriptionStore() {
     async save(subscription) { rows.set(subscription.userId, clone(subscription)); return clone(subscription); },
     async get(userId) { const value = rows.get(userId); return value ? clone(value) : null; },
   };
+}
+
+async function readSubscriptionJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {subscriptions:{}};throw error;}}
+async function writeSubscriptionJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileSubscriptionStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'subscriptions.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readSubscriptionJson(path);const result=await fn(data);await writeSubscriptionJsonAtomic(path,data);return clone(result);});return chain;}
+  return {path,async save(subscription){return mutate(data=>{data.subscriptions[subscription.userId]=clone(subscription);return subscription;});},async get(userId){const data=await readSubscriptionJson(path);return data.subscriptions?.[String(userId)]?clone(data.subscriptions[String(userId)]):null;}};
 }
 
 function effectivePlanFor(subscription, at) {
