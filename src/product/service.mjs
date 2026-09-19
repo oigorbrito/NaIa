@@ -149,5 +149,21 @@ export function createNaiaService(rawPorts) {
     tools() {
       return typeof ports.tools?.list === 'function' ? ports.tools.list() : [];
     },
+
+    registerCapability({ name, tool, rule } = {}) {
+      if (!ports.tools || typeof ports.tools.register !== 'function') {
+        throw new Error('capability registration is not supported by these ports');
+      }
+      const toolName = tool?.name ?? name;
+      const registered = ports.tools.register(toolName, tool);
+      if (rule !== undefined) {
+        if (typeof ports.planner.register !== 'function') {
+          ports.tools.unregister(toolName);
+          throw new Error('planner does not support capability rules');
+        }
+        ports.planner.register(rule);
+      }
+      return registered;
+    },
   };
 }
