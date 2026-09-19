@@ -197,3 +197,71 @@ test('provider errors never surface or persist raw provider secrets',async()=>{
     assert.equal(text.includes('another-secret'),false);
   }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('spending change compares current and previous month deterministically',async()=>{
+  const store=createMemoryFinanceStore();let id=0;
+  const service=createFinanceService({store,idFactory:()=>`tx-${++id}`,now:()=> '2026-09-19T12:00:00Z'});
+  const provider=createFixtureFinanceProvider({name:'bank',accounts:[{id:'a1'}],transactions:[
+    {id:'aug-1',accountId:'a1',amount:-100,bookedAt:'2026-08-10T10:00:00Z',status:'POSTED',category:'restaurants'},
+    {id:'sep-1',accountId:'a1',amount:-150,bookedAt:'2026-09-10T10:00:00Z',status:'POSTED',category:'restaurants'},
+  ]});
+  await service.importProviderSnapshot({userId:'u1',providerAdapter:provider});
+  const result=await service.spendingChange({userId:'u1',month:'2026-09',category:'restaurants'});
+  assert.deepEqual(result,{category:'restaurants',currentMonth:'2026-09',previousMonth:'2026-08',current:150,previous:100,delta:50,percent:50,interpretation:'INCREASE'});
+});
+
+test('spending change avoids fabricated percentage when previous baseline is zero',async()=>{
+  const service=createFinanceService();
+  const result=await service.spendingChange({userId:'u1',month:'2026-09',previousMonth:'2026-08',category:'restaurants'});
+  assert.equal(result.previous,0);
+  assert.equal(result.percent,null);
+  assert.equal(result.interpretation,'NO_PREVIOUS_BASELINE');
+});
+
+test('recurring expense detection requires repeated posted outflows with qualifying cadence',async()=>{
+  const store=createMemoryFinanceStore();let id=0;
+  const service=createFinanceService({store,idFactory:()=>`tx-${++id}`});
+  const provider=createFixtureFinanceProvider({name:'bank',accounts:[{id:'a1'}],transactions:[
+    {id:'r1',accountId:'a1',amount:-49.9,bookedAt:'2026-06-05T10:00:00Z',status:'POSTED',merchant:'StreamCo',category:'subscriptions'},
+    {id:'r2',accountId:'a1',amount:-49.9,bookedAt:'2026-07-05T10:00:00Z',status:'POSTED',merchant:'StreamCo',category:'subscriptions'},
+    {id:'r3',accountId:'a1',amount:-49.9,bookedAt:'2026-08-05T10:00:00Z',status:'POSTED',merchant:'StreamCo',category:'subscriptions'},
+    {id:'noise',accountId:'a1',amount:-500,bookedAt:'2026-08-06T10:00:00Z',status:'POSTED',merchant:'Store',category:'shopping'},
+  ]});
+  await service.importProviderSnapshot({userId:'u1',providerAdapter:provider});
+  const recurring=await service.recurringExpenses({userId:'u1'});
+  assert.equal(recurring.length,1);
+  assert.equal(recurring[0].merchant,'StreamCo');
+  assert.equal(recurring[0].occurrences,3);
+  assert.equal(recurring[0].confidence,'HIGH');
+  assert.equal(recurring[0].factType,'INFERRED_RECURRING_PATTERN');
+  assert.equal(recurring[0].evidenceTransactionIds.length,3);
+});
+
+test('recurring pattern respects user category override while preserving provider fact',async()=>{
+  const store=createMemoryFinanceStore();let id=0;
+  const service=createFinanceService({store,idFactory:()=>`tx-${++id}`});
+  const provider=createFixtureFinanceProvider({name:'bank',accounts:[{id:'a1'}],transactions:[
+    {id:'r1',accountId:'a1',amount:-20,bookedAt:'2026-07-01T10:00:00Z',status:'POSTED',merchant:'Club',category:'other'},
+    {id:'r2',accountId:'a1',amount:-20,bookedAt:'2026-08-01T10:00:00Z',status:'POSTED',merchant:'Club',category:'other'},
+  ]});
+  await service.importProviderSnapshot({userId:'u1',providerAdapter:provider});
+  const txs=await service.transactions('u1');
+  for(const tx of txs) await service.correctCategory(tx.id,'subscriptions');
+  const recurring=await service.recurringExpenses({userId:'u1'});
+  assert.equal(recurring[0].category,'subscriptions');
+  const persisted=await service.transactions('u1');
+  assert.ok(persisted.every(tx=>tx.providerCategory==='other'&&tx.userCategoryOverride==='subscriptions'));
+});
+
+test('finance insight capabilities route through existing NaIA intent planner rules',()=>{
+  const {service}=fixtures();const definitions=[];
+  const naia={registerCapability(def){definitions.push(def);return {name:def.name,risk:def.tool.risk};}};
+  const registered=registerFinanceCapabilities(naia,{service,userId:'u1'});
+  assert.ok(registered.some(row=>row.name==='finance.spendingChange'));
+  assert.ok(registered.some(row=>row.name==='finance.recurring'));
+  const trend=definitions.find(def=>def.name==='finance.spendingChange');
+  assert.equal(trend.rule.match({title:'Onde meu gasto aumentou em relação ao mês passado?'}),true);
+  assert.equal(trend.rule.action({title:'x'}).requiresApproval,true);
+  const recurring=definitions.find(def=>def.name==='finance.recurring');
+  assert.equal(recurring.rule.match({title:'Quais são meus gastos recorrentes?'}),true);
+});
