@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { buildRadarDigest } from './radar.mjs';
 
 function clone(v){return v==null?v:structuredClone(v);}
@@ -35,6 +37,19 @@ export function createMemoryBriefingStore(){
   };
 }
 
+async function readBriefingJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {deliveries:{}};throw error;}}
+async function writeBriefingJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileBriefingStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'daily-briefings.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readBriefingJson(path);const result=await fn(data);await writeBriefingJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async get(key){const data=await readBriefingJson(path);return data.deliveries?.[String(key)]?clone(data.deliveries[String(key)]):null;},
+    async save(key,row){return mutate(data=>{data.deliveries[key]=clone(row);return row;});},
+  };
+}
+
 export function createDailyBriefingService({tts,preferenceStore=null,store=createMemoryBriefingStore(),now=()=>new Date().toISOString(),idFactory=randomUUID}={}){
   if(!tts||typeof tts.synthesize!=='function') throw new Error('TTS provider is required');
   return {
@@ -48,7 +63,7 @@ export function createDailyBriefingService({tts,preferenceStore=null,store=creat
       const payload=composeBriefingPayload(digest,{language:preferences.language??'pt-BR',maxTopics:preferences.maxTopics??5,length:preferences.length??'SHORT'});
       let audio=null,status='READY',error=null;
       try{audio=await tts.synthesize({text:payload.transcript,language:payload.language});}
-      catch(e){status='DEGRADED_TEXT_ONLY';error={code:e?.code??'TTS_FAILED',message:e?.message??String(e),retryable:Boolean(e?.retryable)};}
+      catch(e){status='DEGRADED_TEXT_ONLY';error={code:e?.code??'TTS_FAILED',retryable:Boolean(e?.retryable)};}
       const row={id:idFactory(),userId,deliveryKey,status,payload,audio:clone(audio),error,createdAt:now()};
       await store.save(key,row); return {duplicate:false,...clone(row)};
     },
