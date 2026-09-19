@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 function clone(value) { return structuredClone(value); }
 
 function dayKey(date) { return date.toISOString().slice(0, 10); }
@@ -30,6 +32,24 @@ export function createMemoryUsageStore() {
       counters.set(counterKey, next);
       operations.set(operationKey, { counterKey, amount: -amount });
       return { duplicate: false, used: next };
+    },
+  };
+}
+
+async function readUsageJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {counters:{},operations:{}};throw error;}}
+async function writeUsageJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileUsageStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'usage-meter.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readUsageJson(path);const result=await fn(data);await writeUsageJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async consumeAtomic({counterKey,operationKey,amount,limit=null}){
+      return mutate(data=>{if(data.operations[operationKey])return {duplicate:true,limited:false,used:Number(data.counters[counterKey]??0)};const current=Number(data.counters[counterKey]??0);const next=current+amount;if(limit!=null&&next>limit)return {duplicate:false,limited:true,used:current};data.counters[counterKey]=next;data.operations[operationKey]={counterKey,amount};return {duplicate:false,limited:false,used:next};});
+    },
+    async get(counterKey){const data=await readUsageJson(path);return Number(data.counters?.[counterKey]??0);},
+    async releaseAtomic({counterKey,operationKey,amount}){
+      return mutate(data=>{if(data.operations[operationKey])return {duplicate:true,used:Number(data.counters[counterKey]??0)};const next=Math.max(0,Number(data.counters[counterKey]??0)-amount);data.counters[counterKey]=next;data.operations[operationKey]={counterKey,amount:-amount};return {duplicate:false,used:next};});
     },
   };
 }
