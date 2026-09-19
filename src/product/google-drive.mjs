@@ -1,6 +1,9 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 function clone(value) { return structuredClone(value); }
 
 const CONNECTION_STATES = new Set(['CONNECTED', 'REVOKED', 'EXPIRED']);
+const ALLOWED_READ_SCOPES = new Set(['drive.readonly','drive.metadata.readonly','https://www.googleapis.com/auth/drive.readonly','https://www.googleapis.com/auth/drive.metadata.readonly']);
 
 export function createMemoryDriveConnectionStore() {
   const rows = new Map();
@@ -10,17 +13,43 @@ export function createMemoryDriveConnectionStore() {
   };
 }
 
+async function readDriveJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { connections:{} }; throw error; }
+}
+async function writeDriveJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive:true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileDriveConnectionStore({ rootDir = '.naia' } = {}) {
+  const path = join(rootDir, 'drive-connections.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(()=>{}).then(async()=>{ const data=await readDriveJson(path); const result=await fn(data); await writeDriveJsonAtomic(path,data); return clone(result); });
+    return chain;
+  }
+  return {
+    path,
+    async save(connection) { return mutate((data)=>{ data.connections[connection.id]=clone(connection); return connection; }); },
+    async get(id) { const data=await readDriveJson(path); return data.connections?.[String(id)] ? clone(data.connections[String(id)]) : null; },
+  };
+}
+
 export function createFixtureDriveProvider({
   name = 'google_drive',
   files = [],
   connectionState = 'CONNECTED',
   token = 'fixture-secret-token',
+  scopes = ['drive.readonly'],
 } = {}) {
   if (!CONNECTION_STATES.has(connectionState)) throw new Error('unsupported connection state: ' + connectionState);
   return {
     name,
     token,
-    async status() { return { state: connectionState }; },
+    async status() { return { state: connectionState, scopes: [...scopes] }; },
     async search({ query }) {
       if (connectionState !== 'CONNECTED') {
         const error = new Error('drive connection unavailable');
@@ -64,16 +93,26 @@ export function createDriveService({ store = createMemoryDriveConnectionStore(),
   }
 
   return {
-    async connect({ userId, provider }) {
+    async connect({ userId, provider, credentialRef = null }) {
       if (!userId || !provider) throw new Error('userId and provider are required');
       const status = await provider.status();
       if (status.state !== 'CONNECTED') {
         return { status: 'UNAVAILABLE', state: status.state };
       }
+      const scopes = [...new Set((status.scopes ?? []).map(String))];
+      const unsafeScopes = scopes.filter((scope) => !ALLOWED_READ_SCOPES.has(scope));
+      if (unsafeScopes.length) {
+        const error = new Error('Drive connector requested non-read-only scope');
+        error.code = 'UNSAFE_DRIVE_SCOPE';
+        error.scopes = unsafeScopes;
+        throw error;
+      }
       const connection = {
         id: 'drive:' + userId,
         userId,
         provider: provider.name ?? 'google_drive',
+        scopes,
+        credentialRef: credentialRef ? String(credentialRef) : null,
         state: 'CONNECTED',
         connectedAt: now(),
         revokedAt: null,
