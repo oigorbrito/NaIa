@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFrontendApi } from '../../src/product/frontend-api.mjs';
 import { createNaiaService } from '../../src/product/service.mjs';
-import { createInMemoryPorts } from '../../src/product/in-memory-ports.mjs';
+import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import { createTaskService } from '../../src/product/tasks.mjs';
 import { createEntitlementService } from '../../src/product/entitlements.mjs';
 import { createUsageMeter } from '../../src/product/metering.mjs';
