@@ -1,4 +1,4 @@
-import { approveTool, createObjective, ObjectiveStatus } from './domain.mjs';
+import { approveTool, confirmChoice, createObjective, ObjectiveStatus } from './domain.mjs';
 import { assertProductPorts } from './ports.mjs';
 
 async function executePlan(ports, objective, plan) {
@@ -8,6 +8,26 @@ async function executePlan(ports, objective, plan) {
 
   for (const step of plan.steps) {
     if (step.status === 'COMPLETED') continue;
+
+    const confirmation = step.confirmation;
+    const confirmationId = confirmation?.id ? String(confirmation.id) : null;
+    const confirmed = confirmationId && Array.isArray(objective.confirmations) && objective.confirmations.includes(confirmationId);
+    if (confirmation?.required && !confirmed) {
+      step.status = 'AWAITING_CONFIRMATION';
+      await ports.plans.save(plan);
+      objective.status = ObjectiveStatus.WAITING_CONFIRMATION;
+      objective.updatedAt = new Date().toISOString();
+      await ports.objectives.save(objective);
+      await ports.evidence.append({
+        type: 'CONFIRMATION_REQUIRED',
+        objectiveId: objective.id,
+        stepId: step.id,
+        confirmationId,
+        payload: confirmation.payload ?? null,
+        at: objective.updatedAt,
+      });
+      return { objective, plan, confirmation: { id: confirmationId, payload: confirmation.payload ?? null } };
+    }
 
     const authorization = await ports.policy.authorize({ objective, plan, step });
     if (!authorization.allowed) {
@@ -88,6 +108,29 @@ export function createNaiaService(rawPorts) {
         objectiveId: objective.id,
         steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
         at: new Date().toISOString(),
+      });
+      return executePlan(ports, objective, plan);
+    },
+
+    async confirm(objectiveId, confirmationId) {
+      const objective = await ports.objectives.get(objectiveId);
+      if (!objective) throw new Error(`objective not found: ${objectiveId}`);
+      const plan = await ports.plans.get(objectiveId);
+      if (!plan) throw new Error(`plan not found for objective: ${objectiveId}`);
+      const step = plan.steps.find((candidate) => candidate.status === 'AWAITING_CONFIRMATION' && String(candidate.confirmation?.id ?? '') === String(confirmationId));
+      if (!step) {
+        const error = new Error(`confirmation is not pending for objective: ${confirmationId}`);
+        error.code = 'CONFIRMATION_MISMATCH';
+        throw error;
+      }
+      confirmChoice(objective, confirmationId);
+      await ports.objectives.save(objective);
+      await ports.evidence.append({
+        type: 'CONFIRMATION_RECORDED',
+        objectiveId,
+        stepId: step.id,
+        confirmationId: String(confirmationId),
+        at: objective.updatedAt,
       });
       return executePlan(ports, objective, plan);
     },
