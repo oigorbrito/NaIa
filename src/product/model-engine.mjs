@@ -2,6 +2,26 @@ function clone(value) { return structuredClone(value); }
 
 function normalizeCapabilities(value = []) { return [...new Set(value.map((item) => String(item).trim().toLowerCase()).filter(Boolean))]; }
 function hasAll(modelCaps, required) { const set = new Set(modelCaps); return required.every((cap) => set.has(cap)); }
+function parseArguments(value) {
+  if (value == null) return {};
+  if (typeof value === 'object') return clone(value);
+  try { const parsed = JSON.parse(String(value)); return parsed && typeof parsed === 'object' ? parsed : { value: parsed }; }
+  catch { return { raw: String(value) }; }
+}
+
+export function normalizeModelToolCalls(calls = []) {
+  return (calls ?? []).map((call, index) => {
+    const fn = call?.function ?? call?.tool ?? call ?? {};
+    const name = String(fn?.name ?? call?.name ?? '').trim();
+    if (!name) return null;
+    const args = fn?.arguments ?? fn?.input ?? call?.arguments ?? call?.input ?? {};
+    return {
+      id: String(call?.id ?? `tool-call-${index + 1}`),
+      name,
+      input: parseArguments(args),
+    };
+  }).filter(Boolean);
+}
 
 export function createModelRegistry() {
   const models = new Map();
@@ -78,7 +98,7 @@ export function createModelRouter({ registry, now = () => new Date().toISOString
             model: raw?.model ?? model.id,
             modelClass: model.class,
             output: clone(raw?.output ?? raw?.content ?? null),
-            toolCalls: clone(raw?.toolCalls ?? []),
+            toolCalls: normalizeModelToolCalls(raw?.toolCalls ?? []),
             usage: clone(raw?.usage ?? null),
             latencyMs,
             routing: {
@@ -90,7 +110,7 @@ export function createModelRouter({ registry, now = () => new Date().toISOString
             observedAt: now(),
           };
         } catch (error) {
-          attempts.push({ provider: model.provider, model: model.id, code: error?.code ?? 'PROVIDER_ERROR', message: error?.message ?? String(error), retryable: Boolean(error?.retryable) });
+          attempts.push({ provider: model.provider, model: model.id, code: error?.code ?? 'PROVIDER_ERROR', retryable: Boolean(error?.retryable) });
         }
       }
       const error = new Error('all compatible models failed');
@@ -107,6 +127,55 @@ export function createFixtureModelAdapter({ name, fail = false, modelAlias = nul
     async complete({ model, request }) {
       if (fail) { const error = new Error(name + ' unavailable'); error.code = 'PROVIDER_UNAVAILABLE'; error.retryable = true; throw error; }
       return { model: modelAlias ?? model, output: typeof output === 'function' ? output(request) : output, usage: clone(usage), toolCalls: [] };
+    },
+  };
+}
+
+function entitlementCapabilityForModelClass(modelClass) {
+  const value = String(modelClass ?? 'standard').toLowerCase();
+  if (value === 'standard') return 'core.chat';
+  if (value === 'advanced') return 'model.advanced';
+  if (value === 'premium') return 'model.premium';
+  return `model.${value}`;
+}
+
+export function createEntitledModelEngine({ router, entitlements, meter = null } = {}) {
+  if (!router || typeof router.request !== 'function') throw new Error('model router is required');
+  if (!entitlements || typeof entitlements.can !== 'function') throw new Error('entitlement service is required');
+  return {
+    async request({ userId, logicalId, request, routing = {}, modelUnits = 1 } = {}) {
+      if (!userId || !logicalId) throw new Error('userId and logicalId are required');
+      const modelClass = routing.modelClass ?? 'standard';
+      const capability = entitlementCapabilityForModelClass(modelClass);
+      const entitlement = await entitlements.can(userId, capability);
+      if (!entitlement.allowed) {
+        const error = new Error('model class not entitled');
+        error.code = 'NOT_ENTITLED';
+        error.capability = capability;
+        throw error;
+      }
+      if (meter?.inspect) {
+        const snapshot = await meter.inspect({ userId, metric: 'modelUnits.monthly', window: 'MONTH' });
+        if (snapshot.limit != null && snapshot.used + Number(modelUnits) > snapshot.limit) {
+          const error = new Error('model usage limit reached');
+          error.code = 'LIMIT_REACHED';
+          error.usage = snapshot;
+          throw error;
+        }
+      }
+      const result = await router.request(request, routing);
+      let metering = null;
+      if (meter?.consume) {
+        metering = await meter.consume({
+          userId, metric: 'modelUnits.monthly', window: 'MONTH', amount: Number(modelUnits), logicalId: `model:${logicalId}`,
+        });
+        if (!metering.ok) {
+          const error = new Error('model usage limit reached after execution');
+          error.code = metering.code ?? 'LIMIT_REACHED';
+          throw error;
+        }
+      }
+      return { ...clone(result), entitlement: { capability, planId: entitlement.planId }, metering: clone(metering) };
     },
   };
 }
