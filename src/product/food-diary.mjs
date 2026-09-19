@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const COACHING = new Set(['never','occasional','frequent','always']);
@@ -7,6 +9,22 @@ function clone(v){return v==null?v:structuredClone(v);}
 function norm(v){return String(v??'').trim().toLowerCase();}
 function round1(v){return Math.round(Number(v)*10)/10;}
 
+async function readJson(path){try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error?.code==='ENOENT')return {meals:{},prefs:{},sourceKeys:{}};throw error;}}
+async function writeJsonAtomic(path,value){await mkdir(dirname(path),{recursive:true});const temp=`${path}.${process.pid}.tmp`;await writeFile(temp,`${JSON.stringify(value,null,2)}\n`,'utf8');await rename(temp,path);}
+
+export function createFileFoodDiaryStore({rootDir='.naia'}={}){
+  const path=join(rootDir,'food-diary.json');let chain=Promise.resolve();
+  async function mutate(fn){chain=chain.catch(()=>{}).then(async()=>{const data=await readJson(path);const result=await fn(data);await writeJsonAtomic(path,data);return clone(result);});return chain;}
+  return {
+    path,
+    async saveMeal(row){return mutate(data=>{data.meals[row.id]=clone(row);if(row.source?.messageId)data.sourceKeys[`${row.userId}:${row.source.channel}:${row.source.messageId}`]=row.id;return row;});},
+    async getMeal(id){const data=await readJson(path);return data.meals?.[String(id)]?clone(data.meals[String(id)]):null;},
+    async findBySource({userId,channel,messageId}){const data=await readJson(path);const id=data.sourceKeys?.[`${userId}:${channel}:${messageId}`];return id&&data.meals?.[id]?clone(data.meals[id]):null;},
+    async listMeals(userId){const data=await readJson(path);return Object.values(data.meals??{}).filter(r=>r.userId===userId).map(clone);},
+    async savePrefs(userId,row){return mutate(data=>{data.prefs[userId]=clone(row);return row;});},
+    async getPrefs(userId){const data=await readJson(path);return data.prefs?.[userId]?clone(data.prefs[userId]):null;},
+  };
+}
 export function createMemoryFoodDiaryStore(){
   const meals=new Map(); const sourceKeys=new Map(); const prefs=new Map();
   return {
