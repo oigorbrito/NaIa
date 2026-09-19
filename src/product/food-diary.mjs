@@ -185,3 +185,41 @@ export function formatFoodDiaryReply(result){
   if(s.coaching)reply+=` ${s.coaching}`;
   return reply;
 }
+
+export function registerFoodDiaryCapabilities(naia,{service,userId}){
+  if(!naia||typeof naia.registerCapability!=='function')throw new Error('NaIA capability registration is required');
+  if(!service||!userId)throw new Error('food diary service and userId are required');
+  return [
+    naia.registerCapability({name:'food.log',tool:{risk:'LOCAL_WRITE',capability:'food.diary',description:'Logs a food diary entry',async run(input){return service.logText({userId,...input});}}}),
+    naia.registerCapability({name:'food.daily',tool:{risk:'SENSITIVE',capability:'food.diary',description:'Reads daily food diary totals',async run(input){return service.dailyTotals(userId,input?.date);}}}),
+    naia.registerCapability({name:'food.preference',tool:{risk:'LOCAL_WRITE',capability:'food.diary',description:'Changes food coaching preference',async run(input){return service.setCoachingFrequency(userId,input?.frequency);}}}),
+    naia.registerCapability({name:'food.correct',tool:{risk:'LOCAL_WRITE',capability:'food.diary',description:'Corrects an existing meal',async run(input){return service.correctMeal({userId,...input});}}}),
+    naia.registerCapability({name:'food.delete',tool:{risk:'LOCAL_WRITE',capability:'food.diary',description:'Soft-deletes a food diary entry',async run(input){return service.deleteMeal({userId,...input});}}}),
+  ];
+}
+
+export function createFoodDiaryInboundHandler({service,userId,channel='whatsapp'}={}){
+  if(!service||!userId)throw new Error('food diary service and userId are required');
+  return {
+    explicitUserInputOnly:true,
+    async handleText({text,messageId,occurredAt,mealType=null}){
+      if(!messageId)throw new Error('inbound messageId is required');
+      const preference=await service.interpretPreference(userId,text);
+      if(preference)return {kind:'PREFERENCE_UPDATED',preference};
+      const result=await service.logText({userId,text,source:{channel,messageId,modality:'text'},occurredAt,mealType});
+      return {kind:'FOOD_LOG',result,reply:formatFoodDiaryReply(result)};
+    },
+    async handleTranscript({transcript,messageId,occurredAt,mealType=null}){
+      if(!messageId)throw new Error('inbound messageId is required');
+      const preference=await service.interpretPreference(userId,transcript);
+      if(preference)return {kind:'PREFERENCE_UPDATED',preference};
+      const result=await service.logTranscript({userId,transcript,source:{channel,messageId},occurredAt,mealType});
+      return {kind:'FOOD_LOG',result,reply:formatFoodDiaryReply(result)};
+    },
+    async handleDetections({detections,messageId,occurredAt,mealType=null}){
+      if(!messageId)throw new Error('inbound messageId is required');
+      const result=await service.logDetections({userId,detections,source:{channel,messageId},occurredAt,mealType});
+      return {kind:'FOOD_LOG',result,reply:formatFoodDiaryReply(result)};
+    },
+  };
+}
