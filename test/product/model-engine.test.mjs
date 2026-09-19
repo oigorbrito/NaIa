@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createFixtureModelAdapter, createModelRegistry, createModelRouter } from '../../src/product/model-engine.mjs';
+import { createEntitledModelEngine, createFixtureModelAdapter, createModelRegistry, createModelRouter, normalizeModelToolCalls } from '../../src/product/model-engine.mjs';
+import { createEntitlementService } from '../../src/product/entitlements.mjs';
+import { createUsageMeter } from '../../src/product/metering.mjs';
 
 function fixture() {
   const registry = createModelRegistry();
@@ -75,4 +77,62 @@ test('model classes remain provider-neutral policy labels', async () => {
   const result = await router.request({ input: 'advanced' }, { requiredCapabilities: ['text'], modelClass: 'advanced', policy: 'cost' });
   assert.ok(['openai','anthropic'].includes(result.provider));
   assert.equal(result.modelClass, 'advanced');
+});
+
+test('provider-native tool calls are normalized into inert NaIA call contracts',()=>{
+  const calls=normalizeModelToolCalls([
+    {id:'c1',function:{name:'note.write',arguments:'{"name":"x","content":"y"}'}},
+    {name:'calendar.list',input:{from:'today'}},
+  ]);
+  assert.deepEqual(calls,[
+    {id:'c1',name:'note.write',input:{name:'x',content:'y'}},
+    {id:'tool-call-2',name:'calendar.list',input:{from:'today'}},
+  ]);
+});
+
+test('Free user cannot request advanced model class',async()=>{
+  const {registry}=fixture();
+  const entitlements=createEntitlementService();
+  const engine=createEntitledModelEngine({router:createModelRouter({registry}),entitlements});
+  await assert.rejects(
+    engine.request({userId:'u1',logicalId:'r1',request:{input:'x'},routing:{modelClass:'advanced',requiredCapabilities:['text']}}),
+    (error)=>error.code==='NOT_ENTITLED'&&error.capability==='model.advanced',
+  );
+});
+
+test('Pro user can request advanced class and usage is metered once per logical request',async()=>{
+  const {registry}=fixture();
+  const entitlements=createEntitlementService();await entitlements.setSubscription({userId:'u1',planId:'PRO'});
+  const meter=createUsageMeter({entitlements});
+  const engine=createEntitledModelEngine({router:createModelRouter({registry}),entitlements,meter});
+  const first=await engine.request({userId:'u1',logicalId:'r1',request:{input:'x'},routing:{modelClass:'advanced',requiredCapabilities:['text']},modelUnits:2});
+  assert.equal(first.entitlement.capability,'model.advanced');
+  assert.equal(first.metering.used,2);
+  const second=await engine.request({userId:'u1',logicalId:'r1',request:{input:'x'},routing:{modelClass:'advanced',requiredCapabilities:['text']},modelUnits:2});
+  assert.equal(second.metering.code,'ALREADY_COUNTED');
+  assert.equal(second.metering.used,2);
+});
+
+test('model quota blocks before provider invocation',async()=>{
+  let calls=0;
+  const registry=createModelRegistry();
+  registry.registerProvider('x',{async complete(){calls+=1;return {output:'ok'};}});
+  registry.registerModel({provider:'x',id:'m',class:'standard',capabilities:['text']});
+  const entitlements=createEntitlementService();
+  const meter=createUsageMeter({entitlements});
+  await meter.consume({userId:'u1',metric:'modelUnits.monthly',window:'MONTH',amount:100,logicalId:'fill'});
+  const engine=createEntitledModelEngine({router:createModelRouter({registry}),entitlements,meter});
+  await assert.rejects(engine.request({userId:'u1',logicalId:'blocked',request:{input:'x'},routing:{modelClass:'standard',requiredCapabilities:['text']},modelUnits:1}),(error)=>error.code==='LIMIT_REACHED');
+  assert.equal(calls,0);
+});
+
+test('fallback provider errors expose code/retryability but not raw provider error messages',async()=>{
+  const registry=createModelRegistry();
+  registry.registerProvider('a',{async complete(){const e=new Error('Authorization Bearer super-secret');e.code='RATE_LIMIT';e.retryable=true;throw e;}});
+  registry.registerProvider('b',createFixtureModelAdapter({name:'b',output:'ok'}));
+  registry.registerModel({provider:'a',id:'a1',capabilities:['text'],costRank:1,latencyRank:1});
+  registry.registerModel({provider:'b',id:'b1',capabilities:['text'],costRank:2,latencyRank:2});
+  const result=await createModelRouter({registry}).request({input:'x'},{requiredCapabilities:['text']});
+  assert.equal(JSON.stringify(result).includes('super-secret'),false);
+  assert.deepEqual(result.routing.attempts,[{provider:'a',model:'a1',code:'RATE_LIMIT',retryable:true}]);
 });
