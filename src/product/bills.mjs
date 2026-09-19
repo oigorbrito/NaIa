@@ -30,7 +30,7 @@ function normalizeLeadTimes(value = [7, 3, 1, 0]) {
 }
 
 function currentOccurrence(bill) {
-  return bill.occurrences.find((item) => item.dueDate === bill.nextDueDate && item.status === 'OPEN') ?? null;
+  return bill.occurrences.find((item) => item.dueDate === bill.nextDueDate && ['OPEN', 'OVERDUE'].includes(item.status)) ?? null;
 }
 
 export function createBillService({ store = createMemoryBillStore(), taskService, idFactory = randomUUID, now = () => new Date().toISOString() } = {}) {
