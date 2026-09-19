@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   classifyFileKind,
   createFileInventoryAdapter,
   createFileInventoryService,
+  createFileInventoryStore,
   createMemoryFileInventoryStore,
+  createPlatformFileInventoryAdapter,
   inferWhatsAppOrigin,
   registerFileInventoryCapability,
 } from '../../src/product/file-inventory.mjs';
+import { createPlatformCapability, createPlatformRegistry, createPlatformRuntime, createReferencePlatformAdapter } from '../../src/product/platform.mjs';
 
 test('classifies supported document types without platform-specific imports', () => {
   assert.equal(classifyFileKind('application/pdf', 'bill.pdf'), 'PDF');
@@ -94,4 +100,67 @@ test('file.scan registers as normal read-only NaIA capability', () => {
   const action = definition.rule.action();
   assert.equal(action.requiresApproval, false);
   assert.equal(action.risk, 'READ_ONLY');
+});
+
+test('file-backed inventory persists stable identity and duplicate suppression across restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'naia-file-inventory-'));
+  try {
+    let ids = 0;
+    const adapter = createFileInventoryAdapter({
+      platform: 'android',
+      scan: async () => [{ stableSourceId:'doc-1', displayName:'bill.pdf', mimeType:'application/pdf', sourceUri:'content://doc/1' }],
+    });
+    const first = createFileInventoryService({ store:createFileInventoryStore({ rootDir:dir }), idFactory:()=>`file-${++ids}` });
+    const imported = await first.scan(adapter);
+    assert.equal(imported.imported,1);
+    const second = createFileInventoryService({ store:createFileInventoryStore({ rootDir:dir }), idFactory:()=>`file-${++ids}` });
+    const duplicate = await second.scan(adapter);
+    assert.equal(duplicate.imported,0);
+    assert.equal(duplicate.duplicates,1);
+    assert.equal(duplicate.items[0].id,imported.items[0].id);
+  } finally {
+    await rm(dir,{recursive:true,force:true});
+  }
+});
+
+test('platform runtime bridge inventories user-authorized files through shared #51 contract', async () => {
+  const adapter = createReferencePlatformAdapter({
+    platform:'android',
+    capabilities:[createPlatformCapability({ name:'files.list', platform:'android', operations:['list'], risk:'READ_ONLY', permissions:[], availability:'AVAILABLE' })],
+    handlers:{ 'files.list':{ list:()=>({ entries:[{ stableSourceId:'content-1', displayName:'invoice.pdf', mimeType:'application/pdf', relativePath:'Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents/', sourceUri:'content://docs/1' }] }) } },
+  });
+  const registry=createPlatformRegistry();registry.register('android',adapter);
+  const runtime=createPlatformRuntime({platform:'android',registry});
+  const inventoryAdapter=createPlatformFileInventoryAdapter({platformRuntime:runtime});
+  const service=createFileInventoryService({idFactory:()=> 'file-1'});
+  const result=await service.scan(inventoryAdapter);
+  assert.equal(result.status,'AVAILABLE');
+  assert.equal(result.items[0].sourceType,'whatsapp');
+  assert.equal(result.items[0].sourceUri,'content://docs/1');
+});
+
+test('platform permission denial maps to explicit non-destructive inventory state', async () => {
+  const adapter = createReferencePlatformAdapter({
+    platform:'android',permissions:[],
+    capabilities:[createPlatformCapability({ name:'files.list', platform:'android', operations:['list'], risk:'READ_ONLY', permissions:['files'], availability:'PERMISSION_REQUIRED' })],
+    handlers:{ 'files.list':{ list:()=>({ entries:[] }) } },
+  });
+  const registry=createPlatformRegistry();registry.register('android',adapter);
+  const runtime=createPlatformRuntime({platform:'android',registry});
+  const service=createFileInventoryService();
+  const result=await service.scan(createPlatformFileInventoryAdapter({platformRuntime:runtime}));
+  assert.deepEqual(result,{status:'UNAVAILABLE',permissionState:'DENIED',imported:0,duplicates:0,items:[]});
+});
+
+test('unsupported platform file capability maps to explicit unavailable state', async () => {
+  const adapter = createReferencePlatformAdapter({
+    platform:'web',
+    capabilities:[createPlatformCapability({ name:'files.list', platform:'web', operations:['list'], risk:'READ_ONLY', permissions:[], availability:'UNSUPPORTED' })],
+    handlers:{},
+  });
+  const registry=createPlatformRegistry();registry.register('web',adapter);
+  const runtime=createPlatformRuntime({platform:'web',registry});
+  const service=createFileInventoryService();
+  const result=await service.scan(createPlatformFileInventoryAdapter({platformRuntime:runtime}));
+  assert.deepEqual(result,{status:'UNAVAILABLE',permissionState:'REVOKED',imported:0,duplicates:0,items:[]});
 });
