@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 function clone(value) { return structuredClone(value); }
@@ -22,6 +24,38 @@ export function createMemoryBillStore() {
     async get(id) { const value = bills.get(id); return value ? clone(value) : null; },
     async list({ userId } = {}) { return [...bills.values()].filter((bill) => !userId || bill.userId === userId).map(clone); },
     async recordDelivery(key) { if (occurrenceDeliveries.has(key)) return false; occurrenceDeliveries.add(key); return true; },
+  };
+}
+
+async function readBillJson(path) {
+  try { return JSON.parse(await readFile(path, 'utf8')); }
+  catch (error) { if (error?.code === 'ENOENT') return { bills: {}, deliveries: {} }; throw error; }
+}
+async function writeBillJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  await rename(temp, path);
+}
+
+export function createFileBillStore({ rootDir = '.naia' } = {}) {
+  const path = join(rootDir, 'bills.json');
+  let chain = Promise.resolve();
+  async function mutate(fn) {
+    chain = chain.catch(() => {}).then(async () => {
+      const data = await readBillJson(path);
+      const result = await fn(data);
+      await writeBillJsonAtomic(path, data);
+      return clone(result);
+    });
+    return chain;
+  }
+  return {
+    path,
+    async save(bill) { return mutate((data) => { data.bills[bill.id] = clone(bill); return bill; }); },
+    async get(id) { const data = await readBillJson(path); return data.bills?.[String(id)] ? clone(data.bills[String(id)]) : null; },
+    async list({ userId } = {}) { const data = await readBillJson(path); return Object.values(data.bills ?? {}).filter((bill) => !userId || bill.userId === userId).map(clone); },
+    async recordDelivery(key) { return mutate((data) => { if (data.deliveries[key]) return false; data.deliveries[key] = true; return true; }); },
   };
 }
 
@@ -123,13 +157,65 @@ export function createBillService({ store = createMemoryBillStore(), taskService
       return clone(bill);
     },
 
+    async update(id, { name, amount, currency, recurrence, leadTimesDays, nextDueDate } = {}) {
+      const bill = await requireBill(id);
+      const occurrence = currentOccurrence(bill);
+      const requiresReschedule = nextDueDate !== undefined || leadTimesDays !== undefined;
+      if (name !== undefined && String(name).trim()) bill.name = String(name).trim();
+      if (amount !== undefined) bill.amount = amount == null ? null : Number(amount);
+      if (currency !== undefined) bill.currency = String(currency).toUpperCase();
+      if (recurrence !== undefined) {
+        if (recurrence && recurrence.kind !== 'MONTHLY') throw new Error('unsupported bill recurrence');
+        bill.recurrence = recurrence ? clone(recurrence) : null;
+      }
+      if (leadTimesDays !== undefined) bill.leadTimesDays = normalizeLeadTimes(leadTimesDays);
+      if (requiresReschedule) {
+        if (!occurrence) throw new Error('no open bill occurrence');
+        const targetDate = dateOnly(nextDueDate ?? occurrence.dueDate);
+        parseDate(targetDate);
+        for (const taskId of occurrence.reminderTaskIds) await taskService.cancel(taskId);
+        occurrence.status = 'RESCHEDULED';
+        occurrence.resolvedAt = now();
+        await scheduleOccurrence(bill, targetDate);
+      }
+      bill.updatedAt = now();
+      await store.save(bill);
+      return clone(bill);
+    },
+
+    async upcoming({ userId, asOf = dateOnly(now()), days = 30 }) {
+      const start = parseDate(asOf).getTime();
+      const end = start + Number(days) * 24 * 60 * 60 * 1000;
+      return (await store.list({ userId }))
+        .map((bill) => ({ bill, occurrence: currentOccurrence(bill) }))
+        .filter(({ occurrence }) => occurrence)
+        .filter(({ occurrence }) => { const due = parseDate(occurrence.dueDate).getTime(); return due >= start && due <= end; })
+        .sort((a, b) => a.occurrence.dueDate.localeCompare(b.occurrence.dueDate))
+        .map(({ bill, occurrence }) => ({
+          billId: bill.id, name: bill.name, dueDate: occurrence.dueDate, status: occurrence.status,
+          amount: bill.amount, currency: bill.currency, source: clone(bill.source),
+        }));
+    },
+
     async deliverReminder({ billId, dueDate, leadDays }) {
       const bill = await requireBill(billId);
       const occurrence = bill.occurrences.find((item) => item.dueDate === dueDate);
-      if (!occurrence || occurrence.status !== 'OPEN') return { delivered: false, reason: 'inactive-occurrence' };
+      if (!occurrence || !['OPEN', 'OVERDUE'].includes(occurrence.status)) return { delivered: false, reason: 'inactive-occurrence' };
       const key = bill.id + ':' + dueDate + ':' + Number(leadDays);
       if (!(await store.recordDelivery(key))) return { delivered: false, duplicate: true };
-      return { delivered: true, duplicate: false, billId: bill.id, dueDate, leadDays: Number(leadDays) };
+      return { delivered: true, duplicate: false, billId: bill.id, dueDate, leadDays: Number(leadDays), amount: bill.amount, currency: bill.currency, source: clone(bill.source) };
     },
   };
+}
+
+export function registerBillCapabilities(naia,{service,userId}) {
+  if (!naia || typeof naia.registerCapability !== 'function') throw new Error('NaIA capability registration is required');
+  if (!service || !userId) throw new Error('bill service and userId are required');
+  return [
+    naia.registerCapability({ name:'bill.list', tool:{ risk:'SENSITIVE', capability:'bills.read', description:'Lists upcoming personal bills', async run(input){ return service.upcoming({ userId, ...input }); } } }),
+    naia.registerCapability({ name:'bill.create', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Creates a bill reminder', async run(input){ return service.create({ userId, ...input }); } } }),
+    naia.registerCapability({ name:'bill.update', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Updates future bill reminder state', async run(input){ const { billId, ...changes } = input; return service.update(billId, changes); } } }),
+    naia.registerCapability({ name:'bill.markPaid', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Marks the current bill occurrence paid without executing payment', async run(input){ return service.markPaid(input.billId); } } }),
+    naia.registerCapability({ name:'bill.skip', tool:{ risk:'LOCAL_WRITE', capability:'bills.write', description:'Skips the current bill occurrence', async run(input){ return service.skip(input.billId); } } }),
+  ];
 }
