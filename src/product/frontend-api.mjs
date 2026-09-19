@@ -39,6 +39,7 @@ export function createFrontendApi({
   entitlements = null,
   meter = null,
   connectors = null,
+  historyIndex = null,
 } = {}) {
   if (!naia || typeof naia.pursue !== 'function' || typeof naia.get !== 'function') throw new Error('NaIA service is required');
   if (!userId) throw new Error('userId is required');
@@ -64,6 +65,24 @@ export function createFrontendApi({
 
     async history() {
       try { return { ok: true, objectives: clone(await naia.history()) }; }
+      catch (error) { return { ok: false, error: normalizeError(error) }; }
+    },
+
+    async historySearch(filters = {}) {
+      if (!historyIndex || typeof historyIndex.search !== 'function') return { ok: true, available: false, items: [] };
+      try { const result = await historyIndex.search({ userId, ...filters }); return { ok: true, available: true, ...clone(result) }; }
+      catch (error) { return { ok: false, error: normalizeError(error) }; }
+    },
+
+    async historyExport() {
+      if (!historyIndex || typeof historyIndex.export !== 'function') return { ok: false, error: { code: 'CAPABILITY_UNAVAILABLE', message: 'history export unavailable', retryable: false } };
+      try { return { ok: true, export: clone(await historyIndex.export(userId)) }; }
+      catch (error) { return { ok: false, error: normalizeError(error) }; }
+    },
+
+    async deleteHistory(id) {
+      if (!historyIndex || typeof historyIndex.delete !== 'function') return { ok: false, error: { code: 'CAPABILITY_UNAVAILABLE', message: 'history deletion unavailable', retryable: false } };
+      try { return { ok: true, ...clone(await historyIndex.delete({ userId, id })) }; }
       catch (error) { return { ok: false, error: normalizeError(error) }; }
     },
 
@@ -151,13 +170,13 @@ export function createFrontendApi({
     },
 
     async shell() {
-      const [history, approvals, automations, premium, connectorState] = await Promise.all([
-        this.history(), this.approvals(), this.automations(), this.premiumState(), this.connectorState(),
+      const [history, advancedHistory, approvals, automations, premium, connectorState] = await Promise.all([
+        this.history(), this.historySearch({ limit: 20 }), this.approvals(), this.automations(), this.premiumState(), this.connectorState(),
       ]);
       return {
-        ok: [history, approvals, automations, premium, connectorState].every((row) => row.ok),
+        ok: [history, advancedHistory, approvals, automations, premium, connectorState].every((row) => row.ok),
         navigation: ['chat','objectives','approvals','automations','connectors','history','settings'],
-        surfaces: { history, approvals, automations, premium, connectors: connectorState },
+        surfaces: { history, advancedHistory, approvals, automations, premium, connectors: connectorState },
       };
     },
   };
