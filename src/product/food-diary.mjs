@@ -50,13 +50,15 @@ export function parseMealText(text){
   let value=String(text??'').trim();
   value=value.replace(/^(eu\s+)?(comi|jantei|almocei|tomei|bebi)\s+/i,'');
   const parts=value.split(/\s+(?:e|com)\s+|,|\+/i).map(s=>s.trim()).filter(Boolean);
-  return parts.map(part=>({raw:part,quantity:parseQuantity(part),query:part.replace(/\b\d+(?:[.,]\d+)?\s*g\b/ig,'').replace(/\b\d+(?:[.,]\d+)?\b/g,'').replace(/\b(?:um|uma|dois|duas|três|tres|quatro|cinco|seis)\b/ig,'').trim()}));
+  return parts.map(part=>({raw:part,quantity:parseQuantity(part),query:part.replace(/\b\d+(?:[.,]\d+)?\s*g\b/ig,'').replace(/\b\d+(?:[.,]\d+)?\b/g,'').replace(/\b(?:um|uma|dois|duas|três|tres|quatro|cinco|seis)\b/ig,'').replace(/^de\s+/i,'').trim()}));
 }
 
 function scaledNutrition(food,grams){
   const factor=grams/100;
   return {kcal:round1(food.per100g.kcal*factor),protein:round1(food.per100g.protein*factor),carbs:round1(food.per100g.carbs*factor),fat:round1(food.per100g.fat*factor),fiber:round1(food.per100g.fiber*factor)};
 }
+
+function sanitizeSource(source={}){return {channel:String(source.channel??'chat'),messageId:source.messageId??null,modality:source.modality??'text'};}
 
 function itemFrom(food,parsed){
   let grams,estimated=parsed.quantity.estimated;
@@ -107,7 +109,28 @@ export function createFoodDiaryService({store=createMemoryFoodDiaryStore(),nutri
       const resolution=await resolveText(text);
       if(resolution.ambiguous.length)return {status:'NEEDS_CONFIRMATION',ambiguous:resolution.ambiguous,unresolved:resolution.unresolved,items:resolution.items};
       if(!resolution.items.length)return {status:'UNRESOLVED',unresolved:resolution.unresolved};
-      const meal={id:idFactory(),userId,occurredAt,mealType,source:clone(source),status:'ACTIVE',items:resolution.items,unresolved:resolution.unresolved,totals:totals(resolution.items),createdAt:now(),updatedAt:now(),audit:[]};
+      const meal={id:idFactory(),userId,occurredAt,mealType,source:sanitizeSource(source),status:'ACTIVE',items:resolution.items,unresolved:resolution.unresolved,totals:totals(resolution.items),createdAt:now(),updatedAt:now(),audit:[]};
+      await store.saveMeal(meal);return {duplicate:false,meal:clone(meal),summary:await this.summaryForMeal(meal.id)};
+    },
+    async logTranscript({userId,transcript,source={channel:'voice',messageId:null},occurredAt=now(),mealType=null}){
+      return this.logText({userId,text:transcript,source:{...source,modality:'audio'},occurredAt,mealType});
+    },
+    async logDetections({userId,detections,source={channel:'image',messageId:null},occurredAt=now(),mealType=null}){
+      if(source?.messageId){const existing=await store.findBySource({userId,channel:source.channel,messageId:source.messageId});if(existing)return {duplicate:true,meal:existing,summary:await this.summaryForMeal(existing.id)};}
+      const items=[];const unresolved=[];const ambiguous=[];
+      for(const detection of detections??[]){
+        const matches=await nutritionProvider.lookup({query:detection.name});
+        if(matches.length===0){unresolved.push(detection.name);continue;}
+        if(matches.length>1){ambiguous.push({raw:detection.name,candidates:matches.map(m=>({id:m.id,name:m.name,source:m.source}))});continue;}
+        const grams=Number(detection.grams);
+        const parsed={raw:String(detection.name),quantity:Number.isFinite(grams)&&grams>0?{kind:'GRAMS',grams,estimated:Boolean(detection.estimated)}:{kind:'UNKNOWN',estimated:true}};
+        const item=itemFrom(matches[0],parsed);
+        if(Number.isFinite(Number(detection.confidence)))item.confidence=Math.min(item.confidence,Number(detection.confidence));
+        items.push(item);
+      }
+      if(ambiguous.length)return {status:'NEEDS_CONFIRMATION',ambiguous,unresolved,items};
+      if(!items.length)return {status:'UNRESOLVED',unresolved};
+      const meal={id:idFactory(),userId,occurredAt,mealType,source:sanitizeSource({...source,modality:'image'}),status:'ACTIVE',items,unresolved,totals:totals(items),createdAt:now(),updatedAt:now(),audit:[]};
       await store.saveMeal(meal);return {duplicate:false,meal:clone(meal),summary:await this.summaryForMeal(meal.id)};
     },
     async summaryForMeal(id){
