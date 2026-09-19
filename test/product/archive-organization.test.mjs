@@ -103,7 +103,9 @@ test('file-backed archive preserves virtual collections and prepared operations 
     await first.addArtifact(collection.id,{ sourceType:'google_drive', sourceItemId:'f1' });
     const prepared = await first.createSourceMutationOperation({ userId:'u1', sourceType:'google_drive', operation:'move', artifacts:[{sourceType:'google_drive',sourceItemId:'f1'}], destination:'folder-1', idempotencyKey:'move-1' });
     const second = createArchiveService({ store:createFileArchiveStore({ rootDir:dir }), adapters:[drive] });
-    assert.equal((await second.getCollection?.(collection.id)) ?? null, null);
+    const restored = await second.getCollection(collection.id, 'u1');
+    assert.equal(restored.name, 'Taxes');
+    assert.equal(restored.artifacts.length, 1);
     const duplicate = await second.createSourceMutationOperation({ userId:'u1', sourceType:'google_drive', operation:'move', artifacts:[{sourceType:'google_drive',sourceItemId:'f1'}], destination:'folder-1', idempotencyKey:'move-1' });
     assert.equal(duplicate.duplicate,true);
     assert.equal(duplicate.operation.id,prepared.operation.id);
