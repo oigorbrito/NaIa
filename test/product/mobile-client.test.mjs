@@ -7,7 +7,7 @@ function fakeFrontend(){
   const calls=[];
   return {
     calls,
-    async shell(){return {ok:true,navigation:['chat','approvals'],surfaces:{history:{ok:true,objectives:[{id:'o1',title:'Cached objective',status:'WAITING_APPROVAL'}]},approvals:{ok:true,approvals:[{objectiveId:'o1',tool:'email.send'}],confirmations:[{objectiveId:'o2',confirmationId:'c1'}]},automations:{ok:true,items:[{id:'t1'}]},premium:{ok:true},connectors:{ok:true}}};},
+    async shell(){return {ok:true,navigation:['chat','approvals','history','connectors','media','settings'],surfaces:{history:{ok:true,objectives:[{id:'o1',title:'Cached objective',status:'WAITING_APPROVAL'}]},approvals:{ok:true,approvals:[{objectiveId:'o1',tool:'email.send'}],confirmations:[{objectiveId:'o2',confirmationId:'c1'}]},automations:{ok:true,items:[{id:'t1'}]},premium:{ok:true,available:true,plan:{id:'PRO'},usage:[{metric:'executions.daily',used:1,limit:250}]},connectors:{ok:true,available:true,connectors:[{id:'drive',state:'CONNECTED'}]},media:{ok:true,available:true,items:[{id:'m1',mediaType:'IMAGE'}]}}};},
     async submit({text}){calls.push(['submit',text]);return {ok:true,objective:{id:'new',title:text,status:'COMPLETED'}};},
     async objective(id){calls.push(['objective',id]);return {ok:true,objective:{id,status:'COMPLETED'}};},
     async approvals(){calls.push(['approvals']);return {ok:true,approvals:[{objectiveId:'o1',tool:'email.send'}],confirmations:[{objectiveId:'o2',confirmationId:'c1'}]};},
@@ -15,6 +15,10 @@ function fakeFrontend(){
     async confirm(args){calls.push(['confirm',args]);return {ok:true,objective:{id:args.objectiveId,status:'COMPLETED'}};},
     async automations(){calls.push(['automations']);return {ok:true,items:[{id:'t1'}]};},
     async cancelAutomation(id){calls.push(['cancelAutomation',id]);return {ok:true,item:{id,userState:'CANCELLED'}};},
+    async history(){calls.push(['history']);return {ok:true,objectives:[{id:'o1',title:'Cached objective',status:'WAITING_APPROVAL'}]};},
+    async connectorState(){calls.push(['connectors']);return {ok:true,available:true,connectors:[{id:'drive',state:'CONNECTED'}]};},
+    async premiumState(){calls.push(['premium']);return {ok:true,available:true,plan:{id:'PRO'},usage:[{metric:'executions.daily',used:1,limit:250}]};},
+    async mediaState(){calls.push(['media']);return {ok:true,available:true,items:[{id:'m1',mediaType:'IMAGE'}]};},
   };
 }
 
@@ -74,6 +78,25 @@ for(const platformName of ['android','ios']){
     assert.equal(route.tool,'email.send');
   });
 
+  test(`${platformName} shared client contract exposes history, connectors, premium settings and media online/offline`,async()=>{
+    const {client}=clientFor(platformName);
+    const onlineHistory=await client.history();
+    assert.equal(onlineHistory.objectives[0].id,'o1');
+    assert.equal((await client.connectors()).connectors[0].id,'drive');
+    assert.equal((await client.premiumState()).plan.id,'PRO');
+    assert.equal((await client.media()).items[0].id,'m1');
+    await client.bootstrap();
+    client.setOnline(false);
+    const offlineHistory=await client.history();
+    const offlineConnectors=await client.connectors();
+    const offlinePremium=await client.premiumState();
+    const offlineMedia=await client.media();
+    assert.equal(offlineHistory.offline,true);
+    assert.equal(offlineConnectors.offline,true);
+    assert.equal(offlinePremium.offline,true);
+    assert.equal(offlineMedia.offline,true);
+    assert.equal(offlineMedia.items[0].id,'m1');
+  });
   test(`${platformName} background and device bridges use shared platform contracts`,async()=>{
     const {client}=clientFor(platformName);
     const scheduled=await client.scheduleBackground({id:'job1',task:{kind:'SYNC'}});
