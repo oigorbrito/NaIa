@@ -466,3 +466,28 @@ test('calendar and configured HTTP capabilities integrate with registry, planner
   const readPlan = await planner.plan({ id: 'http-1', title: 'structured', normalizedIntent: { type: 'HTTP_READ', parameters: { targetId: 'status-service' } } });
   assert.equal((await ports.policy.authorize({ objective: { approvals: [] }, plan: readPlan, step: readPlan.steps[1] })).allowed, true);
 });
+
+test('note.write rejects traversal, hidden path tricks, and excessive names', async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'naia-note-security-'));
+  try {
+    const ports = createFilePorts({ rootDir });
+    await assert.rejects(ports.tools.run('note.write', { name: '../../evil', content: 'x' }), /path separators are not allowed/);
+    await assert.rejects(ports.tools.run('note.write', { name: 'sub/file', content: 'x' }), /path separators are not allowed/);
+    await assert.rejects(ports.tools.run('note.write', { name: '..', content: 'x' }), /note name is required/);
+    await assert.rejects(ports.tools.run('note.write', { name: 'a'.repeat(300), content: 'x' }), /maximum length/);
+    const hidden = await ports.tools.run('note.write', { name: '.hidden', content: 'safe' });
+    assert.ok(hidden.path.endsWith('/workspace/notes/hidden.txt'));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('non-read-only action cannot bypass approval by falsifying requiresApproval', async () => {
+  const ports = createInMemoryPorts();
+  const authorization = await ports.policy.authorize({
+    objective: { approvals: [] },
+    step: { action: { tool: 'note.write', input: { name: 'x', content: 'x' }, risk: 'LOCAL_WRITE', requiresApproval: false } },
+  });
+  assert.equal(authorization.allowed, false);
+  assert.equal(authorization.reason, 'approval-required');
+});
