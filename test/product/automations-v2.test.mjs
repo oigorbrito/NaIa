@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import {
   createAutomationService,
+  createFileAutomationStore,
   createMemoryAutomationStore,
   createNaiaAutomationDispatcher,
   evaluateAutomationCondition,
@@ -95,4 +99,34 @@ test('quota policy blocks dispatch before runtime action when allowance is exhau
   assert.equal(first.status,'DISPATCHED');
   const blocked=await service.trigger(automation.id,{deliveryId:'q2',trigger:{kind:'EVENT',event:'go'}});
   assert.equal(blocked.status,'LIMIT_REACHED');
+});
+
+test('file-backed automation and delivery idempotency survive service restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-automations-'));
+  try{
+    const first=fixture({store:createFileAutomationStore({rootDir:dir})});
+    const automation=await first.service.create({userId:'u1',name:'scheduled',trigger:{kind:'SCHEDULE',schedule:'0 9 * * *',timezone:'America/Sao_Paulo'},action:{tool:'text.echo',input:{text:'daily'},risk:'READ_ONLY'}});
+    const firstDelivery=await first.service.trigger(automation.id,{deliveryId:'tick-1',trigger:{kind:'SCHEDULE'},payload:{at:'09:00'}});
+    assert.equal(firstDelivery.status,'DISPATCHED');
+    const second=fixture({store:createFileAutomationStore({rootDir:dir})});
+    assert.equal((await second.service.get(automation.id)).name,'scheduled');
+    const duplicate=await second.service.trigger(automation.id,{deliveryId:'tick-1',trigger:{kind:'SCHEDULE'},payload:{at:'09:00'}});
+    assert.equal(duplicate.status,'DUPLICATE');
+    assert.equal(duplicate.duplicate,true);
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+
+test('disable state and delete persist across file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-automations-state-'));
+  try{
+    const first=fixture({store:createFileAutomationStore({rootDir:dir})});
+    const automation=await first.service.create({userId:'u1',name:'event',trigger:{kind:'EVENT',event:'provider.changed',source:'provider'},action:{tool:'text.echo',input:{text:'x'},risk:'READ_ONLY'}});
+    await first.service.setEnabled(automation.id,false);
+    const second=fixture({store:createFileAutomationStore({rootDir:dir})});
+    assert.equal((await second.service.get(automation.id)).enabled,false);
+    assert.equal((await second.service.trigger(automation.id,{deliveryId:'e1',trigger:{kind:'EVENT',event:'provider.changed',source:'provider'}})).status,'DISABLED');
+    await second.service.delete(automation.id);
+    const third=fixture({store:createFileAutomationStore({rootDir:dir})});
+    await assert.rejects(third.service.get(automation.id),/automation not found/);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
