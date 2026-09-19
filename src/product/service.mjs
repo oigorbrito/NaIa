@@ -112,6 +112,30 @@ export function createNaiaService(rawPorts) {
       return executePlan(ports, objective, plan);
     },
 
+    async pursueAction({ title, description = '', id, action, confirmation = null, intent = 'STRUCTURED_ACTION' }) {
+      if (!action || !String(action.tool ?? '').trim()) throw new Error('structured action tool is required');
+      const objective = createObjective({ title, description, id });
+      const plan = {
+        objectiveId: objective.id,
+        intent,
+        steps: [
+          { id: `${objective.id}:understand`, kind: 'UNDERSTAND', status: 'PENDING', action: null },
+          { id: `${objective.id}:execute`, kind: 'EXECUTE', status: 'PENDING', action: structuredClone(action), confirmation: confirmation ? structuredClone(confirmation) : undefined },
+          { id: `${objective.id}:verify`, kind: 'VERIFY', status: 'PENDING', action: null },
+        ],
+      };
+      await ports.objectives.save(objective);
+      await ports.plans.save(plan);
+      await ports.evidence.append({ type: 'OBJECTIVE_CREATED', objectiveId: objective.id, intent, at: objective.createdAt });
+      await ports.evidence.append({
+        type: 'PLAN_CREATED',
+        objectiveId: objective.id,
+        steps: plan.steps.map((step) => ({ id: step.id, kind: step.kind, tool: step.action?.tool ?? null })),
+        at: new Date().toISOString(),
+      });
+      return executePlan(ports, objective, plan);
+    },
+
     async confirm(objectiveId, confirmationId) {
       const objective = await ports.objectives.get(objectiveId);
       if (!objective) throw new Error(`objective not found: ${objectiveId}`);
