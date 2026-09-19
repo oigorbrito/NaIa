@@ -132,14 +132,17 @@ test('all task lifecycle capabilities preserve sensitive-read/write approval bou
 test('task get and lifecycle operations cannot cross user boundary', async () => {
   const { service }=fixture();
   const created=await service.create({userId:'u1',title:'private task',schedule:{kind:'ONCE',at:'2026-09-20T15:00:00-03:00'}});
-  const naia=createNaiaService(createInMemoryPorts());
+  const ports=createInMemoryPorts();
+  const naia=createNaiaService(ports);
   registerTaskCapabilities(naia,{service,userId:'u2'});
   const getPending=await naia.pursueAction({title:'Get task',action:{tool:'task.get',input:{taskId:created.task.id},risk:'SENSITIVE',requiresApproval:true}});
   const read=await naia.approve(getPending.objective.id,'task.get');
-  const evidence=(await createInMemoryPorts().evidence?.list?.({objectiveId:read.objective.id}))??[];
   assert.equal(read.objective.status,'COMPLETED');
-  await assert.rejects(async()=>{
-    const pending=await naia.pursueAction({title:'Complete other task',action:{tool:'task.complete',input:{taskId:created.task.id},risk:'LOCAL_WRITE',requiresApproval:true}});
-    await naia.approve(pending.objective.id,'task.complete');
-  });
+  const readEvidence=await ports.evidence.list({objectiveId:read.objective.id});
+  const readExecution=readEvidence.find((row)=>row.type==='STEP_EXECUTED'&&row.tool==='task.get');
+  assert.equal(readExecution.output?.result??readExecution.output,null);
+  const pending=await naia.pursueAction({title:'Complete other task',action:{tool:'task.complete',input:{taskId:created.task.id},risk:'LOCAL_WRITE',requiresApproval:true}});
+  const blocked=await naia.approve(pending.objective.id,'task.complete');
+  assert.equal(blocked.objective.status,'FAILED');
+  assert.equal((await service.get(created.task.id)).userState,'ACTIVE');
 });
