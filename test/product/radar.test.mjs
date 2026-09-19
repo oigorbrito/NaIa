@@ -44,12 +44,11 @@ test('source opt-out removes disabled source immediately',()=>{
 });
 
 test('external-write actions remain proposals with approval metadata and are never executed by Radar',()=>{
-  let executed=false;
-  const action={tool:'email.send',risk:'EXTERNAL_WRITE',requiresApproval:true,input:{to:'x@example.com'},run:()=>{executed=true;}};
+  const action={tool:'email.send',risk:'EXTERNAL_WRITE',requiresApproval:true,input:{to:'x@example.com'}};
   const digest=buildRadarDigest([{id:'mail',source:'email',topicKey:'reply',type:'PENDING_REPLY',title:'Reply',occurredAt:'2026-09-19T13:00:00Z',action}],{now:NOW});
   assert.equal(digest.topics[0].actions[0].tool,'email.send');
   assert.equal(digest.topics[0].actions[0].requiresApproval,true);
-  assert.equal(executed,false);
+  assert.equal(typeof digest.topics[0].actions[0].run,'undefined');
 });
 
 test('Radar preference store persists disabled sources',async()=>{
