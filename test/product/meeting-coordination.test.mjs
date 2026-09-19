@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { createNaiaService } from '../../src/product/service.mjs';
 import { createInMemoryPorts } from '../../src/product/ports.mjs';
 import {
+  createFileMeetingStore,
   createFixtureMeetingProvider,
   createMeetingService,
   normalizeMeetingIntent,
@@ -106,21 +110,60 @@ test('cancel targets exact meeting and records participant notification',async()
   assert.ok(notifications.some((row)=>row.type==='CANCEL'));
 });
 
-test('duplicate commit does not duplicate provider mutation or participant notification',async()=>{
+test('duplicate approved commit does not duplicate provider mutation or participant notification',async()=>{
   const f=fixture();
   const discovery=await f.service.discover({title:'Sync',participants:['a@example.com'],durationMinutes:30});
   const action=await f.service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
-  const first=await f.service.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:'same'});
-  const duplicate=await f.service.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:'same'});
-  assert.equal(first.duplicate,false);
-  assert.equal(duplicate.duplicate,true);
+  const proposed=await proposeMeetingAction(f.naia,action);
+  await f.naia.confirm(proposed.objective.id,proposed.confirmation.id);
+  const approved=await f.naia.approve(proposed.objective.id,'meeting.commit');
+  assert.equal(approved.objective.status,'COMPLETED');
+  const first=await f.service.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:'meeting:'+action.id});
+  assert.equal(first.duplicate,true);
   assert.equal((await f.service.notifications(first.meeting.id)).length,1);
 });
 
-test('provider failure remains explicit and action does not pretend success',async()=>{
+test('provider failure remains explicit after approval and action does not pretend success',async()=>{
   const f=fixture({failCommit:{code:'PROVIDER_TIMEOUT',message:'timeout',retryable:true}});
   const discovery=await f.service.discover({title:'Sync',participants:['a@example.com'],durationMinutes:30});
   const action=await f.service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
-  await assert.rejects(f.service.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:'fail'}),(error)=>error.code==='PROVIDER_TIMEOUT'&&error.retryable===true);
+  const proposed=await proposeMeetingAction(f.naia,action);
+  await f.naia.confirm(proposed.objective.id,proposed.confirmation.id);
+  const failed=await f.naia.approve(proposed.objective.id,'meeting.commit');
+  assert.equal(failed.objective.status,'FAILED');
   assert.equal((await f.service.getAction(action.id)).status,'FAILED');
+});
+
+test('direct meeting commit fails closed before runtime approval',async()=>{
+  const f=fixture();
+  const discovery=await f.service.discover({title:'Sync',participants:['a@example.com'],durationMinutes:30});
+  const action=await f.service.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+  await assert.rejects(
+    f.service.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:'direct'}),
+    (error)=>error.code==='APPROVAL_REQUIRED',
+  );
+});
+
+test('meeting, commit and notification state survive file-backed restart',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'naia-meeting-'));
+  try{
+    let id=0;
+    const provider=createFixtureMeetingProvider({
+      name:'calendar',
+      slots:[{id:'s1',start:'2026-09-20T10:00:00-03:00',end:'2026-09-20T10:30:00-03:00',timezone:'America/Sao_Paulo',revision:'1',available:true}],
+    });
+    const firstService=createMeetingService({store:createFileMeetingStore({rootDir:dir}),providers:[provider],idFactory:()=>`id-${++id}`,now:()=> '2026-09-19T14:00:00Z'});
+    const firstNaia=createNaiaService(createInMemoryPorts());registerMeetingCapability(firstNaia,{service:firstService});
+    const discovery=await firstService.discover({title:'Sync',participants:['a@example.com'],durationMinutes:30,timezone:'America/Sao_Paulo'});
+    const action=await firstService.prepareCreate({userId:'u1',intent:discovery.intent,option:discovery.options[0]});
+    const proposed=await proposeMeetingAction(firstNaia,action);
+    await firstNaia.confirm(proposed.objective.id,proposed.confirmation.id);
+    await firstNaia.approve(proposed.objective.id,'meeting.commit');
+    const secondService=createMeetingService({store:createFileMeetingStore({rootDir:dir}),providers:[provider],now:()=> '2026-09-19T15:00:00Z'});
+    const savedAction=await secondService.getAction(action.id);
+    assert.equal(savedAction.status,'COMPLETED');
+    const duplicate=await secondService.commit({actionId:action.id,fingerprint:action.fingerprint,idempotencyKey:`meeting:${action.id}`});
+    assert.equal(duplicate.duplicate,true);
+    assert.equal((await secondService.notifications(duplicate.meeting.id)).length,1);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
