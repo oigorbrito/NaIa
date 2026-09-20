@@ -191,10 +191,10 @@ export function createWebExecutionService({
 
     async submit(runId, { fingerprint, idempotencyKey }) {
       const run = await requireRun(runId);
-      assertActive(run);
       if (!idempotencyKey) throw new Error('idempotencyKey is required');
       const prior = await store.getCommit(idempotencyKey);
       if (prior) return { duplicate: true, ...clone(prior) };
+      assertActive(run);
       const pending = run.pendingSubmission;
       if (!pending || pending.fingerprint !== fingerprint || run.approvedFingerprint !== fingerprint) {
         const error = new Error('submission requires matching approval');
@@ -222,6 +222,9 @@ export function createWebExecutionService({
 
     async executeRuntimeApproved(runId,{fingerprint,idempotencyKey}){
       const run=await requireRun(runId);
+      if(!idempotencyKey) throw new Error('idempotencyKey is required');
+      const prior=await store.getCommit(idempotencyKey);
+      if(prior) return { duplicate: true, ...clone(prior) };
       if(run.state==='CANCELLED'){const e=new Error('web run cancelled');e.code='CANCELLED';throw e;}
       if(run.state==='WAITING_REVIEW'){const e=new Error('web submission requires renewed review');e.code='APPROVAL_REQUIRED';throw e;}
       const pending=run.pendingSubmission;
