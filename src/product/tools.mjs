@@ -59,7 +59,7 @@ export function createToolRegistry({ rootDir = '.naia' } = {}) {
         const filename = safeNoteName(input?.name);
         const path = resolve(notesDir, filename);
         const rel = relative(notesDir, path);
-        if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\')) throw new Error('invalid note path: path traversal detected');
+        if (rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || !path.startsWith(notesDir + '/')) throw new Error('invalid note path: path traversal detected');
         await mkdir(notesDir, { recursive: true });
         await writeFile(path, `${String(input?.content ?? '')}\n`, 'utf8');
         return { path, bytes: Buffer.byteLength(`${String(input?.content ?? '')}\n`, 'utf8') };
