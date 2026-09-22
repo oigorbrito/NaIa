@@ -26,6 +26,15 @@ test('production shell exposes all core navigation surfaces without CLI',async()
   for(const name of ['chat','objectives','approvals','automations','connectors','history','media','settings']) assert.match(res.body,new RegExp(`data-nav="${name}"`));
 });
 
+test('production shell includes essential accessibility attributes and focus visible styles',async()=>{
+  const {ui}=fixture();
+  const res=await ui.handle({method:'GET',path:'/surface/history'});
+  assert.match(res.body,/<html lang="en">/);
+  assert.match(res.body,/aria-label="Main navigation"/);
+  assert.match(res.body,/data-nav="history" aria-current="page"/);
+  assert.match(res.body,/:focus-visible/);
+});
+
 test('responsive shell includes narrow-screen breakpoint and viewport metadata',async()=>{
   const {ui}=fixture();const res=await ui.handle({method:'GET',path:'/surface/chat'});
   assert.match(res.body,/name="viewport"/);
