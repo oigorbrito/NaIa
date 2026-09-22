@@ -125,15 +125,14 @@ export function createMediaDuplicateService({store=createMemoryMediaDuplicateSto
       for(const row of supported){if(!row.exactHash)continue;if(!byExact.has(row.exactHash))byExact.set(row.exactHash,[]);byExact.get(row.exactHash).push(row.itemId);}
       const exactGroups=[...byExact.entries()].filter(([,ids])=>ids.length>1).map(([hash,ids])=>{const members=[...ids].sort();return {id:`exact:${stableId(['EXACT',hash,...members])}`,kind:'EXACT',members,exactHash:hash,confidence:1,similarity:1};}).sort((a,b)=>a.id.localeCompare(b.id));
 
-      // Pre-parse normalized perceptual hashes into byte buffers before O(N^2) comparison loop
-      const perceptualCandidates = supported
-        .filter(r => r.perceptualHash)
-        .map(r => ({ ...r, parsedHash: parseHexToBytes(r.perceptualHash) }));
+      // Pre-parse normalized perceptual hashes into byte buffers without copying candidate objects
+      const perceptualCandidates = supported.filter(r => r.perceptualHash);
+      const parsedHashes = perceptualCandidates.map(r => parseHexToBytes(r.perceptualHash));
       const edges=[];const distances=new Map();
       for(let i=0;i<perceptualCandidates.length;i++){for(let j=i+1;j<perceptualCandidates.length;j++){
         const a=perceptualCandidates[i],b=perceptualCandidates[j];
         if(a.exactHash&&b.exactHash&&a.exactHash===b.exactHash)continue;
-        const distance=hammingParsed(a.parsedHash,b.parsedHash);
+        const distance=hammingParsed(parsedHashes[i],parsedHashes[j]);
         if(distance!=null&&distance<=perceptualDistance){edges.push([a.itemId,b.itemId]);distances.set([a.itemId,b.itemId].sort().join('|'),distance);}
       }}
       const components=connectedComponents(perceptualCandidates.map(r=>r.itemId),edges);
