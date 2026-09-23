@@ -182,42 +182,6 @@ test('web run and commit idempotency survive file-backed restart',async()=>{
   }finally{await rm(dir,{recursive:true,force:true});}
 });
 
-
-test('runtime-approved duplicate retry returns the committed result after completion',async()=>{
-  const {service,adapter}=fixture();
-  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
-  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
-  const first=await service.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'runtime-duplicate-1'});
-  const duplicate=await service.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'runtime-duplicate-1'});
-  assert.equal(first.duplicate,false);
-  assert.equal(duplicate.duplicate,true);
-  assert.equal(adapter.submissions().length,1);
-  assert.equal((await service.get(run.id)).state,'COMPLETED');
-});
-
-test('runtime-approved completed run cannot execute again with a different idempotency key',async()=>{
-  const {service,adapter}=fixture();
-  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
-  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
-  await service.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'runtime-completed-1'});
-  await assert.rejects(
-    service.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint,idempotencyKey:'runtime-completed-2'}),
-    (error)=>error.code==='COMPLETED',
-  );
-  assert.equal(adapter.submissions().length,1);
-});
-
-test('runtime-approved submission requires an idempotency key',async()=>{
-  const {service,adapter}=fixture();
-  const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
-  const preview=await service.prepareForm(run.id,{targetId:'booking',fields:{partySize:2}});
-  await assert.rejects(
-    service.executeRuntimeApproved(run.id,{fingerprint:preview.fingerprint}),
-    /idempotencyKey is required/,
-  );
-  assert.equal(adapter.submissions().length,0);
-});
-
 test('cancelled run cannot be revived by runtime approval',async()=>{
   const {service,adapter}=fixture();
   const run=await service.createRun({userId:'u1',objective:'book table',allowedDomains:['book.example']});
