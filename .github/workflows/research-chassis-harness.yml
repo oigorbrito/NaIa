@@ -28,4 +28,4 @@ jobs:
       - name: Verify runtime
         run: node --version
       - name: Run neutral chassis harness tests
-        run: npm test
+        run: npm run test:chassis
