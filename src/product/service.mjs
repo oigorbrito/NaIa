@@ -252,7 +252,7 @@ export function createNaiaService(rawPorts, { featureFlags = null, userId = 'ano
         throw new Error('capability registration is not supported by these ports');
       }
       const toolName = tool?.name ?? name;
-      const registered = ports.tools.register(toolName, tool, { replace: true });
+      const registered = ports.tools.register(toolName, tool);
       if (rule !== undefined) {
         if (typeof ports.planner.register !== 'function') {
           ports.tools.unregister(toolName);
