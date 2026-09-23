@@ -191,10 +191,10 @@ export function createWebExecutionService({
 
     async submit(runId, { fingerprint, idempotencyKey }) {
       const run = await requireRun(runId);
-      assertActive(run);
       if (!idempotencyKey) throw new Error('idempotencyKey is required');
       const prior = await store.getCommit(idempotencyKey);
       if (prior) return { duplicate: true, ...clone(prior) };
+      assertActive(run);
       const pending = run.pendingSubmission;
       if (!pending || pending.fingerprint !== fingerprint || run.approvedFingerprint !== fingerprint) {
         const error = new Error('submission requires matching approval');
@@ -220,15 +220,31 @@ export function createWebExecutionService({
       }
     },
 
-    async executeRuntimeApproved(runId,{fingerprint,idempotencyKey}){
-      const run=await requireRun(runId);
-      if(run.state==='CANCELLED'){const e=new Error('web run cancelled');e.code='CANCELLED';throw e;}
-      if(run.state==='WAITING_REVIEW'){const e=new Error('web submission requires renewed review');e.code='APPROVAL_REQUIRED';throw e;}
-      const pending=run.pendingSubmission;
-      if(!pending||pending.fingerprint!==fingerprint){const e=new Error('approval does not match current submission');e.code='APPROVAL_MISMATCH';throw e;}
-      run.approvedFingerprint=fingerprint;pending.status='APPROVED';run.state='ACTIVE';
-      await evidence(run,'WEB_SUBMISSION_APPROVED',{fingerprint,authority:'NAIA_RUNTIME'});
-      return this.submit(runId,{fingerprint,idempotencyKey});
+    async executeRuntimeApproved(runId, { fingerprint, idempotencyKey }) {
+      const run = await requireRun(runId);
+      if (!idempotencyKey) throw new Error('idempotencyKey is required');
+      const prior = await store.getCommit(idempotencyKey);
+      if (prior) return { duplicate: true, ...clone(prior) };
+
+      assertActive(run);
+      if (run.state === 'WAITING_REVIEW') {
+        const error = new Error('web submission requires renewed review');
+        error.code = 'APPROVAL_REQUIRED';
+        throw error;
+      }
+
+      const pending = run.pendingSubmission;
+      if (!pending || pending.fingerprint !== fingerprint) {
+        const error = new Error('approval does not match current submission');
+        error.code = 'APPROVAL_MISMATCH';
+        throw error;
+      }
+
+      run.approvedFingerprint = fingerprint;
+      pending.status = 'APPROVED';
+      run.state = 'ACTIVE';
+      await evidence(run, 'WEB_SUBMISSION_APPROVED', { fingerprint, authority: 'NAIA_RUNTIME' });
+      return this.submit(runId, { fingerprint, idempotencyKey });
     },
 
     async cancel(runId) {
