@@ -81,14 +81,17 @@ jobs:
       - name: Run neutral chassis harness controls
         run: npm run test:chassis
 
+      - name: Prepare evidence directory
+        run: node -e "require('node:fs').mkdirSync('research/chassis/evidence/self-hosted',{recursive:true})"
+
       - name: Record candidate runtime preflight
         continue-on-error: true
-        run: npm run preflight:chassis -- --profile "${{ inputs.profile }}" > "${{ env.NAIA_PREFLIGHT_PATH }}"
+        run: node research/chassis/harness/runtime-preflight.mjs --profile "${{ inputs.profile }}" > "${{ env.NAIA_PREFLIGHT_PATH }}"
 
       - name: Execute one preregistered formal experiment
         id: formal
         continue-on-error: true
-        run: npm run single:chassis -- --candidate "${{ steps.candidate.outputs.name }}" --mutant "${{ inputs.mutant }}" --repetition "${{ inputs.repetition }}" --timeout-ms "${{ inputs.timeout_ms }}" --output "${{ env.NAIA_EVIDENCE_PATH }}" > "${{ env.NAIA_RESULT_PATH }}"
+        run: node research/chassis/harness/formal-single-run.mjs --candidate "${{ steps.candidate.outputs.name }}" --mutant "${{ inputs.mutant }}" --repetition "${{ inputs.repetition }}" --timeout-ms "${{ inputs.timeout_ms }}" --output "${{ env.NAIA_EVIDENCE_PATH }}" > "${{ env.NAIA_RESULT_PATH }}"
 
       - name: Validate experiment result and summarize verdict
         env:
