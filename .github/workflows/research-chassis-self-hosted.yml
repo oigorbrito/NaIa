@@ -1,0 +1,117 @@
+name: Research Chassis Self-Hosted Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Frozen reproduction profile
+        required: true
+        type: choice
+        default: temporal-ts-restricted-v1
+        options:
+          - temporal-ts-restricted-v1
+          - dbos-ts-v4.27
+          - restate-ts-v1
+      mutant:
+        description: Critical mutant
+        required: true
+        type: choice
+        default: T5
+        options:
+          - T5
+          - T7
+          - T8
+          - T11
+          - T12
+          - T16
+      repetition:
+        description: Preregistered repetition number
+        required: true
+        default: '1'
+        type: string
+      timeout_ms:
+        description: Formal runtime timeout in milliseconds
+        required: true
+        default: '15000'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: naia-chassis-self-hosted
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, naia-chassis]
+    timeout-minutes: 30
+    env:
+      DBOS_SYSTEM_DATABASE_URL: ${{ secrets.DBOS_SYSTEM_DATABASE_URL }}
+      TEMPORAL_ADDRESS: ${{ vars.TEMPORAL_ADDRESS || '127.0.0.1:7233' }}
+      RESTATE_ADMIN_URL: ${{ vars.RESTATE_ADMIN_URL || 'http://127.0.0.1:9070' }}
+      NAIA_EVIDENCE_PATH: research/chassis/evidence/self-hosted/${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.profile }}-${{ inputs.mutant }}-r${{ inputs.repetition }}.json
+      NAIA_RESULT_PATH: research/chassis/evidence/self-hosted/${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.profile }}-${{ inputs.mutant }}-r${{ inputs.repetition }}-result.json
+      NAIA_PREFLIGHT_PATH: research/chassis/evidence/self-hosted/${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.profile }}-preflight.json
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve frozen candidate identity
+        id: candidate
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          node -e "const fs=require('node:fs'); const m={'temporal-ts-restricted-v1':'Temporal TypeScript','dbos-ts-v4.27':'DBOS TypeScript','restate-ts-v1':'Restate'}; const c=m[process.env.PROFILE]; if(!c) throw new Error('unsupported profile: '+process.env.PROFILE); fs.appendFileSync(process.env.GITHUB_OUTPUT,'name='+c+'\n');"
+
+      - name: Verify runner runtime
+        run: |
+          node -e "const major=Number(process.versions.node.split('.')[0]); console.log('node='+process.version); if(![22,24].includes(major)) throw new Error('Node major must be 22 or 24');" && npm --version
+
+      - name: Install exact Temporal SDK packages
+        if: inputs.profile == 'temporal-ts-restricted-v1'
+        run: npm install --prefix research/chassis/adapters/temporal-ts --package-lock=false
+
+      - name: Install exact DBOS SDK package
+        if: inputs.profile == 'dbos-ts-v4.27'
+        run: npm install --prefix research/chassis/adapters/dbos-ts --package-lock=false
+
+      - name: Install exact Restate SDK packages
+        if: inputs.profile == 'restate-ts-v1'
+        run: npm install --prefix research/chassis/adapters/restate-ts --package-lock=false
+
+      - name: Run neutral chassis harness controls
+        run: npm run test:chassis
+
+      - name: Prepare evidence directory
+        run: |
+          node -e "require('node:fs').mkdirSync('research/chassis/evidence/self-hosted',{recursive:true})"
+
+      - name: Record candidate runtime preflight
+        continue-on-error: true
+        run: |
+          node research/chassis/harness/runtime-preflight.mjs --profile "${{ inputs.profile }}" > "${{ env.NAIA_PREFLIGHT_PATH }}"
+
+      - name: Execute one preregistered formal experiment
+        id: formal
+        continue-on-error: true
+        run: |
+          node research/chassis/harness/formal-single-run.mjs --candidate "${{ steps.candidate.outputs.name }}" --mutant "${{ inputs.mutant }}" --repetition "${{ inputs.repetition }}" --timeout-ms "${{ inputs.timeout_ms }}" --output "${{ env.NAIA_EVIDENCE_PATH }}" > "${{ env.NAIA_RESULT_PATH }}"
+
+      - name: Validate experiment result and summarize verdict
+        env:
+          FORMAL_OUTCOME: ${{ steps.formal.outcome }}
+        run: |
+          node -e "const fs=require('node:fs'); const result=JSON.parse(fs.readFileSync(process.env.NAIA_RESULT_PATH,'utf8')); const verdict=result.record?.verdict??'MISSING'; console.log(JSON.stringify({harnessExecution:'COMPLETED',formalCommandOutcome:process.env.FORMAL_OUTCOME,recordValid:result.valid,verdict,validationErrors:result.validationErrors??[]},null,2)); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## NaIA chassis qualification\n\n- Harness execution: **COMPLETED**\n- Record valid: **'+String(Boolean(result.valid)).toUpperCase()+'**\n- Candidate verdict: **'+verdict+'**\n- Formal command outcome: **'+process.env.FORMAL_OUTCOME+'**\n'); if(!result.valid) process.exit(3);"
+
+      - name: Preserve qualification receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chassis-${{ inputs.profile }}-${{ inputs.mutant }}-r${{ inputs.repetition }}-${{ github.run_id }}
+          path: |
+            ${{ env.NAIA_PREFLIGHT_PATH }}
+            ${{ env.NAIA_EVIDENCE_PATH }}
+            ${{ env.NAIA_RESULT_PATH }}
+          if-no-files-found: ignore
+          retention-days: 7
