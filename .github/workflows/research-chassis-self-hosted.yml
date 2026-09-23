@@ -61,10 +61,12 @@ jobs:
         id: candidate
         env:
           PROFILE: ${{ inputs.profile }}
-        run: node -e "const fs=require('node:fs'); const m={'temporal-ts-restricted-v1':'Temporal TypeScript','dbos-ts-v4.27':'DBOS TypeScript','restate-ts-v1':'Restate'}; const c=m[process.env.PROFILE]; if(!c) throw new Error('unsupported profile: '+process.env.PROFILE); fs.appendFileSync(process.env.GITHUB_OUTPUT,'name='+c+'\n');"
+        run: |
+          node -e "const fs=require('node:fs'); const m={'temporal-ts-restricted-v1':'Temporal TypeScript','dbos-ts-v4.27':'DBOS TypeScript','restate-ts-v1':'Restate'}; const c=m[process.env.PROFILE]; if(!c) throw new Error('unsupported profile: '+process.env.PROFILE); fs.appendFileSync(process.env.GITHUB_OUTPUT,'name='+c+'\n');"
 
       - name: Verify runner runtime
-        run: node -e "const major=Number(process.versions.node.split('.')[0]); console.log('node='+process.version); if(![22,24].includes(major)) throw new Error('Node major must be 22 or 24');" && npm --version
+        run: |
+          node -e "const major=Number(process.versions.node.split('.')[0]); console.log('node='+process.version); if(![22,24].includes(major)) throw new Error('Node major must be 22 or 24');" && npm --version
 
       - name: Install exact Temporal SDK packages
         if: inputs.profile == 'temporal-ts-restricted-v1'
@@ -82,21 +84,25 @@ jobs:
         run: npm run test:chassis
 
       - name: Prepare evidence directory
-        run: node -e "require('node:fs').mkdirSync('research/chassis/evidence/self-hosted',{recursive:true})"
+        run: |
+          node -e "require('node:fs').mkdirSync('research/chassis/evidence/self-hosted',{recursive:true})"
 
       - name: Record candidate runtime preflight
         continue-on-error: true
-        run: node research/chassis/harness/runtime-preflight.mjs --profile "${{ inputs.profile }}" > "${{ env.NAIA_PREFLIGHT_PATH }}"
+        run: |
+          node research/chassis/harness/runtime-preflight.mjs --profile "${{ inputs.profile }}" > "${{ env.NAIA_PREFLIGHT_PATH }}"
 
       - name: Execute one preregistered formal experiment
         id: formal
         continue-on-error: true
-        run: node research/chassis/harness/formal-single-run.mjs --candidate "${{ steps.candidate.outputs.name }}" --mutant "${{ inputs.mutant }}" --repetition "${{ inputs.repetition }}" --timeout-ms "${{ inputs.timeout_ms }}" --output "${{ env.NAIA_EVIDENCE_PATH }}" > "${{ env.NAIA_RESULT_PATH }}"
+        run: |
+          node research/chassis/harness/formal-single-run.mjs --candidate "${{ steps.candidate.outputs.name }}" --mutant "${{ inputs.mutant }}" --repetition "${{ inputs.repetition }}" --timeout-ms "${{ inputs.timeout_ms }}" --output "${{ env.NAIA_EVIDENCE_PATH }}" > "${{ env.NAIA_RESULT_PATH }}"
 
       - name: Validate experiment result and summarize verdict
         env:
           FORMAL_OUTCOME: ${{ steps.formal.outcome }}
-        run: node -e "const fs=require('node:fs'); const result=JSON.parse(fs.readFileSync(process.env.NAIA_RESULT_PATH,'utf8')); const verdict=result.record?.verdict??'MISSING'; console.log(JSON.stringify({harnessExecution:'COMPLETED',formalCommandOutcome:process.env.FORMAL_OUTCOME,recordValid:result.valid,verdict,validationErrors:result.validationErrors??[]},null,2)); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## NaIA chassis qualification\n\n- Harness execution: **COMPLETED**\n- Record valid: **'+String(Boolean(result.valid)).toUpperCase()+'**\n- Candidate verdict: **'+verdict+'**\n- Formal command outcome: **'+process.env.FORMAL_OUTCOME+'**\n'); if(!result.valid) process.exit(3);"
+        run: |
+          node -e "const fs=require('node:fs'); const result=JSON.parse(fs.readFileSync(process.env.NAIA_RESULT_PATH,'utf8')); const verdict=result.record?.verdict??'MISSING'; console.log(JSON.stringify({harnessExecution:'COMPLETED',formalCommandOutcome:process.env.FORMAL_OUTCOME,recordValid:result.valid,verdict,validationErrors:result.validationErrors??[]},null,2)); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## NaIA chassis qualification\n\n- Harness execution: **COMPLETED**\n- Record valid: **'+String(Boolean(result.valid)).toUpperCase()+'**\n- Candidate verdict: **'+verdict+'**\n- Formal command outcome: **'+process.env.FORMAL_OUTCOME+'**\n'); if(!result.valid) process.exit(3);"
 
       - name: Preserve qualification receipts
         if: always()
