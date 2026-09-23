@@ -298,3 +298,39 @@ Until comparable runtime evidence exists for the required critical mutants:
 
 - `CHASSIS_WINNER = NOT_SELECTED`
 - `BENCHMARK_TO_BEAT = NOT_SELECTED`
+
+
+## 12. Manual self-hosted qualification path
+
+When GitHub-hosted runners are unavailable or account minutes are exhausted, use the manual workflow:
+
+`.github/workflows/research-chassis-self-hosted.yml`
+
+This path is intentionally `workflow_dispatch` only. It never runs automatically and therefore does not consume hosted-runner minutes unless a hosted runner is explicitly substituted.
+
+Runner requirements:
+
+- register a GitHub self-hosted runner with the custom label `naia-chassis`;
+- install Node 22 or 24 and npm;
+- provide network access to npm for exact candidate SDK installation;
+- start the frozen candidate runtime/service before dispatching the formal run;
+- keep the repository checkout clean; the workflow installs adapter dependencies with `--package-lock=false` so dependency installation does not create a tracked lockfile delta.
+
+Candidate-specific runtime prerequisites:
+
+- Temporal: Temporal CLI/server profile reachable at `TEMPORAL_ADDRESS` (default `127.0.0.1:7233`);
+- DBOS: PostgreSQL reachable through repository secret `DBOS_SYSTEM_DATABASE_URL`;
+- Restate: Restate server reachable at `RESTATE_ADMIN_URL` (default `http://127.0.0.1:9070`).
+
+Dispatch inputs select one frozen profile, one critical mutant, one preregistered repetition and a timeout. The workflow:
+
+1. installs only the selected candidate SDK packages;
+2. runs `npm run test:chassis` as the neutral harness control;
+3. records the candidate runtime preflight;
+4. executes exactly one formal preregistered experiment;
+5. validates the formal result wrapper;
+6. preserves the preflight, record and result JSON as a short-retention artifact.
+
+Workflow success means the harness completed and emitted a structurally valid experiment record. It does **not** mean the candidate verdict is `PASS`. Candidate `PASS`, `FAIL`, `BLOCKED` and `INCONCLUSIVE` remain explicit fields in the formal result and must be interpreted under the verdict rules above.
+
+Do not place provider/database credentials in workflow inputs, repository files or logs. Use runner-local service configuration or GitHub secrets/variables as documented above.
