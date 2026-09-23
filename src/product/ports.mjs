@@ -1,4 +1,4 @@
-import { createIntentPlanner, planIntent } from './planner.mjs';
+import { planIntent } from './planner.mjs';
 import { createApprovalPolicy } from './policy.mjs';
 import { createLocalExecutionAdapter, createToolRegistry } from './tools.mjs';
 
@@ -41,7 +41,7 @@ export function createInMemoryPorts({ planner = null } = {}) {
         return objectiveId ? rows.filter((row) => row.objectiveId === objectiveId) : rows;
       },
     },
-    planner: planner ?? createIntentPlanner(),
+    planner: planner ?? { async plan(objective) { return planIntent(objective); } },
     policy: createApprovalPolicy({ registry }),
     execution: createLocalExecutionAdapter({ registry }),
     tools: registry,
