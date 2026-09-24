@@ -1,5 +1,5 @@
 function escapeHtml(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
-function page(title,body){return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body><main>${body}</main></body></html>`;}
+function page(title,body){return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body><main>${body}</main></body></html>`;}
 function statusBlock(objective){
   if(!objective)return '<p>No objective.</p>';
   const steps=(objective.steps??[]).map(step=>`<li>${escapeHtml(step.kind)} — ${escapeHtml(step.status)}${step.tool?` — ${escapeHtml(step.tool)}`:''}${step.error?` — ${escapeHtml(step.error)}`:''}</li>`).join('');
@@ -8,7 +8,7 @@ function statusBlock(objective){
   return `<section><h2>${escapeHtml(objective.title)}</h2><p>Status: <strong>${escapeHtml(objective.status)}</strong></p><ul>${steps}</ul>${approvals}${confirmations}<form method="post" action="/resume"><input type="hidden" name="objectiveId" value="${escapeHtml(objective.id)}"><button type="submit">Resume</button></form></section>`;
 }
 function historyBlock(rows=[]){return `<section><h2>History</h2><ul>${rows.map(row=>`<li><a href="/objective/${encodeURIComponent(row.id)}">${escapeHtml(row.title??row.id)}</a> — ${escapeHtml(row.status??'')}</li>`).join('')}</ul></section>`;}
-function form(){return '<form method="post" action="/submit"><label>Request <input name="text" required></label><button type="submit">Send</button></form>';}
+function form(){return '<form method="post" action="/submit"><label for="minimal-request-input">Request </label><input id="minimal-request-input" name="text" required placeholder="Enter request..."><button type="submit">Send</button></form>';}
 function response(status,body,headers={}){return {status,headers:{'content-type':'text/html; charset=utf-8',...headers},body};}
 function parseBody(body){if(body==null)return {};if(typeof body==='object')return body;return Object.fromEntries(new URLSearchParams(String(body)));}
 

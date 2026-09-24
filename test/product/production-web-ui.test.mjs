@@ -33,6 +33,19 @@ test('responsive shell includes narrow-screen breakpoint and viewport metadata',
   assert.match(res.body,/grid-template-columns:1fr/);
 });
 
+test('production shell renders accessibility markup and keyboard navigation styles',async()=>{
+  const {ui}=fixture();
+  const res=await ui.handle({method:'GET',path:'/surface/history'});
+  assert.match(res.body,/<html lang="en">/);
+  assert.match(res.body,/aria-label="Main navigation"/);
+  assert.match(res.body,/data-nav="history" class="active" aria-current="page"/);
+  assert.match(res.body,/:focus-visible/);
+
+  const chatRes=await ui.handle({method:'GET',path:'/surface/chat'});
+  assert.match(chatRes.body,/<label for="request-input">Request<\/label>/);
+  assert.match(chatRes.body,/id="request-input"/);
+});
+
 test('approvals surface is actionable only through frontend API/runtime',async()=>{
   const {ui,naia}=fixture();
   const pending=await naia.pursue({title:'note release: ship it'});
