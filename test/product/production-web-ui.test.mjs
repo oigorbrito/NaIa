@@ -19,10 +19,12 @@ function fixture(){
   return {naia,tasks,entitlements,meter,api,ui:createProductionWebUi({api})};
 }
 
-test('production shell exposes all core navigation surfaces without CLI',async()=>{
+test('production shell exposes all core navigation surfaces without CLI and includes a11y attributes',async()=>{
   const {ui}=fixture();
   const res=await ui.handle({method:'GET',path:'/'});
   assert.equal(res.status,200);
+  assert.match(res.body,/aria-label="Main Navigation"/);
+  assert.match(res.body,/aria-current="page"/);
   for(const name of ['chat','objectives','approvals','automations','connectors','history','media','settings']) assert.match(res.body,new RegExp(`data-nav="${name}"`));
 });
 

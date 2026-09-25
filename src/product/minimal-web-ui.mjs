@@ -1,5 +1,5 @@
 function escapeHtml(value){return String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
-function page(title,body){return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head><body><main>${body}</main></body></html>`;}
+function page(title,body){return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid currentColor;outline-offset:2px}</style></head><body><main>${body}</main></body></html>`;}
 function statusBlock(objective){
   if(!objective)return '<p>No objective.</p>';
   const steps=(objective.steps??[]).map(step=>`<li>${escapeHtml(step.kind)} — ${escapeHtml(step.status)}${step.tool?` — ${escapeHtml(step.tool)}`:''}${step.error?` — ${escapeHtml(step.error)}`:''}</li>`).join('');
