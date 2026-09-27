@@ -1,0 +1,9 @@
+{
+  "name": "NaIA",
+  "description": "Deterministic personal intelligence agent with durable objective planning, approval controls, and multi-surface web interface.",
+  "prompt": "Deterministic personal intelligence agent with durable objective planning, approval controls, and multi-surface web interface.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

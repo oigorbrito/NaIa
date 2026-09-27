@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node server.mjs",
+    "build": "node --check server.mjs",
+    "start": "node server.mjs",
     "test": "npm run test:product",
     "test:product": "node --test test/product/*.test.mjs",
     "start:product": "node src/product/cli.mjs",
