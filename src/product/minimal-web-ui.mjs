@@ -8,7 +8,7 @@ function statusBlock(objective){
   return `<section><h2>${escapeHtml(objective.title)}</h2><p>Status: <strong>${escapeHtml(objective.status)}</strong></p><ul>${steps}</ul>${approvals}${confirmations}<form method="post" action="/resume"><input type="hidden" name="objectiveId" value="${escapeHtml(objective.id)}"><button type="submit">Resume</button></form></section>`;
 }
 function historyBlock(rows=[]){return `<section><h2>History</h2><ul>${rows.map(row=>`<li><a href="/objective/${encodeURIComponent(row.id)}">${escapeHtml(row.title??row.id)}</a> — ${escapeHtml(row.status??'')}</li>`).join('')}</ul></section>`;}
-function form(){return '<form method="post" action="/submit"><label>Request <input name="text" required></label><button type="submit">Send</button></form>';}
+function form(){return '<form method="post" action="/submit"><label for="minimal-request">Request </label><input id="minimal-request" name="text" required placeholder="e.g. Schedule a meeting..."><button type="submit">Send</button></form>';}
 function response(status,body,headers={}){return {status,headers:{'content-type':'text/html; charset=utf-8',...headers},body};}
 function parseBody(body){if(body==null)return {};if(typeof body==='object')return body;return Object.fromEntries(new URLSearchParams(String(body)));}
 
