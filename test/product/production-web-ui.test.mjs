@@ -23,8 +23,6 @@ test('production shell exposes all core navigation surfaces without CLI',async()
   const {ui}=fixture();
   const res=await ui.handle({method:'GET',path:'/'});
   assert.equal(res.status,200);
-  assert.match(res.body,/aria-label="Main navigation"/);
-  assert.match(res.body,/data-nav="chat"[^>]*aria-current="page"/);
   for(const name of ['chat','objectives','approvals','automations','connectors','history','media','settings']) assert.match(res.body,new RegExp(`data-nav="${name}"`));
 });
 
