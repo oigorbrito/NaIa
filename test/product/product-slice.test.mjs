@@ -474,6 +474,8 @@ test('note.write rejects traversal, hidden path tricks, and excessive names', as
     await assert.rejects(ports.tools.run('note.write', { name: '../../evil', content: 'x' }), /path separators are not allowed/);
     await assert.rejects(ports.tools.run('note.write', { name: 'sub/file', content: 'x' }), /path separators are not allowed/);
     await assert.rejects(ports.tools.run('note.write', { name: '..', content: 'x' }), /note name is required/);
+    await assert.rejects(ports.tools.run('note.write', { name: '../secret', content: 'x' }), /path separators are not allowed/);
+    await assert.rejects(ports.tools.run('note.write', { name: '..\\secret', content: 'x' }), /path separators are not allowed/);
     await assert.rejects(ports.tools.run('note.write', { name: 'a'.repeat(300), content: 'x' }), /maximum length/);
     const hidden = await ports.tools.run('note.write', { name: '.hidden', content: 'safe' });
     assert.ok(hidden.path.endsWith('/workspace/notes/hidden.txt'));
