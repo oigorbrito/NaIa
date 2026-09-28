@@ -1,0 +1,3 @@
+## 2026-03-30 - Navigation ARIA Attributes and Focus Visibility in Server-Rendered UI
+**Learning:** Server-rendered web layouts should explicitly mark active navigation state with `aria-current="page"` and label navigation landmarks with `aria-label="Main navigation"`. Interactive controls like inputs, links, and buttons require global `:focus-visible` styling to maintain keyboard navigation usability across light and dark system color schemes.
+**Action:** When working on SSR templates, always attach `aria-current="page"` to current route links, include landmark labels, and ensure clear `:focus-visible` ring/outline styles on focusable elements.
