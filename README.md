@@ -1,29 +1,218 @@
 # NaIA
 
-NaIA has two active engineering tracks:
+**User-facing AI capability platform for turning intent into governed, resumable actions across local tools and external providers.**
 
-1. **Product track** — executable MVP work on `product/mvp-foundation-v1`.
-2. **Research track** — chassis qualification and benchmark work, still authoritative for any future chassis-winner claim.
+NaIA is the project in this portfolio that sits closest to an **end-user assistant/product surface**.
 
-## Product track
+Its core path is:
 
-Current executable path:
+```text
+user intent
+    ↓
+normalized interpretation
+    ↓
+actionable plan
+    ↓
+tool / provider selection
+    ↓
+policy + approval
+    ↓
+execution
+    ↓
+evidence
+    ↓
+persisted state / resume / history
+```
 
-`intent -> actionable plan -> tool selection -> policy -> execution -> evidence -> persisted state/history`
+NaIA is **not** a MetaO-style control plane and it is **not** a CodePro-style experimental chassis.
 
-The product branch now includes:
+- MetaO governs orchestrators/runtimes.
+- CodePro studies software-agent mechanisms empirically.
+- NaIA turns user intent into governed capabilities and product workflows.
 
-- persisted objectives, plans and append-only evidence;
-- resume semantics;
-- deterministic intent planning;
-- a local tool registry;
-- read-only tools that execute directly;
-- explicit approval before local write side effects;
-- runtime capability registration with planner rules and risk validation;
-- CLI history and evidence inspection;
-- focused product CI.
+---
 
-Local commands on the product branch:
+## Current product surface
+
+The current product line includes:
+
+- persisted objectives and plans;
+- append-only execution evidence;
+- resumable objectives;
+- deterministic and extensible intent planning;
+- capability registration;
+- explicit risk classes;
+- approval before side effects;
+- task/history/billing/entitlement surfaces;
+- file-backed local state;
+- a web/server product surface;
+- provider-neutral adapter boundaries.
+
+The local product path can already execute read-only and approved local-write capabilities.
+
+Representative flow:
+
+```text
+"note release-plan: ship capability"
+        ↓
+planner
+        ↓
+note.write
+        ↓
+LOCAL_WRITE
+        ↓
+WAITING_APPROVAL
+        ↓
+explicit approval
+        ↓
+write
+        ↓
+evidence + persisted objective
+```
+
+---
+
+## Capability and policy model
+
+Capabilities declare risk explicitly.
+
+Current risk classes include:
+
+```text
+READ_ONLY
+LOCAL_WRITE
+EXTERNAL_WRITE
+SENSITIVE
+```
+
+The planner cannot silently upgrade risk.
+
+If the planned action and registered capability disagree, the request fails closed.
+
+Ambiguous or incomplete intent also does not become an executable side effect by default.
+
+Interpretation states include:
+
+- `RECOGNIZED`
+- `UNRECOGNIZED`
+- `AMBIGUOUS`
+- `MISSING_PARAMETER`
+
+---
+
+## External-provider adapters
+
+The repository contains provider adapters and validation tooling for several real external systems.
+
+Examples include:
+
+- OpenAI;
+- Anthropic / Claude;
+- Gemini;
+- DeepSeek;
+- Gmail;
+- Google Drive;
+- Google Calendar;
+- Google Photos;
+- Slack;
+- WhatsApp Cloud API;
+- Belvo Open Finance.
+
+These states are intentionally kept separate:
+
+```text
+ADAPTER_IMPLEMENTED
+!= CREDENTIAL_CONFIGURED
+!= LIVE_VALIDATED
+!= PRODUCTION_READY
+```
+
+Some adapters require OAuth, sandbox accounts, provider billing, or explicit external credentials before live validation.
+
+Secrets are not expected in Git, fixtures, screenshots, or persisted execution evidence.
+
+See [docs/LIVE_CREDENTIALS_SETUP.md](docs/LIVE_CREDENTIALS_SETUP.md).
+
+---
+
+## Provider examples
+
+### Gmail
+
+Search/read and approved send can be represented through the same policy boundary.
+
+```text
+search/read
+  -> READ_ONLY
+
+send
+  -> EXTERNAL_WRITE
+  -> approval required
+```
+
+### Google Photos
+
+The Picker flow is intentionally user-driven.
+
+```text
+create Picker session
+    ↓
+WAITING_USER
+    ↓
+user selects media
+    ↓
+resume persisted session
+```
+
+NaIA does not claim silent access to a user's full photo library.
+
+### Belvo
+
+The Open Finance integration is currently framed around read-side banking data and sandbox-first validation.
+
+Payment initiation is outside that bounded scope.
+
+---
+
+## Web / server surface
+
+The repository includes a Node.js server entrypoint that composes:
+
+- NaIA product service;
+- task service;
+- entitlements;
+- usage metering;
+- billing records;
+- history indexing;
+- connector surfaces;
+- product web UI.
+
+Run:
+
+```bash
+npm install
+npm run dev
+```
+
+Health:
+
+```text
+GET /health
+GET /_health
+```
+
+The current default storage remains local/file-backed unless another adapter is introduced.
+
+That means:
+
+```text
+WEB_SERVER_EXISTS
+!= DISTRIBUTED_PRODUCTION_DURABILITY
+```
+
+---
+
+## CLI product path
 
 ```bash
 npm test
@@ -36,103 +225,77 @@ npm run start:product -- resume <objectiveId>
 npm run start:product -- history
 ```
 
-See:
+---
 
-- [Product Foundation V1](docs/product/PRODUCT-FOUNDATION-V1.md)
-- [First Useful Capability V1](docs/product/FIRST-USEFUL-CAPABILITY-V1.md)
+## Product architecture
 
-### Extending capabilities
-
-The service can register a tool and its intent rule without modifying the default
-planner. The registered action must declare one of `READ_ONLY`, `LOCAL_WRITE`,
-`EXTERNAL_WRITE` or `SENSITIVE`; policy compares that declaration with the tool's
-registered risk and fails closed on a mismatch.
-
-```js
-const planner = createIntentPlanner();
-const ports = createInMemoryPorts({ planner });
-const naia = createNaiaService(ports);
-
-naia.registerCapability({
-  name: 'text.reverse',
-  tool: {
-    risk: 'READ_ONLY',
-    capability: 'text.transform',
-    async run(input) {
-      return { text: [...String(input.text)].reverse().join('') };
-    },
-  },
-  rule: {
-    match: ({ title }) => title.startsWith('reverse: '),
-    action: ({ title }) => ({
-      tool: 'text.reverse',
-      input: { text: title.slice(9) },
-      risk: 'READ_ONLY',
-      requiresApproval: false,
-    }),
-  },
-});
+```text
+Intent layer
+    ↓
+Planner
+    ↓
+Capability registry
+    ↓
+Policy / approval
+    ↓
+Tool / provider adapter
+    ↓
+Execution result
+    ↓
+Evidence
+    ↓
+Objective state / history
 ```
 
-### Natural-language intent boundary
+The product domain depends on replaceable ports rather than hard-coding one durable execution framework.
 
-The provider-neutral intent layer converts user text into a normalized
-interpretation/objective before the planner is called. It does not execute
-tools, authorize effects, or replace policy and approval.
+This is deliberate: runtime/chassis research can later supply an adapter without rewriting product intent, policy, evidence, or objective semantics.
 
-```js
-const interpretation = await planner.interpret('uppercase: hello');
-// interpretation.intent === 'TEXT_TRANSFORM'
-// interpretation.objective.parameters === { operation: 'UPPERCASE', text: 'hello' }
-// interpretation.provenance === 'deterministic.uppercase'
-```
-
-Registered deterministic rules can provide interpretation and provenance:
-
-```js
-planner.register({
-  name: 'status-rule',
-  match: (text) => text.toLowerCase() === 'status',
-  interpret: () => ({
-    intent: 'STATUS_QUERY', state: 'RECOGNIZED', parameters: { scope: 'product' },
-  }),
-  action: () => ({ tool: 'time.now', risk: 'READ_ONLY', requiresApproval: false }),
-});
-```
-
-Interpretations can be `RECOGNIZED`, `UNRECOGNIZED`, `AMBIGUOUS`, or
-`MISSING_PARAMETER`. Ambiguous or incomplete text is propagated by the
-planner without producing a side-effect action. Authorization, risk checks,
-approval, execution, and evidence remain downstream responsibilities.
-
-### Calendar and configured HTTP capabilities
-
-The provider-neutral calendar contract exposes `calendar.list`,
-`calendar.create`, and `calendar.update`. The latter two are `EXTERNAL_WRITE`
-and therefore require the existing policy approval; `calendar.list` is
-`READ_ONLY`. A concrete provider (such as a future Google adapter) is kept
-outside this contract. The current reference provider is deterministic and
-in-memory for tests only.
-
-Configured HTTP reads use `http.read` with a registered `targetId`, never an
-arbitrary URL. A target declares its endpoint, allowed `GET`/`HEAD` method,
-description, availability, and non-secret configuration. Unknown targets,
-unavailable targets, and write methods fail explicitly; secrets are not
-included in results or evidence.
-
-Both capabilities follow the same boundary: intent interprets, the planner
-creates an action, policy validates risk and approval, the tool/provider
-executes, and evidence records the result. The intent layer itself never
-executes Calendar or HTTP.
+---
 
 ## Research track
 
-Research artifacts remain available under `research/chassis/` and `docs/research/`. The formal benchmark is still required before selecting `BENCHMARK_TO_BEAT` or `CHASSIS_WINNER`.
+NaIA also contains a separate research track under:
+
+- `research/chassis/`
+- `docs/research/`
+
+That track evaluates durable-execution/chassis options.
+
+It does **not** automatically authorize a chassis migration.
 
 Current decision state:
 
-- `PRODUCT_FOUNDATION_V1 = COMPLETE`
-- `FIRST_USEFUL_CAPABILITY_V1 = COMPLETE`
-- `CHASSIS_WINNER = NOT_SELECTED`
-- `BENCHMARK_TO_BEAT = NOT_SELECTED`
-- `DURABLE_EXECUTION_ADAPTER = NOT_SELECTED`
+```text
+PRODUCT_FOUNDATION_V1      = COMPLETE
+FIRST_USEFUL_CAPABILITY_V1 = COMPLETE
+CHASSIS_WINNER             = NOT_SELECTED
+BENCHMARK_TO_BEAT          = NOT_SELECTED
+DURABLE_EXECUTION_ADAPTER  = NOT_SELECTED
+```
+
+Product work is allowed to continue without pretending the research question is already settled.
+
+---
+
+## Engineering rules
+
+```text
+INTENT != AUTHORIZATION
+TOOL_AVAILABLE != TOOL_AUTHORIZED
+ADAPTER_PRESENT != LIVE_VALIDATED
+EXECUTED != ACCEPTED
+AMBIGUOUS != EXECUTABLE_SIDE_EFFECT
+```
+
+The project is designed so user-facing capability can grow without letting provider-specific APIs become product authority.
+
+---
+
+## Start here
+
+- [Product Foundation V1](docs/product/PRODUCT-FOUNDATION-V1.md)
+- [First Useful Capability V1](docs/product/FIRST-USEFUL-CAPABILITY-V1.md)
+- [Live credentials and validation](docs/LIVE_CREDENTIALS_SETUP.md)
+- [AGENTS.md](AGENTS.md)
+
