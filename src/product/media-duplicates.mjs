@@ -6,11 +6,19 @@ function clone(v){return v==null?v:structuredClone(v);}
 function stableId(parts){return createHash('sha256').update(parts.join('|')).digest('hex').slice(0,20);}
 function versionOf(item){return String(item?.contentVersion??`${item?.sizeBytes??''}:${item?.modifiedAt??item?.createdAt??''}`);}
 function normalizeHex(value){const v=String(value??'').trim().toLowerCase();return /^[0-9a-f]+$/i.test(v)&&v.length>0?v:null;}
+
+// Optimized Hamming distance calculation on pre-normalized hex strings or parsed BigInts.
+function hammingBigInt(a,b){
+  if(a.len!==b.len||a.len===0)return null;
+  let n=a.big^b.big;
+  let bits=0;
+  while(n>0n){n&=n-1n;bits++;}
+  return bits;
+}
+
 function hammingHex(a,b){
   const x=normalizeHex(a),y=normalizeHex(b);if(!x||!y||x.length!==y.length)return null;
-  let bits=0;
-  for(let i=0;i<x.length;i++){let n=parseInt(x[i],16)^parseInt(y[i],16);while(n){bits+=n&1;n>>=1;}}
-  return bits;
+  return hammingBigInt({big:BigInt('0x'+x),len:x.length},{big:BigInt('0x'+y),len:y.length});
 }
 
 export function createMemoryMediaDuplicateStore(){
@@ -53,13 +61,28 @@ export function createFixtureMediaHashProvider({name='fixture-hash'}={}){
 }
 
 function connectedComponents(nodes,edges){
-  const adj=new Map(nodes.map(n=>[n,new Set()]));
-  for(const [a,b] of edges){adj.get(a)?.add(b);adj.get(b)?.add(a);}
-  const seen=new Set();const groups=[];
-  for(const node of [...nodes].sort()){
-    if(seen.has(node))continue;const stack=[node];const component=[];seen.add(node);
-    while(stack.length){const current=stack.pop();component.push(current);for(const next of adj.get(current)??[]){if(!seen.has(next)){seen.add(next);stack.push(next);}}}
-    if(component.length>1)groups.push(component.sort());
+  const parent=new Map();
+  for(const n of nodes)parent.set(n,n);
+  function find(i){
+    let root=i;
+    while(root!==parent.get(root))root=parent.get(root);
+    let curr=i;
+    while(curr!==root){const nxt=parent.get(curr);parent.set(curr,root);curr=nxt;}
+    return root;
+  }
+  for(const [a,b] of edges){
+    const rootA=find(a),rootB=find(b);
+    if(rootA!==rootB)parent.set(rootA,rootB);
+  }
+  const compMap=new Map();
+  for(const n of nodes){
+    const root=find(n);
+    if(!compMap.has(root))compMap.set(root,[]);
+    compMap.get(root).push(n);
+  }
+  const groups=[];
+  for(const members of compMap.values()){
+    if(members.length>1)groups.push(members.sort());
   }
   return groups;
 }
@@ -90,17 +113,43 @@ export function createMediaDuplicateService({store=createMemoryMediaDuplicateSto
       const exactGroups=[...byExact.entries()].filter(([,ids])=>ids.length>1).map(([hash,ids])=>{const members=[...ids].sort();return {id:`exact:${stableId(['EXACT',hash,...members])}`,kind:'EXACT',members,exactHash:hash,confidence:1,similarity:1};}).sort((a,b)=>a.id.localeCompare(b.id));
 
       const perceptualCandidates=supported.filter(r=>r.perceptualHash);
+      // Pre-parse perceptual hashes to BigInt once to avoid re-parsing during O(N^2) pairwise comparisons
+      const candidateMap=new Map();
+      const parsedCandidates=[];
+      for(const c of perceptualCandidates){
+        candidateMap.set(c.itemId,c);
+        const norm=normalizeHex(c.perceptualHash);
+        if(!norm)continue;
+        parsedCandidates.push({
+          ...c,
+          big:BigInt('0x'+norm),
+          len:norm.length,
+        });
+      }
+
       const edges=[];const distances=new Map();
-      for(let i=0;i<perceptualCandidates.length;i++){for(let j=i+1;j<perceptualCandidates.length;j++){
-        const a=perceptualCandidates[i],b=perceptualCandidates[j];
+      for(let i=0;i<parsedCandidates.length;i++){for(let j=i+1;j<parsedCandidates.length;j++){
+        const a=parsedCandidates[i],b=parsedCandidates[j];
         if(a.exactHash&&b.exactHash&&a.exactHash===b.exactHash)continue;
-        const distance=hammingHex(a.perceptualHash,b.perceptualHash);
-        if(distance!=null&&distance<=perceptualDistance){edges.push([a.itemId,b.itemId]);distances.set([a.itemId,b.itemId].sort().join('|'),distance);}
+        const distance=hammingBigInt(a,b);
+        if(distance!=null&&distance<=perceptualDistance){
+          edges.push([a.itemId,b.itemId]);
+          const pairKey=a.itemId<b.itemId?`${a.itemId}|${b.itemId}`:`${b.itemId}|${a.itemId}`;
+          distances.set(pairKey,distance);
+        }
       }}
       const components=connectedComponents(perceptualCandidates.map(r=>r.itemId),edges);
       const perceptualGroups=components.map(members=>{
-        let maxDistance=0;for(let i=0;i<members.length;i++){for(let j=i+1;j<members.length;j++){const d=distances.get([members[i],members[j]].sort().join('|'));if(Number.isFinite(d))maxDistance=Math.max(maxDistance,d);}}
-        const bits=(perceptualCandidates.find(r=>r.itemId===members[0])?.perceptualHash?.length??0)*4;
+        let maxDistance=0;
+        for(let i=0;i<members.length;i++){
+          for(let j=i+1;j<members.length;j++){
+            const pairKey=members[i]<members[j]?`${members[i]}|${members[j]}`:`${members[j]}|${members[i]}`;
+            const d=distances.get(pairKey);
+            if(Number.isFinite(d))maxDistance=Math.max(maxDistance,d);
+          }
+        }
+        const firstMember=candidateMap.get(members[0]);
+        const bits=(firstMember?.perceptualHash?.length??0)*4;
         const similarity=bits?Number((1-maxDistance/bits).toFixed(4)):null;
         return {id:`perceptual:${stableId(['PERCEPTUAL',...members])}`,kind:'PERCEPTUAL',members,confidence:similarity,similarity,maxDistance};
       }).sort((a,b)=>a.id.localeCompare(b.id));

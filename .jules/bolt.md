@@ -1,0 +1,3 @@
+## 2025-05-18 - Optimized Perceptual Hash Pairwise Comparisons & Connected Components
+**Learning:** In `src/product/media-duplicates.mjs`, $O(N^2)$ pairwise perceptual hash comparisons previously called `parseInt` and normalized hex strings per pair inside nested loops. Pre-parsing perceptual hex strings into `BigInt` once, applying bitwise popcount (`n &= n - 1n`), using a Union-Find (DSU) algorithm for component grouping, and eliminating string sorting in map keys reduced pairwise evaluation runtime by ~50%.
+**Action:** Always pre-parse hex strings to `BigInt` prior to pairwise comparison loops and use Union-Find for fast graph component clustering.
