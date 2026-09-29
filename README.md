@@ -253,6 +253,35 @@ This is deliberate: runtime/chassis research can later supply an adapter without
 
 ---
 
+## Evidence-first engineering preflight
+
+Before new architecture research or implementation, read:
+
+- [Evidence-First Engineering](docs/research/EVIDENCE-FIRST-ENGINEERING.md)
+- [AGENTS.md](AGENTS.md)
+
+Project rule:
+
+```text
+EXTERNAL_EVIDENCE
+        ↓
+RELEVANCE / TRANSFER CHECK
+        ↓
+REUSE PROVEN MECHANISM
+        ↓
+TEST ONLY MATERIAL LOCAL DELTAS
+        ↓
+LOCAL ACCEPTANCE
+```
+
+Do not repeat a benchmark merely to obtain a local number when high-quality external evidence already answers the same question under materially equivalent conditions.
+
+Always record the source, protocol/task, population, metric, limitations, Nayara-specific delta, and whether a local test is actually required.
+
+For therapeutic research, aggregate quality is insufficient by itself. Preserve subgroup evidence such as cooperative vs reserved/evasive users, single-session vs longitudinal interaction, and ordinary vs safety-critical behavior.
+
+---
+
 ## Research track
 
 NaIA also contains a separate research track under:
