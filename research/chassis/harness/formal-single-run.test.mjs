@@ -11,8 +11,12 @@ const candidates = ['Temporal TypeScript', 'DBOS TypeScript', 'Restate', 'Trigge
 const criticalMutants = ['T5', 'T7', 'T8', 'T11', 'T12', 'T16'];
 const repositoryRevisionPolicy = 'single-verified-git-revision-per-formal-ledger';
 const environmentIdentityPolicy = 'single-common-runtime-and-candidate-profile-per-formal-ledger';
+const evaluatorAuthorityPolicy = 'candidate-agnostic-evaluator-authority';
+const lifecycleRuntimeIdentityPolicy = 'lifecycle-qualification-runtime-identity-must-match-formal-candidate-runtime';
 const a001Constraint = 'The T5/r1 lifecycle qualification support may originate from an earlier verified revision only while its candidate lifecycle-qualification hash remains current; every record admitted to one formal benchmark ledger must otherwise share one verified Git repository revision.';
 const a002Constraint = 'Every READY record in one formal ledger must share one canonical common execution environment identity for OS, architecture, Node runtime and recorded package-manager identity; within each candidate, every READY record must also share one canonical candidate profile derived from candidate/source identity, adapter SHA-256, manifest and exact installed dependency versions, declared mode/authority boundary, lifecycle-qualification SHA-256 and stable observed native runtime identity. Dynamic workspace paths, ports, task queues, process IDs, container IDs and database URLs are excluded from identity.';
+const a003Constraint = 'Formal semantic acceptance for every benchmark-critical mutant must be computed by candidate-agnostic evaluator code from raw observations; candidate adapters and execution runners may translate native evidence but must not define or override success semantics. Fault injection is classified separately, and an absent intended fault remains INCONCLUSIVE. For T7 and T8, the frozen executable acceptance contract requires exactly one external apply, one stable semantic operation identity, reachable durable authority, objective_completed terminal recovery and COMPLETED final status; T7 additionally requires zero response losses, while T8 additionally requires that the measurement cutoff was not reached after the one required response-loss fault. RECONCILIATION_REQUIRED is observable evidence but is not T7/T8 PASS under this V1 contract.';
+const a004Constraint = 'Any runtime-verified T5/r1 lifecycle qualification used to open formal cleanup support must record a SHA-256 identity of the stable native runtime identity observed in that qualification, and every READY formal benchmark record for that candidate must derive the same native runtime identity SHA-256 before ledger admission or benchmark eligibility. A lifecycle qualification produced with a different native runtime artifact cannot authorize formal benchmark records even when candidate version, Git revision policy and lifecycle-qualification source hash otherwise satisfy their independent gates.';
 const requiredRecordFields = [
   'experimentId', 'candidate', 'mutantId', 'repetition',
   'setup.candidateVersion', 'setup.candidateSourceRef', 'setup.adapterSha256', 'setup.harnessSha256',
@@ -53,6 +57,16 @@ async function syntheticBlockedRepository() {
           id: 'A002', date: '2026-09-01', status: 'FROZEN_BEFORE_FORMAL_EXECUTION', policy: environmentIdentityPolicy,
           reason: 'synthetic fixture mirrors the frozen formal environment comparability rule', outcomeDriven: false,
           changesSemanticVerdicts: false, changesRepetitionThreshold: false, constraint: a002Constraint
+        },
+        {
+          id: 'A003', date: '2026-09-01', status: 'FROZEN_BEFORE_FORMAL_EXECUTION', policy: evaluatorAuthorityPolicy,
+          reason: 'synthetic fixture mirrors the frozen candidate-agnostic evaluator authority rule', outcomeDriven: false,
+          changesSemanticVerdicts: false, changesRepetitionThreshold: false, constraint: a003Constraint
+        },
+        {
+          id: 'A004', date: '2026-09-01', status: 'FROZEN_BEFORE_FORMAL_EXECUTION', policy: lifecycleRuntimeIdentityPolicy,
+          reason: 'synthetic fixture mirrors the frozen lifecycle runtime identity rule', outcomeDriven: false,
+          changesSemanticVerdicts: false, changesRepetitionThreshold: false, constraint: a004Constraint
         }
       ]
     },
@@ -69,7 +83,7 @@ async function syntheticBlockedRepository() {
     },
     executionOrder: {
       policy: 'round-robin-by-repetition', sequence: 'synthetic test sequence',
-      repositoryRevisionPolicy, environmentIdentityPolicy
+      repositoryRevisionPolicy, environmentIdentityPolicy, evaluatorAuthorityPolicy, lifecycleRuntimeIdentityPolicy
     },
     requiredRecordFields
   };

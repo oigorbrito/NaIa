@@ -378,7 +378,7 @@ function createTemporalLifecycle({ repositoryRoot, env, timeoutMs, operations })
       workerPidProvenanceObserved: pidCleanup.provenanceObserved,
       workerProcessPids: pidCleanup.workerProcessPids,
       observedWorkerPids: observedPids,
-      liveObservedWorkerPids,
+      liveObservedWorkerPids: liveObservedPids,
       temporalServerPid: state.server?.pid ?? null,
       temporalServerCleanup: serverCleanup,
       sqlitePath: state.sqlitePath,

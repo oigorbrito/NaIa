@@ -356,7 +356,7 @@ export function createDbosFormalLifecycle({
       workerPidProvenanceObserved: pidCleanup.provenanceObserved,
       workerProcessPids: pidCleanup.workerProcessPids,
       observedWorkerPids: observedPids,
-      liveObservedWorkerPids,
+      liveObservedWorkerPids: liveObservedPids,
       containerName: state.containerName,
       containerId: state.containerId,
       cleanupContainerAllowed: state.cleanupContainerAllowed,
