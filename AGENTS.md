@@ -1,5 +1,30 @@
 # Agent Instructions
 
+## Evidence-first research and implementation gate
+
+Before starting new architecture research, candidate evaluation, or implementation work, read `docs/research/EVIDENCE-FIRST-ENGINEERING.md`.
+
+Required behavior:
+
+1. Search existing repository research/evidence before creating a new test.
+2. Prefer peer-reviewed benchmarks, reproducible upstream benchmarks, exact source/tests, and official documentation over opinion or popularity.
+3. Use Context7 for current software/library documentation when appropriate; do not treat it as primary evidence for academic/clinical benchmark claims.
+4. Do not repeat an external benchmark locally unless a material Nayara-specific delta could change the decision.
+5. Record the external protocol/task, population, metric, limitations, applicability, and exact local delta.
+6. Distinguish architecture/chassis qualification from feature breadth.
+7. Distinguish benchmark signal from local proof and implementation from qualification.
+8. For therapeutic systems, preserve subgroup behavior. Aggregate averages must not hide failures for reserved/evasive, upset/resistant, verbose, tangential, or approval-seeking interaction styles.
+9. Treat adaptive information-gap questioning as a mechanism that may be reused from evidence such as AgentMental; do not convert an assessment mechanism into an unsupported diagnostic claim.
+10. Do not merge personal-assistant and therapeutic authority boundaries merely for code reuse. Cross-domain communication must be explicit, minimal, and auditable.
+
+```text
+BENCHMARK_SIGNAL != LOCAL_PROOF
+EXTERNAL_SUCCESS != LOCAL_COMPATIBILITY
+IMPLEMENTED != QUALIFIED
+QUALIFIED != PROMOTED
+POPULAR != ARCHITECTURALLY_FIT
+```
+
 ## Project closure checklist activation
 
 The reusable closure template is `.project/closure/PROJECT-CLOSURE-DOCUMENTATION-TEMPLATE.md`.
