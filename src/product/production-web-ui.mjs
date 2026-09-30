@@ -492,6 +492,11 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
       transform: scale(0.97);
     }
 
+    button:focus-visible, .btn:focus-visible, .sidebar-item:focus-visible, .tab-item:focus-visible, .suggestion-chip:focus-visible, a:focus-visible {
+      outline: 2px solid var(--ios-blue);
+      outline-offset: 2px;
+    }
+
     .btn-secondary {
       background: var(--ios-fill);
       color: var(--ios-text);
@@ -927,7 +932,7 @@ function chatView(history = {}) {
             <div class="siri-bar"></div>
           </div>
         </div>
-        <button type="submit" class="prompt-submit-btn" title="Enviar" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
+        <button type="submit" class="prompt-submit-btn" title="Enviar" aria-label="Enviar comando" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
           ${ICONS.arrowUp}
         </button>
       </form>
