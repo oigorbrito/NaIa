@@ -74,7 +74,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
   const sidebarLinks = nav.map((item) => {
     const isAct = active === item;
     return `
-      <a data-nav="${item}" class="sidebar-item ${isAct ? 'active' : ''}" href="/surface/${item}">
+      <a data-nav="${item}" class="sidebar-item ${isAct ? 'active' : ''}" ${isAct ? 'aria-current="page"' : ''} href="/surface/${item}">
         <span class="sidebar-icon icon-${item}">${ICONS[item] || ''}</span>
         <span class="sidebar-label">${esc(navLabel(item))}</span>
         <span class="sidebar-nav-name" style="display:none">${esc(item)}</span>
@@ -85,7 +85,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
   const tabbarLinks = nav.slice(0, 5).map((item) => {
     const isAct = active === item;
     return `
-      <a data-nav="${item}" class="tab-item ${isAct ? 'active' : ''}" href="/surface/${item}">
+      <a data-nav="${item}" class="tab-item ${isAct ? 'active' : ''}" ${isAct ? 'aria-current="page"' : ''} href="/surface/${item}">
         <span class="tab-icon">${ICONS[item] || ''}</span>
         <span class="tab-label">${esc(navLabel(item))}</span>
       </a>
@@ -526,6 +526,11 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
       box-shadow: 0 0 0 3px var(--ios-blue-tint);
     }
 
+    button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, .suggestion-chip:focus-visible {
+      outline: 2px solid var(--ios-blue);
+      outline-offset: 2px;
+    }
+
     /* iOS Siri Style Assistant Input Bar */
     .assistant-hero {
       background: linear-gradient(135deg, rgba(0, 122, 255, 0.08) 0%, rgba(175, 82, 222, 0.08) 100%);
@@ -567,6 +572,27 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
       background: var(--ios-card-solid);
       border: 1px solid var(--ios-separator);
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .prompt-mic-btn {
+      position: absolute;
+      left: 12px;
+      background: transparent;
+      border: none;
+      color: var(--ios-subtext);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      box-shadow: none;
+    }
+
+    .prompt-mic-btn:hover {
+      color: var(--ios-blue);
+      transform: none;
+      box-shadow: none;
     }
 
     .prompt-submit-btn {
@@ -915,10 +941,10 @@ function chatView(history = {}) {
       
       <form method="post" action="/submit" class="prompt-form">
         <div class="prompt-input-wrapper" style="display: flex; align-items: center; position: relative;">
-          <input name="text" class="prompt-input" required placeholder="Digite seu comando ou objetivo..." autocomplete="off" style="padding-left: 44px; padding-right: 48px;">
-          <span style="position: absolute; left: 16px; color: var(--ios-subtext); display: flex; align-items: center; cursor: pointer;" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
+          <input name="text" id="prompt-input" class="prompt-input" required placeholder="Digite seu comando ou objetivo..." aria-label="Comando ou objetivo" autocomplete="off" style="padding-left: 44px; padding-right: 48px;">
+          <button type="button" aria-label="Ativar entrada por voz" class="prompt-mic-btn" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
             ${ICONS.mic}
-          </span>
+          </button>
           <div class="siri-wave-container" style="display: none; position: absolute; right: 14px;">
             <div class="siri-bar"></div>
             <div class="siri-bar"></div>
@@ -927,7 +953,7 @@ function chatView(history = {}) {
             <div class="siri-bar"></div>
           </div>
         </div>
-        <button type="submit" class="prompt-submit-btn" title="Enviar" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
+        <button type="submit" class="prompt-submit-btn" title="Enviar" aria-label="Enviar comando" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
           ${ICONS.arrowUp}
         </button>
       </form>
