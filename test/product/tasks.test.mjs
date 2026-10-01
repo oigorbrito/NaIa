@@ -77,7 +77,7 @@ test('duplicate scheduler delivery does not duplicate reminder action', async ()
 test('task creation registers through NaIA approval policy instead of bypassing it', () => {
   const { service } = fixture();
   let definition;
-  const naia = { registerCapability(value) { definition = value; return { name: value.name, risk: value.tool.risk }; } };
+  const naia = { registerCapability(value) { if (value.rule) definition = value; return { name: value.name, risk: value.tool.risk }; } };
   const [registered] = registerTaskCapabilities(naia, { service, userId: 'u1' });
   assert.deepEqual(registered, { name: 'task.reminder.create', risk: 'LOCAL_WRITE' });
   const action = definition.rule.action({ id: 'objective-1', title: 'remind me tomorrow: call dentist' });
@@ -140,7 +140,7 @@ test('task get and lifecycle operations cannot cross user boundary', async () =>
   assert.equal(read.objective.status,'COMPLETED');
   const readEvidence=await ports.evidence.list({objectiveId:read.objective.id});
   const readExecution=readEvidence.find((row)=>row.type==='STEP_EXECUTED'&&row.tool==='task.get');
-  assert.equal(readExecution.output?.result??readExecution.output,null);
+  assert.equal(readExecution.output.result,null);
   const pending=await naia.pursueAction({title:'Complete other task',action:{tool:'task.complete',input:{taskId:created.task.id},risk:'LOCAL_WRITE',requiresApproval:true}});
   const blocked=await naia.approve(pending.objective.id,'task.complete');
   assert.equal(blocked.objective.status,'FAILED');
