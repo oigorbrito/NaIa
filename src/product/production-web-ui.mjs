@@ -916,9 +916,9 @@ function chatView(history = {}) {
       <form method="post" action="/submit" class="prompt-form">
         <div class="prompt-input-wrapper" style="display: flex; align-items: center; position: relative;">
           <input name="text" class="prompt-input" required placeholder="Digite seu comando ou objetivo..." autocomplete="off" style="padding-left: 44px; padding-right: 48px;">
-          <span style="position: absolute; left: 16px; color: var(--ios-subtext); display: flex; align-items: center; cursor: pointer;" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
+          <button type="button" aria-label="Ativar entrada de voz" style="position: absolute; left: 16px; color: var(--ios-subtext); display: flex; align-items: center; cursor: pointer; background: none; border: none; padding: 0; box-shadow: none;" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
             ${ICONS.mic}
-          </span>
+          </button>
           <div class="siri-wave-container" style="display: none; position: absolute; right: 14px;">
             <div class="siri-bar"></div>
             <div class="siri-bar"></div>
@@ -927,7 +927,7 @@ function chatView(history = {}) {
             <div class="siri-bar"></div>
           </div>
         </div>
-        <button type="submit" class="prompt-submit-btn" title="Enviar" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
+        <button type="submit" class="prompt-submit-btn" title="Enviar" aria-label="Enviar comando" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
           ${ICONS.arrowUp}
         </button>
       </form>
