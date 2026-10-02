@@ -92,7 +92,7 @@ test('soft delete latest meal removes it from daily totals without erasing audit
 test('daily total query aggregates only active meals',async()=>{
   const diary=service();
   const a=await diary.logText({userId:'u1',text:'comi 100g de arroz'});
-  await diary.logText({userId:'u1',text:'comi 100g de frango'});
+  await diary.logText({userId:'u1',text:'comi frango'});
   await diary.deleteMeal({userId:'u1',mealId:a.meal.id});
   const total=await diary.dailyTotals('u1','2026-09-19');
   assert.equal(total.mealCount,1);

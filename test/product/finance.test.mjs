@@ -133,6 +133,8 @@ test('finance queries register through NaIA capability/policy contracts', () => 
   assert.deepEqual(registered, [
     { name: 'finance.balances', risk: 'SENSITIVE' },
     { name: 'finance.spending', risk: 'SENSITIVE' },
+    { name: 'finance.spendingChange', risk: 'SENSITIVE' },
+    { name: 'finance.recurring', risk: 'SENSITIVE' },
   ]);
   const spending = definitions.find((definition) => definition.name === 'finance.spending');
   assert.equal(spending.rule.match({ title: 'Quanto gastei em restaurantes este mês?' }), true);

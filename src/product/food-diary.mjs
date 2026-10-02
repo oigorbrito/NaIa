@@ -68,7 +68,7 @@ export function parseMealText(text){
   let value=String(text??'').trim();
   value=value.replace(/^na\s+verdade\s+(?:eram|era|foram|foi)\s+/i,'').replace(/^(eu\s+)?(comi|jantei|almocei|tomei|bebi)\s+/i,'');
   const parts=value.split(/\s+(?:e|com)\s+|,|\+/i).map(s=>s.trim()).filter(Boolean);
-  return parts.map(part=>({raw:part,quantity:parseQuantity(part),query:part.replace(/\b\d+(?:[.,]\d+)?\s*g\b/ig,'').replace(/\b\d+(?:[.,]\d+)?\b/g,'').replace(/\b(?:um|uma|dois|duas|três|tres|quatro|cinco|seis)\b/ig,'').replace(/^de\s+/i,'').trim()}));
+  return parts.map(part=>({raw:part,quantity:parseQuantity(part),query:part.replace(/\b\d+(?:[.,]\d+)?\s*g\b/ig,'').replace(/\b\d+(?:[.,]\d+)?\b/g,'').replace(/\b(?:um|uma|dois|duas|três|tres|quatro|cinco|seis)\b/ig,'').trim().replace(/^de\s+/i,'').trim()}));
 }
 
 function scaledNutrition(food,grams){

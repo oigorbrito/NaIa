@@ -50,7 +50,7 @@ export function createHistoryService({store=createMemoryHistoryStore(),entitleme
     return {rows:kept,policy:p};
   }
   return {
-    async ingestObjective({userId,snapshot,provider=null,conversation=[]}){
+    async ingestObjective({userId,snapshot,provider=null,conversation=snapshot?.conversation??[]}){
       if(!userId||!snapshot?.objective)throw new Error('userId and objective snapshot are required');
       const objective=snapshot.objective;const plan=snapshot.plan??{};const evidence=snapshot.evidence??[];
       const capabilities=[...new Set((plan.steps??[]).map(s=>s.action?.tool).filter(Boolean))];

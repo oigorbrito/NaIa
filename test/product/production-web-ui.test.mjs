@@ -24,6 +24,8 @@ test('production shell exposes all core navigation surfaces without CLI',async()
   const res=await ui.handle({method:'GET',path:'/'});
   assert.equal(res.status,200);
   for(const name of ['chat','objectives','approvals','automations','connectors','history','media','settings']) assert.match(res.body,new RegExp(`data-nav="${name}"`));
+  assert.match(res.body,/aria-label="Enviar comando"/);
+  assert.match(res.body,/aria-label="Ativar entrada de voz"/);
 });
 
 test('responsive shell includes narrow-screen breakpoint and viewport metadata',async()=>{
