@@ -1,0 +1,60 @@
+{
+  "5e7dec81-8089-47b8-81a9-c6c83a30a782": {
+    "objectiveId": "5e7dec81-8089-47b8-81a9-c6c83a30a782",
+    "intent": "LIVE",
+    "steps": [
+      {
+        "id": "5e7dec81-8089-47b8-81a9-c6c83a30a782:understand",
+        "kind": "UNDERSTAND",
+        "status": "COMPLETED",
+        "action": null
+      },
+      {
+        "id": "5e7dec81-8089-47b8-81a9-c6c83a30a782:execute",
+        "kind": "EXECUTE",
+        "status": "FAILED",
+        "action": {
+          "tool": "calendar.list",
+          "input": {},
+          "risk": "READ_ONLY",
+          "requiresApproval": false
+        }
+      },
+      {
+        "id": "5e7dec81-8089-47b8-81a9-c6c83a30a782:verify",
+        "kind": "VERIFY",
+        "status": "PENDING",
+        "action": null
+      }
+    ]
+  },
+  "c2419812-1b76-4d4f-b9f7-975ea2b7c29e": {
+    "objectiveId": "c2419812-1b76-4d4f-b9f7-975ea2b7c29e",
+    "intent": "LIVE",
+    "steps": [
+      {
+        "id": "c2419812-1b76-4d4f-b9f7-975ea2b7c29e:understand",
+        "kind": "UNDERSTAND",
+        "status": "COMPLETED",
+        "action": null
+      },
+      {
+        "id": "c2419812-1b76-4d4f-b9f7-975ea2b7c29e:execute",
+        "kind": "EXECUTE",
+        "status": "FAILED",
+        "action": {
+          "tool": "calendar.list",
+          "input": {},
+          "risk": "READ_ONLY",
+          "requiresApproval": false
+        }
+      },
+      {
+        "id": "c2419812-1b76-4d4f-b9f7-975ea2b7c29e:verify",
+        "kind": "VERIFY",
+        "status": "PENDING",
+        "action": null
+      }
+    ]
+  }
+}

@@ -130,9 +130,9 @@ test('stale, insufficient-evidence and no-deal results do not become Radar alert
   const insufficient=await deals.evaluate('x',{offerId:'o',minHistory:2,maxCurrentAgeMs:7*24*60*60*1000,asOf:'2026-09-19T13:00:00Z'});
   assert.equal(dealToRadarSignal(insufficient,{targetId:'x'}),null);
   const normal=service();
-  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-17T10:00:00Z',price:100});
-  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-18T10:00:00Z',price:100});
-  await normal.record({targetId:'y',offerId:'o',source:'s',observedAt:'2026-09-19T12:00:00Z',price:100});
+  await normal.record({targetId:'y',offerId:'o',source:'s1',observedAt:'2026-09-17T10:00:00Z',price:100});
+  await normal.record({targetId:'y',offerId:'o',source:'s2',observedAt:'2026-09-18T10:00:00Z',price:100});
+  await normal.record({targetId:'y',offerId:'o',source:'s3',observedAt:'2026-09-19T12:00:00Z',price:100});
   const noDeal=await normal.evaluate('y',{offerId:'o',minHistory:2,materialBelowPct:10,asOf:'2026-09-19T13:00:00Z'});
   assert.ok(noDeal.signals.includes('NO_DEAL'));
   assert.equal(dealToRadarSignal(noDeal,{targetId:'y'}),null);

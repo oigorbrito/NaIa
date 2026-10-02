@@ -1,0 +1,12 @@
+{
+  "gate": "LIVE_GCAL_READ",
+  "commit": "fixture-commit",
+  "from": "2026-09-20T00:00:00Z",
+  "to": "2026-09-21T00:00:00Z",
+  "status": "FAIL",
+  "error": {
+    "code": "LIVE_GCAL_FAILED",
+    "message": "live Google Calendar objective ended as FAILED",
+    "retryable": false
+  }
+}
