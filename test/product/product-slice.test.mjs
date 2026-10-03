@@ -38,7 +38,7 @@ test('failed execution stops, persists progress, and resumes from unfinished ste
   let calls = 0;
   ports.execution.run = async () => ({ ok: ++calls < 2, output: { calls } });
   const naia = createNaiaService(ports);
-  const failed = await naia.pursue({ title: 'Resume visibly' });
+  const failed = await naia.pursue({ title: 'uppercase: Resume visibly' });
 
   assert.equal(failed.objective.status, 'FAILED');
   assert.equal(failed.plan.steps[0].status, 'COMPLETED');
@@ -306,7 +306,7 @@ test('reference adapters share neutral capability contracts and explicit availab
   registry.register('windows', adapters.windows);
 
   for (const platform of ['web', 'windows']) {
-    assert.deepEqual(registry.capabilities(platform), ['files.list', 'notifications.show', 'media.read']);
+    assert.deepEqual(registry.capabilities(platform), ['files.list', 'notifications.show', 'secure.credentials', 'background.schedule', 'media.read']);
     assert.deepEqual(registry.describe(platform, 'files.list'), {
       name: 'files.list', platform, operations: ['list'], risk: 'READ_ONLY', permissions: [], availability: 'AVAILABLE',
     });
