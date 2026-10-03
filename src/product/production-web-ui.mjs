@@ -74,7 +74,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
   const sidebarLinks = nav.map((item) => {
     const isAct = active === item;
     return `
-      <a data-nav="${item}" class="sidebar-item ${isAct ? 'active' : ''}" href="/surface/${item}">
+      <a data-nav="${item}" class="sidebar-item ${isAct ? 'active' : ''}" ${isAct ? 'aria-current="page"' : ''} href="/surface/${item}">
         <span class="sidebar-icon icon-${item}">${ICONS[item] || ''}</span>
         <span class="sidebar-label">${esc(navLabel(item))}</span>
         <span class="sidebar-nav-name" style="display:none">${esc(item)}</span>
@@ -85,7 +85,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
   const tabbarLinks = nav.slice(0, 5).map((item) => {
     const isAct = active === item;
     return `
-      <a data-nav="${item}" class="tab-item ${isAct ? 'active' : ''}" href="/surface/${item}">
+      <a data-nav="${item}" class="tab-item ${isAct ? 'active' : ''}" ${isAct ? 'aria-current="page"' : ''} href="/surface/${item}">
         <span class="tab-icon">${ICONS[item] || ''}</span>
         <span class="tab-label">${esc(navLabel(item))}</span>
       </a>
@@ -813,7 +813,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
       </a>
 
       <p class="sidebar-section-title">Navegação</p>
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="Navegação principal">
         ${sidebarLinks}
       </nav>
 
@@ -847,7 +847,7 @@ function layout({ title = 'NaIA', active = 'chat', body = '', state = 'online', 
     </div>
 
     <!-- iOS Bottom Tab Bar (Mobile) -->
-    <nav class="mobile-tabbar">
+    <nav class="mobile-tabbar" aria-label="Navegação móvel">
       ${tabbarLinks}
     </nav>
   </div>
@@ -916,9 +916,9 @@ function chatView(history = {}) {
       <form method="post" action="/submit" class="prompt-form">
         <div class="prompt-input-wrapper" style="display: flex; align-items: center; position: relative;">
           <input name="text" class="prompt-input" required placeholder="Digite seu comando ou objetivo..." autocomplete="off" style="padding-left: 44px; padding-right: 48px;">
-          <span style="position: absolute; left: 16px; color: var(--ios-subtext); display: flex; align-items: center; cursor: pointer;" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
+          <button type="button" aria-label="Ativar entrada por voz" style="position: absolute; left: 12px; color: var(--ios-subtext); display: flex; align-items: center; background: none; border: none; padding: 4px; cursor: pointer;" onclick="document.querySelector('.siri-wave-container').style.display='inline-flex'">
             ${ICONS.mic}
-          </span>
+          </button>
           <div class="siri-wave-container" style="display: none; position: absolute; right: 14px;">
             <div class="siri-bar"></div>
             <div class="siri-bar"></div>
@@ -927,7 +927,7 @@ function chatView(history = {}) {
             <div class="siri-bar"></div>
           </div>
         </div>
-        <button type="submit" class="prompt-submit-btn" title="Enviar" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
+        <button type="submit" class="prompt-submit-btn" aria-label="Enviar comando" title="Enviar" style="background: linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);">
           ${ICONS.arrowUp}
         </button>
       </form>

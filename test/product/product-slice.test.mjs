@@ -38,7 +38,7 @@ test('failed execution stops, persists progress, and resumes from unfinished ste
   let calls = 0;
   ports.execution.run = async () => ({ ok: ++calls < 2, output: { calls } });
   const naia = createNaiaService(ports);
-  const failed = await naia.pursue({ title: 'Resume visibly' });
+  const failed = await naia.pursue({ title: 'uppercase: Resume visibly' });
 
   assert.equal(failed.objective.status, 'FAILED');
   assert.equal(failed.plan.steps[0].status, 'COMPLETED');
@@ -306,15 +306,18 @@ test('reference adapters share neutral capability contracts and explicit availab
   registry.register('windows', adapters.windows);
 
   for (const platform of ['web', 'windows']) {
-    assert.deepEqual(registry.capabilities(platform), ['files.list', 'notifications.show', 'media.read']);
+    assert.deepEqual(registry.capabilities(platform), ['files.list', 'notifications.show', 'secure.credentials', 'background.schedule', 'media.read']);
     assert.deepEqual(registry.describe(platform, 'files.list'), {
       name: 'files.list', platform, operations: ['list'], risk: 'READ_ONLY', permissions: [], availability: 'AVAILABLE',
     });
     assert.deepEqual(await registry.invoke(platform, 'files.list', { operation: 'list', entries: ['a.txt'] }), { entries: ['a.txt'] });
-    await assert.rejects(registry.invoke(platform, 'media.read', { operation: 'read' }), /unavailable: UNSUPPORTED/);
-    await assert.rejects(registry.invoke(platform, 'notifications.show', { operation: 'show' }), /unavailable: PERMISSION_REQUIRED/);
     await assert.rejects(registry.invoke(platform, 'files.list', { operation: 'delete' }), /operation not supported/);
   }
+
+  await assert.rejects(registry.invoke('web', 'media.read', { operation: 'read' }), /unavailable: UNSUPPORTED/);
+  await assert.rejects(registry.invoke('web', 'notifications.show', { operation: 'show' }), /requires permission: notifications/);
+  assert.deepEqual(await registry.invoke('windows', 'media.read', { operation: 'read' }), { items: [] });
+
   await assert.rejects(registry.invoke('linux', 'files.list'), /platform adapter not registered/);
   assert.notEqual(registry.describe('web', 'files.list'), registry.describe('windows', 'files.list'));
 });

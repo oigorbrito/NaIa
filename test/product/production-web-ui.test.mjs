@@ -26,6 +26,17 @@ test('production shell exposes all core navigation surfaces without CLI',async()
   for(const name of ['chat','objectives','approvals','automations','connectors','history','media','settings']) assert.match(res.body,new RegExp(`data-nav="${name}"`));
 });
 
+test('production shell renders accessible navigation landmarks, aria-current, and icon labels',async()=>{
+  const {ui}=fixture();
+  const res=await ui.handle({method:'GET',path:'/surface/chat'});
+  assert.equal(res.status,200);
+  assert.match(res.body,/aria-label="Navegação principal"/);
+  assert.match(res.body,/aria-label="Navegação móvel"/);
+  assert.match(res.body,/data-nav="chat"[^>]*aria-current="page"/);
+  assert.match(res.body,/aria-label="Enviar comando"/);
+  assert.match(res.body,/aria-label="Ativar entrada por voz"/);
+});
+
 test('responsive shell includes narrow-screen breakpoint and viewport metadata',async()=>{
   const {ui}=fixture();const res=await ui.handle({method:'GET',path:'/surface/chat'});
   assert.match(res.body,/name="viewport"/);

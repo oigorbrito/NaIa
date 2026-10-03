@@ -1,0 +1,3 @@
+## 2025-05-18 - Distinct landmark labeling for dual-surface web interfaces
+**Learning:** When web applications render separate desktop (sidebar) and mobile (bottom tabbar) `<nav>` elements in the same HTML document, screen readers encounter ambiguous navigation regions unless each `<nav>` provides an explicit `aria-label`. Active navigation links also require `aria-current="page"` for accurate assistive screen reader state.
+**Action:** Always label dual `<nav>` elements with distinct `aria-label` attributes (e.g. `aria-label="Navegação principal"` and `aria-label="Navegação móvel"`) and mark active links with `aria-current="page"`.
