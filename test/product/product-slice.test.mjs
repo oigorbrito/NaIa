@@ -311,10 +311,13 @@ test('reference adapters share neutral capability contracts and explicit availab
       name: 'files.list', platform, operations: ['list'], risk: 'READ_ONLY', permissions: [], availability: 'AVAILABLE',
     });
     assert.deepEqual(await registry.invoke(platform, 'files.list', { operation: 'list', entries: ['a.txt'] }), { entries: ['a.txt'] });
-    await assert.rejects(registry.invoke(platform, 'media.read', { operation: 'read' }), /unavailable: UNSUPPORTED/);
-    await assert.rejects(registry.invoke(platform, 'notifications.show', { operation: 'show' }), /unavailable: PERMISSION_REQUIRED/);
     await assert.rejects(registry.invoke(platform, 'files.list', { operation: 'delete' }), /operation not supported/);
   }
+
+  await assert.rejects(registry.invoke('web', 'media.read', { operation: 'read' }), /unavailable: UNSUPPORTED/);
+  await assert.rejects(registry.invoke('web', 'notifications.show', { operation: 'show' }), /requires permission: notifications/);
+  assert.deepEqual(await registry.invoke('windows', 'media.read', { operation: 'read' }), { items: [] });
+
   await assert.rejects(registry.invoke('linux', 'files.list'), /platform adapter not registered/);
   assert.notEqual(registry.describe('web', 'files.list'), registry.describe('windows', 'files.list'));
 });
